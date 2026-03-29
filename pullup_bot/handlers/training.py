@@ -35,7 +35,14 @@ async def start_training(message: types.Message, state: FSMContext):
         return
 
     lang = user["lang"] or "ru"
-    planned, day_type = planned_for_day(user)
+    today_str = date.today().isoformat()
+    existing_today = await get_today_workout(user["id"], today_str)
+    if existing_today:
+        # Keep today's saved plan/day type stable if the user re-enters training.
+        planned = existing_today["planned"] or 0
+        day_type = existing_today["day_type"] or planned_for_day(user)[1]
+    else:
+        planned, day_type = planned_for_day(user)
     days_off = _days_since_last(user)
 
     # If user has been off 3+ days and today is a rest day, skip the rest prompt
@@ -47,7 +54,7 @@ async def start_training(message: types.Message, state: FSMContext):
         day_type = "Лёгкий"
         planned = int(user["base_pullups"] * 0.7)
         await message.answer(note, parse_mode="Markdown")
-        await _begin_training(message, state, user, lang, date.today().isoformat(), planned, day_type)
+        await _begin_training(message, state, user, lang, today_str, planned, day_type)
         return
 
     # Rest day override (normal case)
@@ -66,7 +73,7 @@ async def start_training(message: types.Message, state: FSMContext):
                       f"⚠️ _Break of {days_off} days — load reduced to {int(reduction*100)}% for a smooth return._\n\n")
         await message.answer(break_note, parse_mode="Markdown")
 
-    await _begin_training(message, state, user, lang, date.today().isoformat(), planned, day_type)
+    await _begin_training(message, state, user, lang, today_str, planned, day_type)
 
 
 @router.message(Training.rest_day, text_filter("rest_day_train"))
@@ -173,13 +180,15 @@ async def _begin_training(message, state, user, lang, today_str, planned, day_ty
         reduction = activity_reduction(yesterday_w["extra_activity"], yesterday_w["extra_minutes"])
         planned = int(planned * reduction)
 
-    existing = await get_today_workout(user["id"])
+    existing = await get_today_workout(user["id"], today_str)
     done_today = existing["completed"] if existing else 0
     session_sets: list = []
     done_before = done_today
 
     if existing:
-        await upsert_workout(user["id"], today_str, planned=planned, day_type=day_type, completed=done_today)
+        # Preserve the original daily target once it is created for today.
+        planned = existing["planned"] if existing["planned"] is not None else planned
+        day_type = existing["day_type"] or day_type
     else:
         await upsert_workout(user["id"], today_str, planned=planned, day_type=day_type,
                              sets_json=json.dumps([]), completed=0)

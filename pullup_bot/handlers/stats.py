@@ -58,7 +58,11 @@ async def show_stats(message: types.Message):
 
     today_w = await get_today_workout(user["id"])
     today_done = today_w["completed"] if today_w else 0
-    today_plan, today_type = planned_for_day(user)
+    if today_w:
+        today_plan = today_w["planned"] if today_w["planned"] is not None else 0
+        today_type = today_w["day_type"] or planned_for_day(user)[1]
+    else:
+        today_plan, today_type = planned_for_day(user)
     today_type_display = day_name(today_type, lang)
 
     # Personal record

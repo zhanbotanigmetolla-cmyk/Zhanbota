@@ -29,8 +29,12 @@ async def daily_reminder(bot):
         users = await cur.fetchall()
     for user in users:
         lang = user["lang"] or "ru"
-        planned, day_type = planned_for_day(user)
         existing = await get_today_workout(user["id"])
+        if existing:
+            planned = existing["planned"] if existing["planned"] is not None else 0
+            day_type = existing["day_type"] or planned_for_day(user)[1]
+        else:
+            planned, day_type = planned_for_day(user)
         done = existing["completed"] if existing else 0
         if day_type == "Отдых":
             if done > 0:

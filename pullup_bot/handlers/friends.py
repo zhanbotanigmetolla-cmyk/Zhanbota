@@ -50,7 +50,10 @@ async def friends_menu(message: types.Message, state: FSMContext):
     for f in all_users:
         today_w = await get_today_workout(f["id"])
         done = today_w["completed"] if today_w else 0
-        plan, _ = planned_for_day(f)
+        if today_w:
+            plan = today_w["planned"] if today_w["planned"] is not None else 0
+        else:
+            plan, _ = planned_for_day(f)
         _, lname, _, _ = level_info(f["xp"])
         today_label = "Сегодня" if lang == "ru" else "Today"
         is_me = f["id"] == user["id"]
