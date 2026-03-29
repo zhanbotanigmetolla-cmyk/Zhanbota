@@ -1,0 +1,228 @@
+from datetime import date, timedelta
+
+from aiogram.exceptions import TelegramForbiddenError
+
+from ..config import ADMIN_TG_ID, logger
+from ..db import get_db, get_today_workout
+from ..i18n import t, day_name
+from ..services.xp import display, md_escape, planned_for_day
+from . import monitoring
+
+
+async def _delete_user(conn, user_id: int):
+    """Delete all data for a user by their DB id."""
+    await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?", (user_id, user_id))
+    await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    await conn.commit()
+
+
+async def daily_reminder(bot):
+    from datetime import datetime
+    now = datetime.now().strftime("%H:%M")
+    conn = await get_db()
+    async with conn.execute(
+        "SELECT * FROM users WHERE notify_time=? AND is_logged_out=0", (now,)
+    ) as cur:
+        users = await cur.fetchall()
+    for user in users:
+        lang = user["lang"] or "ru"
+        planned, day_type = planned_for_day(user)
+        existing = await get_today_workout(user["id"])
+        done = existing["completed"] if existing else 0
+        if day_type == "Отдых":
+            if done > 0:
+                continue
+            msg = t("reminder_rest", lang)
+        else:
+            if done >= planned:
+                continue
+            status = (t("reminder_done", lang, done=done)
+                      if done > 0 else t("reminder_not_started", lang))
+            msg = t("reminder_train", lang,
+                    day_type=day_name(day_type, lang),
+                    planned=planned, status=status)
+        try:
+            await bot.send_message(user["tg_id"], msg)
+        except TelegramForbiddenError:
+            last = user["last_workout"]
+            inactive = (not last or
+                        (date.today() - date.fromisoformat(last)).days >= 7)
+            if inactive:
+                logger.info(f"[reminder] blocked+inactive 7d, removing user {user['tg_id']}")
+                await _delete_user(conn, user["id"])
+            else:
+                logger.info(f"[reminder] user {user['tg_id']} blocked the bot but still active")
+        except Exception as e:
+            logger.warning(f"[reminder] {user['tg_id']}: {e}")
+
+
+async def weekly_summary(bot):
+    """Send weekly summary to every user every Monday at 08:00."""
+    conn = await get_db()
+    async with conn.execute("SELECT * FROM users WHERE is_logged_out=0") as cur:
+        users = await cur.fetchall()
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    for user in users:
+        lang = user["lang"] or "ru"
+        async with conn.execute(
+            "SELECT * FROM workouts WHERE user_id=? AND date>=? AND date<=? ORDER BY date ASC",
+            (user["id"], week_ago, yesterday)
+        ) as cur:
+            rows = await cur.fetchall()
+        if not rows:
+            try:
+                await bot.send_message(user["tg_id"], t("weekly_summary_no_workouts", lang))
+            except Exception as e:
+                logger.warning(f"[weekly_summary] send failed for {user['tg_id']}: {e}")
+            continue
+        total_done = sum(r["completed"] for r in rows)
+        total_planned = sum(r["planned"] for r in rows if r["planned"] > 0)
+        pct = int(total_done / total_planned * 100) if total_planned else 0
+        best = max(rows, key=lambda r: r["completed"])
+        best_day = day_name(best["day_type"] or "—", lang)
+        rpe_rows = [r["rpe"] for r in rows if r["rpe"] and r["rpe"] > 0]
+        avg_rpe = f"{sum(rpe_rows)/len(rpe_rows):.1f}" if rpe_rows else "—"
+        msg = (
+            t("weekly_summary_title", lang) + "\n"
+            f"👤 *{md_escape(display(user))}*\n\n" +
+            t("weekly_summary_body", lang,
+              done=total_done, planned=total_planned, pct=pct,
+              best_day=best_day, best_done=best["completed"],
+              avg_rpe=avg_rpe, streak=user["streak"],
+              freeze=user["freeze_tokens"])
+        )
+        try:
+            await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
+        except Exception as e:
+            logger.warning(f"[weekly_summary] {user['tg_id']}: {e}")
+
+
+async def daily_health_summary(bot):
+    """Send daily health summary to admin at 08:00."""
+    snap = monitoring.reset()
+    conn = await get_db()
+    async with conn.execute("SELECT COUNT(*) FROM users") as cur:
+        row = await cur.fetchone()
+        total_users = row[0] if row else 0
+    today = date.today().isoformat()
+    async with conn.execute(
+        "SELECT COUNT(*) FROM workouts WHERE date=?", (today,)
+    ) as cur:
+        row = await cur.fetchone()
+        workouts_today = row[0] if row else 0
+    errors = snap.get("errors", 0)
+    unhandled = snap.get("unhandled", 0)
+    actions = snap.get("actions", 0)
+    msg = (
+        f"📊 Ежедневный отчёт бота\n"
+        f"👤 Пользователей: {total_users}\n"
+        f"🏋️ Тренировок сегодня: {workouts_today}\n"
+        f"⚡ Действий за сутки: {actions}\n"
+        f"❌ Ошибок: {errors}\n"
+        f"❓ Необработанных сообщений: {unhandled}"
+    )
+    try:
+        await bot.send_message(ADMIN_TG_ID, msg)
+    except Exception as e:
+        logger.warning(f"[health_summary] {e}")
+
+
+async def db_integrity_check(bot):
+    """Periodic DB integrity check at 03:00."""
+    issues = []
+    conn = await get_db()
+    try:
+        async with conn.execute("PRAGMA integrity_check") as cur:
+            row = await cur.fetchone()
+            if row and row[0] != "ok":
+                issues.append(f"integrity_check: {row[0]}")
+    except Exception as e:
+        issues.append(f"integrity_check error: {e}")
+
+    try:
+        async with conn.execute(
+            "SELECT COUNT(*) FROM users WHERE base_pullups <= 0"
+        ) as cur:
+            row = await cur.fetchone()
+            bad = row[0] if row else 0
+            if bad:
+                issues.append(f"{bad} users with base_pullups <= 0")
+    except Exception as e:
+        issues.append(f"anomaly check error: {e}")
+
+    if issues:
+        msg = "⚠️ DB integrity issues:\n" + "\n".join(f"• {i}" for i in issues)
+        logger.error(f"[db_integrity] {msg}")
+        try:
+            await bot.send_message(ADMIN_TG_ID, msg)
+        except Exception as e:
+            logger.warning(f"[db_integrity] alert failed: {e}")
+    else:
+        logger.info("[db_integrity] OK")
+
+
+async def auto_cleanup_inactive(bot):
+    """Warn at 27 days of inactivity, delete at 30 days."""
+    today = date.today()
+    cutoff_delete = (today - timedelta(days=30)).isoformat()
+    cutoff_warn = (today - timedelta(days=27)).isoformat()
+    conn = await get_db()
+
+    # Step 1: delete accounts inactive 30+ days (skip logged-out users — they're paused)
+    async with conn.execute(
+        "SELECT * FROM users WHERE last_workout IS NOT NULL AND last_workout < ? AND is_logged_out=0",
+        (cutoff_delete,)
+    ) as cur:
+        stale = await cur.fetchall()
+    deleted = 0
+    for user in stale:
+        logger.info(f"[cleanup] deleting inactive 30d user {user['tg_id']}")
+        await _delete_user(conn, user["id"])
+        deleted += 1
+
+    # Step 2: warn accounts inactive 27–29 days (warning not yet sent, skip logged-out)
+    async with conn.execute(
+        "SELECT * FROM users WHERE last_workout IS NOT NULL AND last_workout < ? "
+        "AND last_workout >= ? AND inactivity_warned IS NULL AND is_logged_out=0",
+        (cutoff_warn, cutoff_delete)
+    ) as cur:
+        to_warn = await cur.fetchall()
+    warned = 0
+    for user in to_warn:
+        lang = user["lang"] or "ru"
+        days_inactive = (today - date.fromisoformat(user["last_workout"])).days
+        days_left = 30 - days_inactive
+        msg = (
+            f"⚠️ Ты не тренировался {days_inactive} дней.\n\n"
+            f"Через {days_left} дн. аккаунт будет удалён автоматически.\n"
+            f"Зайди и сделай хоть одну тренировку, чтобы сохранить данные 💪"
+            if lang == "ru" else
+            f"⚠️ You haven't trained for {days_inactive} days.\n\n"
+            f"Your account will be deleted in {days_left} day(s) if you stay inactive.\n"
+            f"Log a workout to keep your data 💪"
+        )
+        try:
+            await bot.send_message(user["tg_id"], msg)
+            await conn.execute(
+                "UPDATE users SET inactivity_warned=? WHERE id=?",
+                (today.isoformat(), user["id"])
+            )
+            await conn.commit()
+            warned += 1
+        except Exception as e:
+            logger.warning(f"[cleanup] warning failed for {user['tg_id']}: {e}")
+
+    if deleted or warned:
+        try:
+            await bot.send_message(
+                ADMIN_TG_ID,
+                f"🧹 Авто-очистка:\n"
+                f"🗑 Удалено: {deleted} (30+ дней неактивны)\n"
+                f"⚠️ Предупреждено: {warned} (27+ дней неактивны)"
+            )
+        except Exception as e:
+            logger.warning(f"[cleanup] admin notify failed: {e}")
