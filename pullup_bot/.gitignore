@@ -4,3 +4,9 @@ pullups.db
 pullups.db-wal
 pullups.db-shm
 pullups_fsm.db
+
+# Runtime DB files
+pullups.db
+pullups.db-wal
+pullups.db-shm
+pullups_fsm.db
