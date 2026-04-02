@@ -94,6 +94,15 @@ async def about_bot(message: types.Message, state: FSMContext):
                          reply_markup=landing_kb(lang))
 
 
+@router.message(text_filter("btn_guide"))
+async def guide_handler(message: types.Message, state: FSMContext):
+    user = await get_user(message.from_user.id)
+    data = await state.get_data()
+    lang = (user["lang"] or "ru") if user else data.get("lang", "ru")
+    await message.answer(t("guide", lang), parse_mode="Markdown",
+                         reply_markup=landing_kb(lang))
+
+
 @router.message(text_filter("btn_exit"))
 async def exit_btn(message: types.Message, state: FSMContext):
     user = await get_user(message.from_user.id)

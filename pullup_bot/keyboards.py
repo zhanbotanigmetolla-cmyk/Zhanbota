@@ -22,7 +22,8 @@ def main_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 def landing_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
-    b.row(KeyboardButton(text=t("btn_login", lang)), KeyboardButton(text=t("btn_about", lang)))
+    b.row(KeyboardButton(text=t("btn_login", lang)))
+    b.row(KeyboardButton(text=t("btn_guide", lang)), KeyboardButton(text=t("btn_about", lang)))
     return b.as_markup(resize_keyboard=True)
 
 
