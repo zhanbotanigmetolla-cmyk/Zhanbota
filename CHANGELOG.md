@@ -8,6 +8,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ### Added
 - New "📖 Как начать" / "📖 Getting Started" button on the landing screen with a step-by-step beginner guide covering registration, daily plan, training flow, RPE, streak, stats, and AI coach (Russian + English)
+- "О боте" now includes a friendly reminder that the bot works best alongside good sleep, nutrition, and recovery — not as a substitute for them
 - `CLAUDE.md` with project instructions for Claude Code (auto-push and changelog rules)
 
 ### Changed

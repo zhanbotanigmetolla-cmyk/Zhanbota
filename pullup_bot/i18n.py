@@ -67,6 +67,11 @@ STRINGS = {
             "Не теряй серию из-за одного пропуска — есть токены заморозки.\n\n"
             "🤖 *ИИ-тренер*\n"
             "Советы от Llama 3.3 70B (Groq) с учётом твоей истории, веса и стрика.\n\n"
+            "🌱 *Бот — не волшебная таблетка*\n"
+            "Турникмен даёт тебе структуру и мотивацию, но результат строится на фундаменте. "
+            "Высыпайся, ешь достаточно белка, давай мышцам восстанавливаться и береги здоровье. "
+            "Бот — это мощный инструмент поверх твоего уже правильного образа жизни. "
+            "Сложи их вместе — и прогресс не заставит себя ждать. 💪\n\n"
             "⚠️ _Бот в стадии бета-тестирования._"
         ),
         "btn_guide": "📖 Как начать",
@@ -386,6 +391,11 @@ STRINGS = {
             "Don't lose your streak over one missed day — use freeze tokens.\n\n"
             "🤖 *AI coach*\n"
             "Advice from Llama 3.3 70B (Groq) based on your history, weight and streak.\n\n"
+            "🌱 *This bot is not a magic pill*\n"
+            "Turnikmen gives you structure and keeps you accountable, but real progress is built on a solid foundation. "
+            "Sleep well, eat enough protein, let your muscles recover, and take care of your body. "
+            "Think of this bot as a powerful tool on top of an already healthy lifestyle — "
+            "combine the two and the results will speak for themselves. 💪\n\n"
             "⚠️ _Bot is in beta testing._"
         ),
         "btn_guide": "📖 Getting Started",
