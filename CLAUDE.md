@@ -3,9 +3,10 @@
 ## Git & GitHub
 
 After completing each new feature or fix, always:
-1. Stage only the relevant changed files (never `git add -A` blindly)
-2. Commit with a clear message describing *why* the change was made
-3. Push to `origin main`
+1. Update `CHANGELOG.md` — add an entry under today's date (`## [YYYY-MM-DD]`) with a short human-readable note describing what was added, changed, or fixed and why. Use sections `### Added`, `### Changed`, `### Fixed` as needed.
+2. Stage only the relevant changed files (never `git add -A` blindly)
+3. Commit with a clear message describing *why* the change was made
+4. Push to `origin main`
 
 Remote: https://github.com/zhanbotanigmetolla-cmyk/Zhanbota.git
 Credentials are stored in `~/.git-credentials` — no additional login needed.

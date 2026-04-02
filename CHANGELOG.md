@@ -1,0 +1,24 @@
+# Changelog
+
+All notable changes to Турникмен / Pullup Bot are documented here.
+
+---
+
+## [2026-04-02]
+
+### Added
+- Comprehensive beginner guide in "О боте" / "About" button — replaces the old feature overview with a step-by-step walkthrough covering registration, daily plan, training flow, RPE, streak, stats, and AI coach (Russian + English)
+- `CLAUDE.md` with project instructions for Claude Code (auto-push rule, project context)
+
+---
+
+## [2026-03-29]
+
+### Added
+- Initial project snapshot — full bot codebase with training, stats, history, friends, AI coach, leaderboard, settings, admin, and scheduler
+- Project `README.md` with feature overview, tech stack, and deploy instructions
+- `.gitattributes` for consistent LF line endings
+- `.gitignore` entries for `.env` files and runtime SQLite database files
+
+### Fixed
+- Daily plan stability — same-day plan no longer shifts when the bot is restarted mid-day
