@@ -66,3 +66,15 @@ class DeleteAccount(StatesGroup):
 
 class Friends(StatesGroup):
     viewing = State()
+
+
+class AdminPanel(StatesGroup):
+    main           = State()
+    user_list      = State()
+    user_search    = State()
+    user_profile   = State()
+    confirm_action = State()
+    broadcast      = State()
+    mute_duration  = State()
+    give_tokens    = State()
+    bug_list       = State()

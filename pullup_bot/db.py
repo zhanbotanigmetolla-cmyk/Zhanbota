@@ -29,6 +29,16 @@ MIGRATIONS = [
         created    TEXT DEFAULT (datetime('now')),
         PRIMARY KEY (from_tg_id, to_tg_id)
     )""",
+    # index 10
+    "ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0",
+    # index 11
+    "ALTER TABLE users ADD COLUMN muted_until TEXT DEFAULT NULL",
+    # index 12
+    """CREATE TABLE IF NOT EXISTS banned_ids (
+        tg_id     INTEGER PRIMARY KEY,
+        reason    TEXT DEFAULT '',
+        banned_at TEXT DEFAULT (datetime('now'))
+    )""",
 ]
 
 
@@ -237,6 +247,150 @@ async def update_streak(tg_id: int):
     if row:
         lvl = _level_from_xp(row[0])
         await conn.execute("UPDATE users SET level=? WHERE tg_id=?", (lvl, tg_id))
+    await conn.commit()
+
+
+async def get_all_users_paginated(page: int, per_page: int = 10):
+    conn = await get_db()
+    offset = page * per_page
+    async with conn.execute("SELECT COUNT(*) FROM users") as cur:
+        row = await cur.fetchone()
+        total = row[0] if row else 0
+    async with conn.execute(
+        "SELECT * FROM users ORDER BY joined DESC LIMIT ? OFFSET ?", (per_page, offset)
+    ) as cur:
+        users = await cur.fetchall()
+    return users, total
+
+
+async def search_users(query: str) -> list:
+    conn = await get_db()
+    if query.isdigit():
+        async with conn.execute(
+            "SELECT * FROM users WHERE tg_id=?", (int(query),)
+        ) as cur:
+            return await cur.fetchall()
+    async with conn.execute(
+        "SELECT * FROM users WHERE username LIKE ? OR first_name LIKE ? LIMIT 20",
+        (f"%{query}%", f"%{query}%")
+    ) as cur:
+        return await cur.fetchall()
+
+
+async def ban_user(tg_id: int, reason: str = "") -> None:
+    conn = await get_db()
+    await conn.execute("UPDATE users SET is_banned=1 WHERE tg_id=?", (tg_id,))
+    try:
+        await conn.execute(
+            "INSERT OR REPLACE INTO banned_ids (tg_id, reason) VALUES (?, ?)",
+            (tg_id, reason)
+        )
+    except Exception:
+        pass
+    await conn.commit()
+
+
+async def unban_user(tg_id: int) -> None:
+    conn = await get_db()
+    await conn.execute("UPDATE users SET is_banned=0 WHERE tg_id=?", (tg_id,))
+    await conn.commit()
+
+
+async def mute_user(tg_id: int, until_iso: str) -> None:
+    conn = await get_db()
+    await conn.execute("UPDATE users SET muted_until=? WHERE tg_id=?", (until_iso, tg_id))
+    await conn.commit()
+
+
+async def unmute_user(tg_id: int) -> None:
+    conn = await get_db()
+    await conn.execute("UPDATE users SET muted_until=NULL WHERE tg_id=?", (tg_id,))
+    await conn.commit()
+
+
+async def is_muted(tg_id: int) -> bool:
+    from datetime import datetime
+    conn = await get_db()
+    async with conn.execute("SELECT muted_until FROM users WHERE tg_id=?", (tg_id,)) as cur:
+        row = await cur.fetchone()
+    if not row or not row[0]:
+        return False
+    try:
+        return datetime.fromisoformat(row[0]) > datetime.now()
+    except Exception:
+        return False
+
+
+async def reset_streak(tg_id: int) -> None:
+    conn = await get_db()
+    await conn.execute("UPDATE users SET streak=0, last_workout=NULL WHERE tg_id=?", (tg_id,))
+    await conn.commit()
+
+
+async def reset_xp(tg_id: int) -> None:
+    conn = await get_db()
+    await conn.execute("UPDATE users SET xp=0, level=0 WHERE tg_id=?", (tg_id,))
+    await conn.commit()
+
+
+async def give_freeze_tokens(tg_id: int, delta: int) -> None:
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET freeze_tokens = MAX(0, freeze_tokens + ?) WHERE tg_id=?",
+        (delta, tg_id)
+    )
+    await conn.commit()
+
+
+async def get_bot_stats() -> dict:
+    from datetime import date as _date
+    conn = await get_db()
+    async with conn.execute("SELECT COUNT(*) FROM users") as cur:
+        total_users = (await cur.fetchone())[0]
+    async with conn.execute("SELECT COUNT(*) FROM users WHERE is_banned=1") as cur:
+        banned_count = (await cur.fetchone())[0]
+    today = _date.today().isoformat()
+    async with conn.execute(
+        "SELECT COUNT(DISTINCT user_id) FROM workouts WHERE date=?", (today,)
+    ) as cur:
+        active_today = (await cur.fetchone())[0]
+    async with conn.execute("SELECT COUNT(*) FROM workouts") as cur:
+        total_workouts = (await cur.fetchone())[0]
+    return {
+        "total_users": total_users,
+        "banned_count": banned_count,
+        "active_today": active_today,
+        "total_workouts": total_workouts,
+    }
+
+
+async def is_permanently_banned(tg_id: int) -> bool:
+    conn = await get_db()
+    async with conn.execute("SELECT tg_id FROM banned_ids WHERE tg_id=?", (tg_id,)) as cur:
+        row = await cur.fetchone()
+    return row is not None
+
+
+async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
+    conn = await get_db()
+    async with conn.execute("SELECT id FROM users WHERE tg_id=?", (tg_id,)) as cur:
+        row = await cur.fetchone()
+    if row:
+        user_id = row[0]
+        await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
+        await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?",
+                           (user_id, user_id))
+        await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
+        await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
+        await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    if permanent_ban:
+        try:
+            await conn.execute(
+                "INSERT OR REPLACE INTO banned_ids (tg_id, reason) VALUES (?, ?)",
+                (tg_id, "admin_deleted")
+            )
+        except Exception:
+            pass
     await conn.commit()
 
 

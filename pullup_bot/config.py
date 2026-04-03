@@ -43,6 +43,10 @@ LEVEL_NAMES = ["Новичок", "Стартер", "Любитель", "Атле
 
 START_MENU_LABEL = "/start"
 
+
+def is_admin_id(tg_id: int) -> bool:
+    return tg_id == ADMIN_TG_ID
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",

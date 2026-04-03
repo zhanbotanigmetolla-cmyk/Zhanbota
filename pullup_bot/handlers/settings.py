@@ -24,6 +24,7 @@ _INPUT_STATES = (
 )
 from ..services.xp import level_info
 from ..config import XP_PER_PULLUP
+from .admin import _is_admin
 
 router = Router()
 
@@ -54,7 +55,7 @@ async def settings_menu(message: types.Message, state: FSMContext):
         t("settings_title", lang,
           base=user["base_pullups"], weight=user["weight_kg"],
           notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown", reply_markup=settings_kb(lang))
+        parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message)))
 
 
 @router.message(text_filter("btn_logout"))

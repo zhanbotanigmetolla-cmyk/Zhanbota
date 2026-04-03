@@ -1,8 +1,11 @@
+from datetime import datetime
+
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 
 from ..config import logger
 from ..services import monitoring
+from .. import globals as g
 
 router = Router()
 
@@ -22,6 +25,12 @@ async def unhandled_message(message: types.Message, state: FSMContext):
             f"no-state text={text!r}"
         )
     monitoring.inc("unhandled")
+    g.security_events.appendleft({
+        "ts": datetime.now().isoformat(timespec="seconds"),
+        "uid": message.from_user.id if message.from_user else "?",
+        "type": "state_gap" if current_state else "unhandled",
+        "text": text[:50],
+    })
 
 
 @router.callback_query()

@@ -1,16 +1,20 @@
 import asyncio
+import time as _time
 import traceback
 
 from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, logger
-from .db import close_db, init_db
+from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, is_admin_id, logger
+from .db import close_db, get_user, init_db, is_permanently_banned
 from .handlers import register_all
 from .storage import SqliteStorage
 from .services.scheduler import (auto_cleanup_inactive, daily_health_summary,
                                   daily_reminder, db_integrity_check, weekly_summary)
 from .services import monitoring
+from . import globals as g
+
+g.BOT_START_TIME = _time.monotonic()
 
 bot = Bot(token=BOT_TOKEN)
 storage = SqliteStorage(db_path=FSM_DB_PATH)
@@ -49,6 +53,50 @@ async def errors_handler(event: types.ErrorEvent) -> bool:
         await bot.send_message(ADMIN_TG_ID, alert)
     except Exception:
         pass
+
+
+@dp.message.middleware()
+async def ban_check_middleware(handler, event: types.Message, data):
+    uid = event.from_user.id if event.from_user else None
+    if uid and not is_admin_id(uid):
+        try:
+            if await is_permanently_banned(uid):
+                await event.answer("⛔ Ваш аккаунт заблокирован.")
+                return
+            user = await get_user(uid)
+            if user and user["is_banned"]:
+                await event.answer("⛔ Ваш аккаунт заблокирован.")
+                return
+        except Exception:
+            pass
+    return await handler(event, data)
+
+
+@dp.callback_query.middleware()
+async def ban_check_cb_middleware(handler, event: types.CallbackQuery, data):
+    uid = event.from_user.id if event.from_user else None
+    if uid and not is_admin_id(uid):
+        try:
+            if await is_permanently_banned(uid):
+                await event.answer("⛔ Заблокирован.", show_alert=True)
+                return
+            user = await get_user(uid)
+            if user and user["is_banned"]:
+                await event.answer("⛔ Заблокирован.", show_alert=True)
+                return
+        except Exception:
+            pass
+    return await handler(event, data)
+
+
+@dp.message.middleware()
+async def maintenance_middleware(handler, event: types.Message, data):
+    if g.maintenance_mode:
+        uid = event.from_user.id if event.from_user else None
+        if uid and not is_admin_id(uid):
+            await event.answer("🔧 Бот на техническом обслуживании. Скоро вернёмся!")
+            return
+    return await handler(event, data)
 
 
 @dp.message.middleware()

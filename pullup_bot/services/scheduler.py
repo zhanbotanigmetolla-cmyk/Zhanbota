@@ -24,7 +24,7 @@ async def daily_reminder(bot):
     now = datetime.now().strftime("%H:%M")
     conn = await get_db()
     async with conn.execute(
-        "SELECT * FROM users WHERE notify_time=? AND is_logged_out=0", (now,)
+        "SELECT * FROM users WHERE notify_time=? AND is_logged_out=0 AND is_banned=0", (now,)
     ) as cur:
         users = await cur.fetchall()
     for user in users:
@@ -66,7 +66,7 @@ async def daily_reminder(bot):
 async def weekly_summary(bot):
     """Send weekly summary to every user every Monday at 08:00."""
     conn = await get_db()
-    async with conn.execute("SELECT * FROM users WHERE is_logged_out=0") as cur:
+    async with conn.execute("SELECT * FROM users WHERE is_logged_out=0 AND is_banned=0") as cur:
         users = await cur.fetchall()
     week_ago = (date.today() - timedelta(days=7)).isoformat()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
@@ -178,7 +178,7 @@ async def auto_cleanup_inactive(bot):
 
     # Step 1: delete accounts inactive 30+ days (skip logged-out users — they're paused)
     async with conn.execute(
-        "SELECT * FROM users WHERE last_workout IS NOT NULL AND last_workout < ? AND is_logged_out=0",
+        "SELECT * FROM users WHERE last_workout IS NOT NULL AND last_workout < ? AND is_logged_out=0 AND is_banned=0",
         (cutoff_delete,)
     ) as cur:
         stale = await cur.fetchall()
@@ -191,7 +191,7 @@ async def auto_cleanup_inactive(bot):
     # Step 2: warn accounts inactive 27–29 days (warning not yet sent, skip logged-out)
     async with conn.execute(
         "SELECT * FROM users WHERE last_workout IS NOT NULL AND last_workout < ? "
-        "AND last_workout >= ? AND inactivity_warned IS NULL AND is_logged_out=0",
+        "AND last_workout >= ? AND inactivity_warned IS NULL AND is_logged_out=0 AND is_banned=0",
         (cutoff_warn, cutoff_delete)
     ) as cur:
         to_warn = await cur.fetchall()
