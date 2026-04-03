@@ -7,6 +7,7 @@ After completing each new feature or fix, always:
 2. Stage only the relevant changed files (never `git add -A` blindly)
 3. Commit with a clear message describing *why* the change was made
 4. Push to `origin main`
+5. Restart the bot: `kill $(pgrep -f "python.*pullup_bot") 2>/dev/null; sleep 1; nohup /home/user/.venv-pullup/bin/python -m pullup_bot >> /home/user/pullup_bot/bot.log 2>&1 &`
 
 Remote: https://github.com/zhanbotanigmetolla-cmyk/Zhanbota.git
 Credentials are stored in `~/.git-credentials` — no additional login needed.
