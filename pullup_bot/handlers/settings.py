@@ -263,7 +263,8 @@ async def set_weight_save(message: types.Message, state: FSMContext):
         await message.answer(t("set_weight_range", lang))
         return
     try:
-        text = message.text.strip()
+        import re
+        text = re.sub(r'(?i)\s*к?г\w*$|\s*kg\w*$', '', message.text.strip()).strip()
         if len(text) > 8:
             await message.answer(t("set_weight_range", lang))
             return

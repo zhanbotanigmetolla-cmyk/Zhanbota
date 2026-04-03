@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-03]
+
+### Fixed
+- Weight input now accepts formats like "75 kg", "75kg", "75 кг", "75кг" — the "kg"/"кг" suffix is stripped before parsing, so users no longer get an error for natural input
+
 ## [2026-04-02]
 
 ### Added

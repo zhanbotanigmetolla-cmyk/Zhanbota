@@ -200,11 +200,12 @@ async def reg_weight(message: types.Message, state: FSMContext):
         await message.answer(t("enter_number", lang, example="90"))
         return
     try:
-        text = message.text.strip()
+        import re
+        text = re.sub(r'(?i)\s*к?г\w*$|\s*kg\w*$', '', message.text.strip()).strip()
         if len(text) > 8:
             await message.answer(t("enter_number", lang, example="90"))
             return
-        w = float(text)
+        w = float(text.replace(",", "."))
         await state.update_data(weight=w)
         await message.answer(t("enter_base", lang), parse_mode="Markdown")
         await state.set_state(Reg.base)
