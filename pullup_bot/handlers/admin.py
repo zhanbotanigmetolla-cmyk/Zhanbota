@@ -18,7 +18,7 @@ from ..db import (ban_user, delete_user_by_tg_id, get_db, get_lang, get_user,
 from ..i18n import t, text_filter
 from ..keyboards import (admin_bugs_kb, admin_confirm_kb, admin_confirm_restart_kb,
                          admin_panel_main_kb, admin_user_profile_kb, admin_users_kb,
-                         main_kb)
+                         main_kb, settings_kb)
 from ..states import AdminPanel, BugReport, Settings
 from ..services.xp import md_escape
 from .. import globals as g
@@ -170,6 +170,30 @@ async def open_admin_panel(message: types.Message, state: FSMContext):
     await state.set_state(AdminPanel.main)
     text, kb = await _build_main_panel_view()
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(text_filter("btn_back"), AdminPanel.main)
+@router.message(text_filter("btn_back"), AdminPanel.user_list)
+@router.message(text_filter("btn_back"), AdminPanel.user_search)
+@router.message(text_filter("btn_back"), AdminPanel.user_profile)
+@router.message(text_filter("btn_back"), AdminPanel.confirm_action)
+@router.message(text_filter("btn_back"), AdminPanel.broadcast)
+@router.message(text_filter("btn_back"), AdminPanel.mute_duration)
+@router.message(text_filter("btn_back"), AdminPanel.give_tokens)
+@router.message(text_filter("btn_back"), AdminPanel.bug_list)
+async def admin_panel_back(message: types.Message, state: FSMContext):
+    if not _is_admin(message):
+        return
+    await state.clear()
+    user = await get_user(message.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    await message.answer(
+        t("settings_title", lang,
+          base=user["base_pullups"], weight=user["weight_kg"],
+          notify=user["notify_time"], freeze=user["freeze_tokens"]),
+        parse_mode="Markdown",
+        reply_markup=settings_kb(lang, is_admin=True)
+    )
 
 
 async def _show_user_profile(callback: types.CallbackQuery, state: FSMContext, tg_id: int):
@@ -526,6 +550,24 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         await callback.answer("Перезапуск...")
         from ..db import close_db
         await close_db()
+        import signal
+        current_pid = os.getpid()
+        # Kill any sibling bot processes to avoid TelegramConflictError after exec
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["pgrep", "-f", "python.*pullup_bot"],
+                capture_output=True, text=True
+            )
+            for pid_str in result.stdout.strip().split("\n"):
+                try:
+                    pid = int(pid_str)
+                    if pid != current_pid:
+                        os.kill(pid, signal.SIGTERM)
+                except (ValueError, ProcessLookupError):
+                    pass
+        except Exception:
+            pass
         os.execv(sys.executable, [sys.executable, "-m", "pullup_bot"])
 
     # ── Maintenance toggle ──────────────────────────────────────────────────
