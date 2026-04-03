@@ -6,6 +6,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-04-03]
 
+### Added
+- Freeze token earning system: users now earn +1 token automatically for every 7-day streak milestone, on each level-up, and when breaking a personal record (capped at 5 tokens max). Earn notification shown inline in the workout summary.
+- Updated О боте and Как начать / About and Getting Started texts to explain all three ways to earn tokens
+
+
 ### Changed
 - Welcome screen and bug report prompt now invite users to share ideas for improvement, not just report bugs — "Сообщить о баге" button now clearly covers both bugs and feature suggestions
 

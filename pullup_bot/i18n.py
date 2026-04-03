@@ -63,8 +63,13 @@ STRINGS = {
             "Вес используется ИИ-тренером для персонализации советов.\n\n"
             "📊 *RPE-оценка после каждой тренировки*\n"
             "Скользящее среднее за 3 сессии — план корректируется плавно, без резких скачков.\n\n"
-            "🧊 *Стрик с заморозкой*\n"
-            "Не теряй серию из-за одного пропуска — есть токены заморозки.\n\n"
+            "🧊 *Токены заморозки*\n"
+            "Если пропустил день — потрать токен, чтобы сохранить стрик.\n"
+            "Заработать новый токен можно тремя способами:\n"
+            "• 🔥 каждые 7 дней стрика подряд\n"
+            "• ⬆️ при повышении уровня\n"
+            "• 🏆 при новом личном рекорде\n"
+            "Максимум — 5 токенов.\n\n"
             "🤖 *ИИ-тренер*\n"
             "Советы от Llama 3.3 70B (Groq) с учётом твоей истории, веса и стрика.\n\n"
             "🌱 *Бот — не волшебная таблетка*\n"
@@ -100,9 +105,14 @@ STRINGS = {
             "После тренировки бот спросит: насколько тяжело было?\n"
             "1–3 = легко · 4–6 = нормально · 7–8 = тяжело · 9–10 = на пределе\n"
             "Бот использует эти оценки чтобы корректировать план автоматически.\n\n"
-            "🔥 *Стрик*\n"
+            "🔥 *Стрик и токены заморозки*\n"
             "Стрик — количество дней подряд с тренировкой. Не прерывай его!\n"
             "Если пропустил день — потрать токен заморозки, чтобы сохранить серию.\n\n"
+            "Как заработать новый токен заморозки:\n"
+            "• 🔥 каждые 7 дней стрика подряд — автоматически\n"
+            "• ⬆️ при повышении уровня — после тренировки\n"
+            "• 🏆 при новом личном рекорде по подтягиваниям\n"
+            "_(максимум 5 токенов)_\n\n"
             "📈 *Статистика и история*\n"
             "• «📊 Статистика» — прогресс, XP, уровень, стрик\n"
             "• «🗓 История» — все прошлые тренировки по неделям\n\n"
@@ -319,6 +329,9 @@ STRINGS = {
         "freeze_no_btn": "❌ Нет, сбросить",
         "freeze_used": "🧊 Заморозка использована! Стрик *{streak}* дней сохранён.\nОсталось заморозок: {tokens}",
         "freeze_empty": "❌ Нет заморозок. Стрик сброшен. Начни заново! 💪",
+        "token_earned_level": "\n\n🧊 *+1 заморозка* — за повышение уровня! _(всего: {tokens})_",
+        "token_earned_streak": "\n\n🧊 *+1 заморозка* — за {streak} дней стрика подряд! _(всего: {tokens})_",
+        "token_earned_pr": "\n\n🧊 *+1 заморозка* — за новый личный рекорд! _(всего: {tokens})_",
         # Leaderboard
         "btn_leaderboard": "🏆 Рейтинг",
         "leaderboard_title": "🏆 *Рейтинг — неделя*",
@@ -387,8 +400,13 @@ STRINGS = {
             "Your weight is used by the AI coach to personalize advice.\n\n"
             "📊 *RPE rating after every session*\n"
             "3-session rolling average — plan adjusts smoothly, no sudden spikes.\n\n"
-            "🧊 *Streak with freeze tokens*\n"
-            "Don't lose your streak over one missed day — use freeze tokens.\n\n"
+            "🧊 *Freeze tokens*\n"
+            "Miss a day? Spend a token to protect your streak.\n"
+            "Earn new tokens three ways:\n"
+            "• 🔥 every 7-day streak milestone\n"
+            "• ⬆️ each time you level up\n"
+            "• 🏆 when you set a new personal record\n"
+            "Maximum 5 tokens.\n\n"
             "🤖 *AI coach*\n"
             "Advice from Llama 3.3 70B (Groq) based on your history, weight and streak.\n\n"
             "🌱 *This bot is not a magic pill*\n"
@@ -424,9 +442,14 @@ STRINGS = {
             "After each session the bot asks: how hard was it?\n"
             "1–3 = easy · 4–6 = moderate · 7–8 = hard · 9–10 = near maximum\n"
             "The bot uses these ratings to automatically adjust your plan.\n\n"
-            "🔥 *Streak*\n"
+            "🔥 *Streak & Freeze Tokens*\n"
             "Your streak counts days trained in a row. Keep it alive!\n"
             "Miss a day? Use a freeze token to protect your streak.\n\n"
+            "How to earn new freeze tokens:\n"
+            "• 🔥 every 7-day streak milestone — automatically\n"
+            "• ⬆️ each time you level up — after a workout\n"
+            "• 🏆 when you set a new personal record\n"
+            "_(maximum 5 tokens)_\n\n"
             "📈 *Stats & History*\n"
             "• «📊 Statistics» — progress, XP, level, streak\n"
             "• «🗓 History» — all past workouts by week\n\n"
@@ -643,6 +666,9 @@ STRINGS = {
         "freeze_no_btn": "❌ No, reset",
         "freeze_used": "🧊 Freeze used! Streak *{streak}* days protected.\nFreezes left: {tokens}",
         "freeze_empty": "❌ No freezes left. Streak reset. Start fresh! 💪",
+        "token_earned_level": "\n\n🧊 *+1 freeze token* — for reaching a new level! _(total: {tokens})_",
+        "token_earned_streak": "\n\n🧊 *+1 freeze token* — for a {streak}-day streak! _(total: {tokens})_",
+        "token_earned_pr": "\n\n🧊 *+1 freeze token* — for a new personal record! _(total: {tokens})_",
         # Leaderboard
         "btn_leaderboard": "🏆 Leaderboard",
         "leaderboard_title": "🏆 *Leaderboard — this week*",

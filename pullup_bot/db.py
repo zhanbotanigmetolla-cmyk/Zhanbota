@@ -333,11 +333,11 @@ async def reset_xp(tg_id: int) -> None:
     await conn.commit()
 
 
-async def give_freeze_tokens(tg_id: int, delta: int) -> None:
+async def give_freeze_tokens(tg_id: int, delta: int, max_tokens: int = 5) -> None:
     conn = await get_db()
     await conn.execute(
-        "UPDATE users SET freeze_tokens = MAX(0, freeze_tokens + ?) WHERE tg_id=?",
-        (delta, tg_id)
+        "UPDATE users SET freeze_tokens = MIN(?, MAX(0, freeze_tokens + ?)) WHERE tg_id=?",
+        (max_tokens, delta, tg_id)
     )
     await conn.commit()
 

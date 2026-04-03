@@ -27,6 +27,21 @@ def _days_since_last(user) -> int:
         return 999
 
 
+async def _mark_rest_day_if_missing(user_id: int, today_str: str):
+    """Persist a rest-day row so today's plan stays consistent across screens."""
+    existing = await get_today_workout(user_id, today_str)
+    if existing:
+        return
+    await upsert_workout(
+        user_id,
+        today_str,
+        planned=0,
+        day_type="Отдых",
+        sets_json=json.dumps([]),
+        completed=0,
+    )
+
+
 @router.message(text_filter("btn_train"))
 async def start_training(message: types.Message, state: FSMContext):
     user = await get_user(message.from_user.id)
@@ -117,6 +132,7 @@ async def rest_override_rest(message: types.Message, state: FSMContext):
                 (new_pd, today, message.from_user.id)
             )
             await conn.commit()
+        await _mark_rest_day_if_missing(user["id"], today)
     await state.clear()
     await message.answer(t("reminder_rest", lang), reply_markup=main_kb(lang))
 
@@ -146,6 +162,7 @@ async def freeze_yes(message: types.Message, state: FSMContext):
     await conn.execute("UPDATE users SET program_day=? WHERE tg_id=?",
                        (new_pd, message.from_user.id))
     await conn.commit()
+    await _mark_rest_day_if_missing(user["id"], today)
     await state.clear()
     await message.answer(t("freeze_used", lang, streak=new_streak, tokens=new_tokens),
                          parse_mode="Markdown", reply_markup=main_kb(lang))
@@ -161,10 +178,11 @@ async def freeze_no(message: types.Message, state: FSMContext):
         conn = await get_db()
         new_pd = (user["program_day"] or 0) + 1
         await conn.execute(
-            "UPDATE users SET program_day=?, last_workout=? WHERE tg_id=?",
+            "UPDATE users SET program_day=?, last_workout=?, streak=0 WHERE tg_id=?",
             (new_pd, today, message.from_user.id)
         )
         await conn.commit()
+        await _mark_rest_day_if_missing(user["id"], today)
     await state.clear()
     await message.answer(t("reminder_rest", lang), reply_markup=main_kb(lang))
 
@@ -487,6 +505,7 @@ async def _save_workout(msg, state: FSMContext, tg_id: int):
         await conn.execute("UPDATE users SET personal_record=? WHERE tg_id=?", (done, tg_id))
         await conn.commit()
 
+    level_before = user_before["level"] or 0
     xp_gained = done_now * XP_PER_PULLUP
     await add_xp(tg_id, xp_gained)
 
@@ -504,6 +523,23 @@ async def _save_workout(msg, state: FSMContext, tg_id: int):
 
     # Refresh after streak/program_day update
     user = await get_user(tg_id)
+
+    # ── Token earning ────────────────────────────────────────────────────────
+    tokens_earned = []
+    level_up = (user["level"] or 0) > level_before
+    streak_milestone = (done > 0 and is_first_today
+                        and (user["streak"] or 0) > 0
+                        and (user["streak"] % 7) == 0)
+    if level_up:
+        tokens_earned.append("level")
+    if streak_milestone:
+        tokens_earned.append("streak")
+    if pr_broken:
+        tokens_earned.append("pr")
+    if tokens_earned:
+        from ..db import give_freeze_tokens
+        await give_freeze_tokens(tg_id, len(tokens_earned))
+        user = await get_user(tg_id)  # refresh token count
     lvl, lname, to_nxt, pct = level_info(user["xp"])
     bar = progress_bar(pct)
     pct_done = int(done / planned * 100) if planned else 0
@@ -542,6 +578,12 @@ async def _save_workout(msg, state: FSMContext, tg_id: int):
         summary += progression_comment
     if pr_broken:
         summary += t("new_pr", lang, done=done)
+    if "level" in tokens_earned:
+        summary += t("token_earned_level", lang, tokens=user["freeze_tokens"])
+    if "streak" in tokens_earned:
+        summary += t("token_earned_streak", lang, streak=user["streak"], tokens=user["freeze_tokens"])
+    if "pr" in tokens_earned:
+        summary += t("token_earned_pr", lang, tokens=user["freeze_tokens"])
 
     # Smart base recommendation (only if no automatic adjustment was made)
     if not rpe_new_base and not progression_base and planned > 0:
