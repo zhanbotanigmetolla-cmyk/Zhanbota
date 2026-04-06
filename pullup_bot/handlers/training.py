@@ -433,7 +433,8 @@ async def enter_notes(message: types.Message, state: FSMContext):
     skip_text = t("train_skip_notes", lang)
     notes = "" if (message.text or "").strip() == skip_text else (message.text or "").strip()
     await state.update_data(notes=notes)
-    await _save_workout(message, state, message.from_user.id)
+    processing_msg = await message.answer(t("train_saving", lang))
+    await _save_workout(message, state, message.from_user.id, processing_msg)
 
 
 async def _check_weekly_progression(tg_id: int, user_id: int, current_base: int):
@@ -482,7 +483,12 @@ async def _apply_rpe_adjustment(tg_id: int, user_id: int, current_base: int):
     return None, None
 
 
-async def _save_workout(msg, state: FSMContext, tg_id: int):
+async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None):
+    if processing_msg:
+        try:
+            await processing_msg.delete()
+        except Exception:
+            pass
     data = await state.get_data()
     sets = data.get("sets", [])
     lang = data.get("lang", "ru")

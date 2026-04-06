@@ -6,6 +6,9 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-04-06]
 
+### Added
+- "⏳ Сохраняю..." indicator before workout save — auto-deleted once save completes, preventing users from tapping again while waiting
+
 ### Fixed
 - Race condition in RPE handler: when two messages arrived in rapid succession (e.g. "🥵 7" then "7"), both were dispatched while state was still `Training.rpe`, causing the "extra activity?" prompt to appear twice. Fixed with a per-user asyncio lock that drops duplicate concurrent messages.
 

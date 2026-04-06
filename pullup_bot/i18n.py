@@ -323,6 +323,7 @@ STRINGS = {
         # Workout notes
         "train_notes_prompt": "📝 Заметки к тренировке?\n_(Что чувствовал, условия, мысли — любой текст)_",
         "train_skip_notes": "⏭️ Без заметок",
+        "train_saving": "⏳ Сохраняю...",
         # Upcoming schedule
         "stats_schedule_title": "📅 *Ближайшие 7 дней:*",
         "stats_schedule_rest": "😴 Отдых",
@@ -675,6 +676,7 @@ STRINGS = {
         # Workout notes
         "train_notes_prompt": "📝 Any notes about this workout?\n_(How you felt, conditions, thoughts — anything)_",
         "train_skip_notes": "⏭️ Skip notes",
+        "train_saving": "⏳ Saving...",
         # Upcoming schedule
         "stats_schedule_title": "📅 *Next 7 days:*",
         "stats_schedule_rest": "😴 Rest",
