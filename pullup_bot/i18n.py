@@ -179,7 +179,7 @@ STRINGS = {
         "train_rpe_trending_low": "\n🚀 Средний RPE {avg:.1f} за 3 сессии — форма отличная! База повышена до {base} (+3%).",
         "train_progression": "\n🎯 Цикл завершён! Стабильный прогресс — база повышена до {base} (+5%).",
         "density_hint": "💡 _День плотности: много коротких подходов, минимум отдыха между ними. Цель — набрать объём равномерно в течение дня._",
-        "train_friend_notify": "📣 *{name}* завершил тренировку!\n{emoji} {done}/{planned} подтягиваний за {sets} подходов",
+        "train_friend_notify": "📣 *{name}* завершил тренировку!\n🎯 Цель: {planned} | Выполнено: {done} | Подходов: {sets}",
         # Rest day override
         "rest_day_prompt": "😴 Сегодня день отдыха. Что хочешь сделать?",
         "rest_day_train": "💪 Тренироваться",
@@ -516,7 +516,7 @@ STRINGS = {
         "train_rpe_trending_low": "\n🚀 Avg RPE {avg:.1f} over 3 sessions — great form! Base raised to {base} (+3%).",
         "train_progression": "\n🎯 Cycle complete! Consistent progress — base raised to {base} (+5%).",
         "density_hint": "💡 _Density day: many short sets, minimal rest between them. Goal — accumulate volume spread throughout the day._",
-        "train_friend_notify": "📣 *{name}* finished training!\n{emoji} {done}/{planned} pullups in {sets} sets",
+        "train_friend_notify": "📣 *{name}* finished training!\n🎯 Goal: {planned} | Done: {done} | Sets: {sets}",
         # Rest day override
         "rest_day_prompt": "😴 Today is a rest day. What do you want to do?",
         "rest_day_train": "💪 Train anyway",

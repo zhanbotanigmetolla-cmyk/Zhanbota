@@ -4,6 +4,13 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-06]
+
+### Changed
+- Workout completion notification format: now shows `🎯 Цель: X | Выполнено: Y | Подходов: Z` instead of the old `emoji done/planned за sets подходов`
+
+---
+
 ## [2026-04-04]
 
 ### Fixed
