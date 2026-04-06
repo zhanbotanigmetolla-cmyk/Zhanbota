@@ -6,6 +6,9 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-04-06]
 
+### Fixed
+- Race condition in RPE handler: when two messages arrived in rapid succession (e.g. "🥵 7" then "7"), both were dispatched while state was still `Training.rpe`, causing the "extra activity?" prompt to appear twice. Fixed with a per-user asyncio lock that drops duplicate concurrent messages.
+
 ### Changed
 - Workout completion notification format: now shows `🎯 Цель: X | Выполнено: Y | Подходов: Z` instead of the old `emoji done/planned за sets подходов`
 - Simplified post-training extra activity options from 4 choices to 3: Running/Cardio, Gym, Skip

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import date, timedelta
 
@@ -15,6 +16,9 @@ from ..services.xp import (activity_reduction, display, level_info, md_escape,
                             planned_for_day, progress_bar)
 
 router = Router()
+
+# Per-user locks to prevent duplicate processing when messages arrive in rapid succession
+_user_locks: dict[int, asyncio.Lock] = {}
 
 
 def _days_since_last(user) -> int:
@@ -354,16 +358,26 @@ async def custom_set_input(message: types.Message, state: FSMContext):
 
 @router.message(Training.rpe)
 async def set_rpe_msg(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    rpe = parse_rpe(message.text or "")
-    if rpe is None:
-        await message.answer(t("train_rpe_invalid", lang), reply_markup=rpe_menu_kb(lang))
-        return
-    await state.update_data(rpe=rpe)
-    await message.answer(t("train_extra_activity", lang),
-                         parse_mode="Markdown", reply_markup=activity_reply_kb(lang))
-    await state.set_state(Training.activity)
+    uid = message.from_user.id
+    if uid not in _user_locks:
+        _user_locks[uid] = asyncio.Lock()
+    if _user_locks[uid].locked():
+        return  # duplicate rapid message — drop silently
+    async with _user_locks[uid]:
+        # Re-check state in case a concurrent message already advanced it
+        current_state = await state.get_state()
+        if current_state != Training.rpe:
+            return
+        data = await state.get_data()
+        lang = data.get("lang", "ru")
+        rpe = parse_rpe(message.text or "")
+        if rpe is None:
+            await message.answer(t("train_rpe_invalid", lang), reply_markup=rpe_menu_kb(lang))
+            return
+        await state.update_data(rpe=rpe)
+        await message.answer(t("train_extra_activity", lang),
+                             parse_mode="Markdown", reply_markup=activity_reply_kb(lang))
+        await state.set_state(Training.activity)
 
 
 _ACTIVITY_MAP = {
