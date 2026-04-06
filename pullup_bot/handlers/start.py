@@ -10,9 +10,9 @@ from ..config import LEVEL_NAMES, SECRET_CODE_NORM, logger
 from ..db import add_welcome_greeting, get_db, get_lang, get_user
 from ..i18n import t, text_filter
 from ..keyboards import (LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
-                         landing_kb, lang_kb, logout_confirm_kb, main_kb,
-                         welcome_new_user_kb)
-from ..states import Login, Logout, Reg
+                         guide_kb, landing_kb, lang_kb, logout_confirm_kb,
+                         main_kb, welcome_new_user_kb)
+from ..states import Guide, Login, Logout, Reg
 from ..services.xp import display, md_escape
 
 router = Router()
@@ -99,8 +99,64 @@ async def guide_handler(message: types.Message, state: FSMContext):
     user = await get_user(message.from_user.id)
     data = await state.get_data()
     lang = (user["lang"] or "ru") if user else data.get("lang", "ru")
-    await message.answer(t("guide", lang), parse_mode="Markdown",
+    await state.set_state(Guide.step1)
+    await state.update_data(guide_lang=lang)
+    await message.answer(t("guide_intro", lang), parse_mode="Markdown",
+                         reply_markup=guide_kb("intro", lang))
+
+
+@router.message(Guide.step1, text_filter("btn_guide_step1"))
+async def guide_step1(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("guide_lang", "ru")
+    await state.set_state(Guide.step2)
+    await message.answer(t("guide_step1", lang), parse_mode="Markdown",
+                         reply_markup=guide_kb("step1", lang))
+
+
+@router.message(Guide.step2, text_filter("btn_guide_step2"))
+async def guide_step2(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("guide_lang", "ru")
+    await state.set_state(Guide.step3)
+    await message.answer(t("guide_step2", lang), parse_mode="Markdown",
+                         reply_markup=guide_kb("step2", lang))
+
+
+@router.message(Guide.step3, text_filter("btn_guide_step3"))
+async def guide_step3(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("guide_lang", "ru")
+    await state.set_state(Guide.step4)
+    await message.answer(t("guide_step3", lang), parse_mode="Markdown",
+                         reply_markup=guide_kb("step3", lang))
+
+
+@router.message(Guide.step4, text_filter("btn_guide_step4"))
+async def guide_step4(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("guide_lang", "ru")
+    await state.set_state(Guide.extra)
+    await message.answer(t("guide_step4", lang), parse_mode="Markdown",
+                         reply_markup=guide_kb("step4", lang))
+
+
+@router.message(Guide.extra, text_filter("btn_guide_extra"))
+async def guide_extra(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("guide_lang", "ru")
+    await state.clear()
+    await message.answer(t("guide_extra", lang), parse_mode="Markdown",
                          reply_markup=landing_kb(lang))
+
+
+@router.message(StateFilter(Guide.step1, Guide.step2, Guide.step3, Guide.step4, Guide.extra),
+                text_filter("btn_back"))
+async def guide_back(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("guide_lang", "ru")
+    await state.clear()
+    await message.answer(t("main_menu", lang), reply_markup=landing_kb(lang))
 
 
 @router.message(text_filter("btn_exit"))

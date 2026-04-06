@@ -80,32 +80,47 @@ STRINGS = {
             "⚠️ _Бот в стадии бета-тестирования._"
         ),
         "btn_guide": "📖 Как начать",
-        "guide": (
+        "btn_guide_step1": "Шаг 1 →",
+        "btn_guide_step2": "Шаг 2 →",
+        "btn_guide_step3": "Шаг 3 →",
+        "btn_guide_step4": "Шаг 4 →",
+        "btn_guide_extra": "Дополнительно →",
+        "guide_intro": (
             "📖 *Руководство для новичка*\n\n"
             "Бот помогает систематически увеличивать количество подтягиваний. "
-            "Он строит план, отслеживает прогресс и адаптирует нагрузку под тебя.\n\n"
-            "📋 *Шаг 1 — Регистрация*\n"
+            "Он строит план, отслеживает прогресс и адаптирует нагрузку под тебя."
+        ),
+        "guide_step1": (
+            "📋 *Шаг 1 — Регистрация*\n\n"
             "1. Нажми «💪 Войти в Турникмен»\n"
             "2. Введи секретный код _(получи у организатора)_\n"
             "3. Укажи имя и вес\n"
             "4. Укажи дневную норму подтягиваний _(например: 80)_\n"
-            "5. Укажи день программы _(1 — если только начинаешь)_\n\n"
-            "📅 *Шаг 2 — Ежедневный план*\n"
+            "5. Укажи день программы _(1 — если только начинаешь)_"
+        ),
+        "guide_step2": (
+            "📅 *Шаг 2 — Ежедневный план*\n\n"
             "Бот чередует нагрузку по 7-дневному циклу:\n"
             "• Средний — ~100% нормы\n"
             "• Лёгкий — ~60–70% нормы\n"
             "• Тяжёлый — ~120–130% нормы\n"
             "• Отдых — восстановление\n"
-            "• Плотность — много коротких подходов\n\n"
-            "🏋️ *Шаг 3 — Тренировка*\n"
+            "• Плотность — много коротких подходов"
+        ),
+        "guide_step3": (
+            "🏋️ *Шаг 3 — Тренировка*\n\n"
             "1. Нажми «🏋️ Тренировка»\n"
             "2. Делай подходы — нажимай на цифры или «✏️ Ввести вручную»\n"
-            "3. Нажми «✅ Завершить тренировку» когда закончишь\n\n"
-            "📊 *Шаг 4 — RPE (оценка усилия)*\n"
+            "3. Нажми «✅ Завершить тренировку» когда закончишь"
+        ),
+        "guide_step4": (
+            "📊 *Шаг 4 — RPE (оценка усилия)*\n\n"
             "После тренировки бот спросит: насколько тяжело было?\n"
-            "1–3 = легко · 4–6 = нормально · 7–8 = тяжело · 9–10 = на пределе\n"
-            "Бот использует эти оценки чтобы корректировать план автоматически.\n\n"
-            "🔥 *Стрик и токены заморозки*\n"
+            "1–3 = легко · 4–6 = нормально · 7–8 = тяжело · 9–10 = на пределе\n\n"
+            "Бот использует эти оценки чтобы корректировать план автоматически."
+        ),
+        "guide_extra": (
+            "🔥 *Стрик и токены заморозки*\n\n"
             "Стрик — количество дней подряд с тренировкой. Не прерывай его!\n"
             "Если пропустил день — потрать токен заморозки, чтобы сохранить серию.\n\n"
             "Как заработать новый токен заморозки:\n"
@@ -113,12 +128,12 @@ STRINGS = {
             "• ⬆️ при повышении уровня — после тренировки\n"
             "• 🏆 при новом личном рекорде по подтягиваниям\n"
             "_(максимум 5 токенов)_\n\n"
-            "📈 *Статистика и история*\n"
+            "📈 *Статистика и история*\n\n"
             "• «📊 Статистика» — прогресс, XP, уровень, стрик\n"
             "• «🗓 История» — все прошлые тренировки по неделям\n\n"
-            "🤖 *ИИ-тренер*\n"
+            "🤖 *ИИ-тренер*\n\n"
             "Нажми «🤖 ИИ-совет» — получи совет с учётом твоей истории, веса и стрика.\n\n"
-            "💡 *Совет*\n"
+            "💡 *Совет*\n\n"
             "Начни с консервативной нормы (50–80 подтягиваний в день). "
             "Бот сам повысит её, когда ты будешь готов."
         ),
@@ -417,32 +432,47 @@ STRINGS = {
             "⚠️ _Bot is in beta testing._"
         ),
         "btn_guide": "📖 Getting Started",
-        "guide": (
+        "btn_guide_step1": "Step 1 →",
+        "btn_guide_step2": "Step 2 →",
+        "btn_guide_step3": "Step 3 →",
+        "btn_guide_step4": "Step 4 →",
+        "btn_guide_extra": "More →",
+        "guide_intro": (
             "📖 *Beginner's Guide*\n\n"
             "The bot helps you systematically increase your pullup count. "
-            "It builds your plan, tracks progress, and automatically adapts load to you.\n\n"
-            "📋 *Step 1 — Registration*\n"
+            "It builds your plan, tracks progress, and automatically adapts load to you."
+        ),
+        "guide_step1": (
+            "📋 *Step 1 — Registration*\n\n"
             "1. Tap «💪 Join Pullup Pro»\n"
             "2. Enter the secret code _(get it from your organizer)_\n"
             "3. Enter your name and weight\n"
             "4. Enter your daily pullup target _(e.g.: 80)_\n"
-            "5. Enter your program day _(1 if you're just starting out)_\n\n"
-            "📅 *Step 2 — Your Daily Plan*\n"
+            "5. Enter your program day _(1 if you're just starting out)_"
+        ),
+        "guide_step2": (
+            "📅 *Step 2 — Your Daily Plan*\n\n"
             "The bot alternates load on a 7-day wave cycle:\n"
             "• Medium — ~100% of your target\n"
             "• Light — ~60–70% of your target\n"
             "• Heavy — ~120–130% of your target\n"
             "• Rest — recovery day\n"
-            "• Density — many short sets\n\n"
-            "🏋️ *Step 3 — Training*\n"
+            "• Density — many short sets"
+        ),
+        "guide_step3": (
+            "🏋️ *Step 3 — Training*\n\n"
             "1. Tap «🏋️ Training»\n"
             "2. Do sets — tap the numbers or «✏️ Enter Manually»\n"
-            "3. Tap «✅ Finish Training» when done\n\n"
-            "📊 *Step 4 — RPE (Effort Rating)*\n"
+            "3. Tap «✅ Finish Training» when done"
+        ),
+        "guide_step4": (
+            "📊 *Step 4 — RPE (Effort Rating)*\n\n"
             "After each session the bot asks: how hard was it?\n"
-            "1–3 = easy · 4–6 = moderate · 7–8 = hard · 9–10 = near maximum\n"
-            "The bot uses these ratings to automatically adjust your plan.\n\n"
-            "🔥 *Streak & Freeze Tokens*\n"
+            "1–3 = easy · 4–6 = moderate · 7–8 = hard · 9–10 = near maximum\n\n"
+            "The bot uses these ratings to automatically adjust your plan."
+        ),
+        "guide_extra": (
+            "🔥 *Streak & Freeze Tokens*\n\n"
             "Your streak counts days trained in a row. Keep it alive!\n"
             "Miss a day? Use a freeze token to protect your streak.\n\n"
             "How to earn new freeze tokens:\n"
@@ -450,12 +480,12 @@ STRINGS = {
             "• ⬆️ each time you level up — after a workout\n"
             "• 🏆 when you set a new personal record\n"
             "_(maximum 5 tokens)_\n\n"
-            "📈 *Stats & History*\n"
+            "📈 *Stats & History*\n\n"
             "• «📊 Statistics» — progress, XP, level, streak\n"
             "• «🗓 History» — all past workouts by week\n\n"
-            "🤖 *AI Coach*\n"
+            "🤖 *AI Coach*\n\n"
             "Tap «🤖 AI Advice» for personalized coaching based on your history, weight, and streak.\n\n"
-            "💡 *Tip*\n"
+            "💡 *Tip*\n\n"
             "Start with a conservative target (50–80 pullups per day). "
             "The bot will raise it automatically when you're ready."
         ),

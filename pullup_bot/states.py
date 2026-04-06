@@ -1,6 +1,14 @@
 from aiogram.fsm.state import State, StatesGroup
 
 
+class Guide(StatesGroup):
+    step1 = State()
+    step2 = State()
+    step3 = State()
+    step4 = State()
+    extra = State()
+
+
 class Reg(StatesGroup):
     name = State()
     weight = State()

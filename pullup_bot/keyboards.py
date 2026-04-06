@@ -27,6 +27,22 @@ def landing_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     return b.as_markup(resize_keyboard=True)
 
 
+def guide_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
+    b = ReplyKeyboardBuilder()
+    next_btn = {
+        "intro": t("btn_guide_step1", lang),
+        "step1": t("btn_guide_step2", lang),
+        "step2": t("btn_guide_step3", lang),
+        "step3": t("btn_guide_step4", lang),
+        "step4": t("btn_guide_extra", lang),
+    }.get(step)
+    if next_btn:
+        b.button(text=next_btn)
+    b.button(text=t("btn_back", lang))
+    b.adjust(2)
+    return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
 def settings_kb(lang: str = "ru", is_admin: bool = False) -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_notify_time", lang)), KeyboardButton(text=t("btn_change_base", lang)))
