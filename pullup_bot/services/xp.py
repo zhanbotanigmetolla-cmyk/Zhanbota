@@ -61,11 +61,9 @@ def activity_reduction(extra_activity: str, minutes: int) -> float:
         return 1.0
     a = extra_activity.lower()
     if "бег" in a or "run" in a:
-        r = min(0.4, minutes / 60 * 0.25)
-    elif "зал" in a or "gym" in a or "спина" in a:
+        r = min(0.38, minutes / 60 * 0.22)
+    elif "зал" in a or "gym" in a:
         r = min(0.5, minutes / 60 * 0.3)
-    elif "кардио" in a or "cardio" in a:
-        r = min(0.35, minutes / 60 * 0.2)
     else:
         r = min(0.3, minutes / 60 * 0.15)
     return max(0.5, 1.0 - r)

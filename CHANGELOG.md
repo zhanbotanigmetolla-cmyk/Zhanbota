@@ -8,6 +8,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ### Changed
 - Workout completion notification format: now shows `🎯 Цель: X | Выполнено: Y | Подходов: Z` instead of the old `emoji done/planned за sets подходов`
+- Simplified post-training extra activity options from 4 choices to 3: Running/Cardio, Gym, Skip
 
 ---
 
