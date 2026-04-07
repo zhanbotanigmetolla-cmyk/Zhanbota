@@ -14,6 +14,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 - **Edit Day: activity & notes flow** — after entering RPE, user is asked whether to add extra activity and notes. If yes, the same gym/cardio → duration → notes flow as after training appears, with back navigation at every step.
 
 ### Fixed
+- Rest days now appear in the Stats history. The display infers scheduled rest days from surrounding workout records using the WAVE cycle, so days with no DB record but a rest-day wave position show as 😴 Отдых. Additionally, pressing "Train" on a rest day now immediately creates the DB record so it always appears in history going forward.
 - Admin panel user list now shows the user's display name (first_name) instead of their Telegram username (@handle).
 - Training button no longer shows "do N pullups" after overriding a rest day — `_begin_training` no longer restores `day_type` or zero `planned` from the DB record, so a rest-day override keeps the correct values without permanently changing the stored day type.
 - `program_day` was stuck on Heavy (index 2) after migration to GCP — the DB was copied while a workout was still in progress on the old server, so the post-workout increment never landed on the new server. Fixed with a one-time SQL update on the server (`program_day + 1`). No code change needed; the logic is correct.

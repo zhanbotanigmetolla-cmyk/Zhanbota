@@ -78,6 +78,8 @@ async def start_training(message: types.Message, state: FSMContext):
 
     # Rest day override (normal case)
     if day_type == "Отдых":
+        # Ensure a record exists so this rest day appears in stats history
+        await _mark_rest_day_if_missing(user["id"], today_str)
         await message.answer(t("rest_day_prompt", lang), reply_markup=rest_day_kb(lang))
         await state.update_data(rest_day_lang=lang)
         await state.set_state(Training.rest_day)

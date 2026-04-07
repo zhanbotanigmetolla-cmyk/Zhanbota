@@ -41,8 +41,30 @@ async def show_stats(message: types.Message):
     week_pct = int(week_done / week_planned * 100) if week_planned else 0
 
     rows_by_date = {r["date"]: r for r in rows}
+
+    # Build a wave-index timeline from available records so we can infer
+    # whether missing days were scheduled rest days.
+    # For each record we know day_type → WAVE index before that training.
+    # After training the index advances by 1. For unrecorded days the index
+    # stays the same (no advancement without interaction).
+    def _wave_idx(day_type: str, expected: int | None) -> int:
+        matches = [k for k, (n, _) in WAVE.items() if n == day_type]
+        if not matches:
+            return 0
+        if expected is not None and expected in matches:
+            return expected
+        return matches[0]
+
+    wave_after: dict[str, int] = {}   # date_str → wave index AFTER that date's training
+    prev_after: int | None = None
+    for ds_r, rec in sorted(rows_by_date.items()):
+        idx = _wave_idx(rec["day_type"] or "", prev_after)
+        wave_after[ds_r] = (idx + 1) % 7
+        prev_after = wave_after[ds_r]
+
     history = ""
     no_data_label = "нет тренировок" if lang == "ru" else "no workout"
+    rest_label = day_name("Отдых", lang)
     for i in range(6, -1, -1):
         d_obj = today - timedelta(days=i)
         ds = d_obj.isoformat()
@@ -54,7 +76,12 @@ async def show_stats(message: types.Message):
             e = "✅" if done_v >= p and p > 0 else ("😴" if p == 0 else "❌")
             history += f"{e} {date_label} {dtype}: {done_v}/{p}\n"
         else:
-            history += f"—  {date_label} {no_data_label}\n"
+            # Infer from the most recent previous record whether this was a rest day
+            prev_ds = max((d for d in wave_after if d < ds), default=None)
+            if prev_ds and WAVE[wave_after[prev_ds]][1] == 0:
+                history += f"😴 {date_label} {rest_label}: 0/0\n"
+            else:
+                history += f"—  {date_label} {no_data_label}\n"
 
     today_w = await get_today_workout(user["id"])
     today_done = today_w["completed"] if today_w else 0
