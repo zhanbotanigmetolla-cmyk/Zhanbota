@@ -163,6 +163,13 @@ def activity_reply_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
+def edit_extras_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    b = ReplyKeyboardBuilder()
+    b.row(KeyboardButton(text=t("btn_yes_add", lang)),
+          KeyboardButton(text=t("btn_no_save", lang)))
+    return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
 def back_only_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_back", lang)))

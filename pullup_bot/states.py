@@ -37,9 +37,13 @@ class Settings(StatesGroup):
 
 
 class EditDay(StatesGroup):
-    pick_date = State()
-    pick_done = State()
-    pick_rpe = State()
+    pick_date     = State()
+    pick_done     = State()
+    pick_rpe      = State()
+    confirm_extras = State()
+    activity      = State()
+    act_mins      = State()
+    notes         = State()
 
 
 class SkipReason(StatesGroup):

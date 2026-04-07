@@ -8,9 +8,9 @@ from ..db import (add_xp, get_db, get_lang, get_today_workout, get_user,
                   upsert_workout)
 from ..i18n import t, text_filter
 from ..keyboards import (LANG_BACK_BILINGUAL, LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
-                         delete_confirm_kb, landing_kb, lang_kb,
-                         logout_confirm_kb, main_kb, parse_rpe, rpe_menu_kb,
-                         settings_kb, skip_reason_kb)
+                         activity_reply_kb, back_only_kb, delete_confirm_kb, edit_extras_kb,
+                         landing_kb, lang_kb, logout_confirm_kb, main_kb, parse_rpe,
+                         rpe_menu_kb, settings_kb, skip_reason_kb)
 from aiogram.filters import StateFilter
 from ..states import (DeleteAccount, EditDay, Logout, SetBase, SetName, SetNotify, SetWeight,
                       Settings, SkipReason)
@@ -21,10 +21,17 @@ _INPUT_STATES = (
     SetWeight.enter_weight,
     SetName.enter_name,
     EditDay.pick_date, EditDay.pick_done, EditDay.pick_rpe,
+    EditDay.confirm_extras, EditDay.activity, EditDay.act_mins, EditDay.notes,
     SkipReason.pick_date, SkipReason.enter_reason,
 )
 from ..services.xp import level_info
 from ..config import XP_PER_PULLUP
+
+_EDIT_ACTIVITY_MAP = {
+    "🏃 Бег/Кардио": "бег", "🏃 Running/Cardio": "бег",
+    "🏋️ Зал": "зал", "🏋️ Gym": "зал",
+    "⏭️ Пропустить": "skip", "⏭️ Skip": "skip",
+}
 from .admin import _is_admin
 
 router = Router()
@@ -381,29 +388,38 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
 @router.message(EditDay.pick_rpe)
 async def edit_pick_rpe(message: types.Message, state: FSMContext):
     rpe = parse_rpe(message.text or "")
+    lang = await get_lang(message.from_user.id)
     if rpe is None:
-        lang = await get_lang(message.from_user.id)
         await message.answer(t("train_rpe_invalid", lang), reply_markup=rpe_menu_kb(lang))
         return
+    await state.update_data(edit_rpe=rpe)
+    await message.answer(t("edit_ask_extras", lang), reply_markup=edit_extras_kb(lang))
+    await state.set_state(EditDay.confirm_extras)
+
+
+async def _save_edit(message: types.Message, state: FSMContext,
+                     activity: str = "", act_mins: int = 0, notes: str = ""):
     data = await state.get_data()
     user = await get_user(message.from_user.id)
     lang = user["lang"] or "ru" if user else "ru"
     d = data.get("edit_date")
     done = data.get("edit_done", 0)
+    rpe = data.get("edit_rpe", 0)
     if not d:
         await message.answer(t("edit_no_date", lang))
         await state.clear()
         return
     existing = await get_today_workout(user["id"], d)
     if existing:
-        planned = existing["planned"] or user["base_pullups"]
+        planned = existing["planned"] if existing["planned"] is not None else user["base_pullups"]
         day_type = existing["day_type"] or "Средний"
     else:
         planned = user["base_pullups"]
         day_type = "Средний"
     old = existing["completed"] if existing else 0
     xp_diff = (done - old) * XP_PER_PULLUP
-    await upsert_workout(user["id"], d, completed=done, planned=planned, day_type=day_type, rpe=rpe)
+    await upsert_workout(user["id"], d, completed=done, planned=planned, day_type=day_type,
+                         rpe=rpe, extra_activity=activity, extra_minutes=act_mins, notes=notes)
     if xp_diff != 0:
         await add_xp(message.from_user.id, xp_diff)
     await message.answer(
@@ -411,6 +427,99 @@ async def edit_pick_rpe(message: types.Message, state: FSMContext):
         parse_mode="Markdown")
     await state.clear()
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+
+
+@router.message(EditDay.confirm_extras, text_filter("btn_no_save"))
+async def edit_extras_no(message: types.Message, state: FSMContext):
+    await _save_edit(message, state)
+
+
+@router.message(EditDay.confirm_extras, text_filter("btn_yes_add"))
+async def edit_extras_yes(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    await state.set_state(EditDay.activity)
+    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
+                         reply_markup=activity_reply_kb(lang))
+
+
+@router.message(text_filter("btn_back"), EditDay.confirm_extras)
+async def edit_confirm_extras_back(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    await state.set_state(EditDay.pick_rpe)
+    await message.answer(t("edit_rpe_prompt", lang), reply_markup=rpe_menu_kb(lang))
+
+
+@router.message(text_filter("btn_back"), EditDay.activity)
+async def edit_activity_back(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    await state.set_state(EditDay.confirm_extras)
+    await message.answer(t("edit_ask_extras", lang), reply_markup=edit_extras_kb(lang))
+
+
+@router.message(EditDay.activity)
+async def edit_set_activity(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    act_val = _EDIT_ACTIVITY_MAP.get(message.text or "", "skip")
+    if act_val == "skip":
+        await state.update_data(edit_activity="", edit_act_mins=0)
+        await _prompt_edit_notes(message, state, lang)
+    else:
+        await state.update_data(edit_activity=act_val)
+        await message.answer(t("train_how_long", lang, act=act_val), parse_mode="Markdown",
+                             reply_markup=back_only_kb(lang))
+        await state.set_state(EditDay.act_mins)
+
+
+async def _prompt_edit_notes(message, state, lang):
+    from aiogram.types import KeyboardButton
+    from aiogram.utils.keyboard import ReplyKeyboardBuilder
+    b = ReplyKeyboardBuilder()
+    b.row(KeyboardButton(text=t("train_skip_notes", lang)))
+    b.row(KeyboardButton(text=t("btn_back", lang)))
+    await message.answer(t("train_notes_prompt", lang), parse_mode="Markdown",
+                         reply_markup=b.as_markup(resize_keyboard=True, one_time_keyboard=True))
+    await state.set_state(EditDay.notes)
+
+
+@router.message(text_filter("btn_back"), EditDay.act_mins)
+async def edit_act_mins_back(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    await state.set_state(EditDay.activity)
+    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
+                         reply_markup=activity_reply_kb(lang))
+
+
+@router.message(EditDay.act_mins)
+async def edit_set_act_mins(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    if not message.text:
+        await message.answer(t("train_enter_mins", lang))
+        return
+    try:
+        mins = int(message.text.strip())
+        await state.update_data(edit_act_mins=mins)
+        await _prompt_edit_notes(message, state, lang)
+    except ValueError:
+        await message.answer(t("train_enter_mins", lang))
+
+
+@router.message(text_filter("btn_back"), EditDay.notes)
+async def edit_notes_back(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    await state.set_state(EditDay.activity)
+    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
+                         reply_markup=activity_reply_kb(lang))
+
+
+@router.message(EditDay.notes)
+async def edit_enter_notes(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    skip_text = t("train_skip_notes", lang)
+    notes = "" if (message.text or "").strip() == skip_text else (message.text or "").strip()
+    data = await state.get_data()
+    activity = data.get("edit_activity", "")
+    act_mins = data.get("edit_act_mins", 0)
+    await _save_edit(message, state, activity=activity, act_mins=act_mins, notes=notes)
 
 
 
