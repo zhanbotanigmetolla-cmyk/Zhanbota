@@ -4,6 +4,16 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-07]
+
+### Fixed
+- `program_day` was stuck on Heavy (index 2) after migration to GCP — the DB was copied while a workout was still in progress on the old server, so the post-workout increment never landed on the new server. Fixed with a one-time SQL update on the server (`program_day + 1`). No code change needed; the logic is correct.
+
+### Changed
+- Updated `CLAUDE.md` with full GCP server details (e2-micro, us-central1-f, IP, paths, SSH commands, deploy workflow). Old Ubuntu Desktop VPS reference removed.
+
+---
+
 ## [2026-04-06]
 
 ### Added
