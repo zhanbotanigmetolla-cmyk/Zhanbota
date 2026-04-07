@@ -46,17 +46,25 @@ The bot runs on GCP — the old VPS in Germany is no longer used.
 - **Secrets:** `/home/nigmetolla_zhanbota/.env.pullup_bot`
 - **Systemd service:** `~/.config/systemd/user/pullup-bot.service`
 
+### Claude Code SSH access
+
+Claude Code connects to the server using a dedicated passphrase-free key:
+- **Private key:** `~/.ssh/id_ed25519_claude`
+- **Always use:** `ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99`
+
+The user's own key (`~/.ssh/id_ed25519`) has a passphrase and cannot be used non-interactively.
+
 ### Bot management commands
 
 ```bash
 # Check status
-ssh nigmetolla_zhanbota@34.123.71.99 "systemctl --user status pullup-bot.service"
+ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99 "systemctl --user status pullup-bot.service"
 
 # Restart
-ssh nigmetolla_zhanbota@34.123.71.99 "systemctl --user restart pullup-bot.service"
+ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99 "systemctl --user restart pullup-bot.service"
 
 # View logs
-ssh nigmetolla_zhanbota@34.123.71.99 "journalctl --user -u pullup-bot.service -n 50"
+ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99 "journalctl --user -u pullup-bot.service -n 50"
 ```
 
 ## Deploy Workflow
