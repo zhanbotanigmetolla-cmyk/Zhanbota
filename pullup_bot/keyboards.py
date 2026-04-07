@@ -46,9 +46,10 @@ def guide_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
 def settings_kb(lang: str = "ru", is_admin: bool = False) -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_notify_time", lang)), KeyboardButton(text=t("btn_change_base", lang)))
-    b.row(KeyboardButton(text=t("btn_change_weight", lang)), KeyboardButton(text=t("btn_edit_day", lang)))
-    b.row(KeyboardButton(text=t("btn_skip_reason", lang)), KeyboardButton(text=t("btn_logout", lang)))
-    b.row(KeyboardButton(text=t("btn_language", lang)), KeyboardButton(text=t("btn_delete_account", lang)))
+    b.row(KeyboardButton(text=t("btn_change_weight", lang)), KeyboardButton(text=t("btn_change_name", lang)))
+    b.row(KeyboardButton(text=t("btn_edit_day", lang)), KeyboardButton(text=t("btn_skip_reason", lang)))
+    b.row(KeyboardButton(text=t("btn_logout", lang)), KeyboardButton(text=t("btn_language", lang)))
+    b.row(KeyboardButton(text=t("btn_delete_account", lang)))
     if is_admin:
         b.row(KeyboardButton(text="🛡 Панель администратора"))
     b.row(KeyboardButton(text=t("btn_back", lang)))
@@ -237,7 +238,7 @@ def admin_panel_main_kb(maintenance_on: bool) -> InlineKeyboardMarkup:
 def admin_users_kb(users: list, page: int, total: int, per_page: int = 10) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     for u in users:
-        name = (u["username"] or u["first_name"] or "???")[:20]
+        name = (u["first_name"] or u["username"] or "???")[:20]
         if u["is_banned"]:
             status = "🔴"
         elif u["muted_until"]:
@@ -275,9 +276,10 @@ def admin_user_profile_kb(tg_id: int, is_banned: bool, muted: bool) -> InlineKey
     b.button(text="💧 Сбросить стрик", callback_data=f"ap:rst_streak:{tg_id}")
     b.button(text="📉 Сбросить XP/уровень", callback_data=f"ap:rst_xp:{tg_id}")
     b.button(text="🧊 Дать/убрать токены", callback_data=f"ap:tokens:{tg_id}")
+    b.button(text="✏️ Изменить имя", callback_data=f"ap:change_name:{tg_id}")
     b.button(text="🗑 Удалить аккаунт", callback_data=f"ap:delete:{tg_id}")
     b.button(text="◀ К списку", callback_data="ap:back_to_users")
-    b.adjust(2, 2, 1, 1, 1)
+    b.adjust(2, 2, 1, 1, 1, 1)
     return b.as_markup()
 
 

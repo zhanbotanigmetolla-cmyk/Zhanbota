@@ -181,6 +181,7 @@ async def open_admin_panel(message: types.Message, state: FSMContext):
 @router.message(text_filter("btn_back"), AdminPanel.mute_duration)
 @router.message(text_filter("btn_back"), AdminPanel.give_tokens)
 @router.message(text_filter("btn_back"), AdminPanel.bug_list)
+@router.message(text_filter("btn_back"), AdminPanel.change_name)
 async def admin_panel_back(message: types.Message, state: FSMContext):
     if not _is_admin(message):
         return
@@ -406,6 +407,22 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         try:
             await callback.message.edit_text(
                 f"🧊 Токены заморозки для <code>{tg_id}</code>\n\nВведи число (+ добавить, - убрать):\nПример: <code>3</code> или <code>-1</code>",
+                reply_markup=None, parse_mode="HTML"
+            )
+        except TelegramBadRequest:
+            pass
+        await callback.answer()
+
+    # ── Change name ─────────────────────────────────────────────────────────
+    elif action == "change_name":
+        tg_id = int(parts[2])
+        await state.set_state(AdminPanel.change_name)
+        await state.update_data(ap_target_tg_id=tg_id)
+        target = await get_user(tg_id)
+        current = (target["first_name"] or target["username"] or "—") if target else "—"
+        try:
+            await callback.message.edit_text(
+                f"✏️ Изменить имя пользователя <code>{tg_id}</code>\nТекущее имя: <b>{current}</b>\n\nВведи новое имя:",
                 reply_markup=None, parse_mode="HTML"
             )
         except TelegramBadRequest:
@@ -715,6 +732,24 @@ async def admin_give_tokens_input(message: types.Message, state: FSMContext):
         await give_freeze_tokens(tg_id, delta)
         action_word = "добавлено" if delta >= 0 else "убрано"
         await message.answer(f"🧊 {abs(delta)} токенов {action_word} пользователю <code>{tg_id}</code>", parse_mode="HTML")
+    await state.set_state(AdminPanel.main)
+    text_panel, kb = await _build_main_panel_view()
+    await message.answer(text_panel, reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(AdminPanel.change_name)
+async def admin_change_name_input(message: types.Message, state: FSMContext):
+    new_name = (message.text or "").strip()
+    if not new_name:
+        await message.answer("❌ Имя не может быть пустым.")
+        return
+    fsm_data = await state.get_data()
+    tg_id = fsm_data.get("ap_target_tg_id")
+    if tg_id:
+        conn = await get_db()
+        await conn.execute("UPDATE users SET first_name=? WHERE tg_id=?", (new_name, tg_id))
+        await conn.commit()
+        await message.answer(f"✅ Имя пользователя <code>{tg_id}</code> изменено на <b>{new_name}</b>", parse_mode="HTML")
     await state.set_state(AdminPanel.main)
     text_panel, kb = await _build_main_panel_view()
     await message.answer(text_panel, reply_markup=kb, parse_mode="HTML")

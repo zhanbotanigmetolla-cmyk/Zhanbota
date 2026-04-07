@@ -59,6 +59,10 @@ class SetWeight(StatesGroup):
     enter_weight = State()
 
 
+class SetName(StatesGroup):
+    enter_name = State()
+
+
 class BugReport(StatesGroup):
     enter_text = State()
 
@@ -86,3 +90,4 @@ class AdminPanel(StatesGroup):
     mute_duration  = State()
     give_tokens    = State()
     bug_list       = State()
+    change_name    = State()

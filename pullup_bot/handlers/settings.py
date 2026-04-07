@@ -12,13 +12,14 @@ from ..keyboards import (LANG_BACK_BILINGUAL, LANG_EN_BTN, LANG_RU_BTN, LANG_TOG
                          logout_confirm_kb, main_kb, parse_rpe, rpe_menu_kb,
                          settings_kb, skip_reason_kb)
 from aiogram.filters import StateFilter
-from ..states import (DeleteAccount, EditDay, Logout, SetBase, SetNotify, SetWeight,
+from ..states import (DeleteAccount, EditDay, Logout, SetBase, SetName, SetNotify, SetWeight,
                       Settings, SkipReason)
 
 _INPUT_STATES = (
     SetNotify.enter_time,
     SetBase.enter_base,
     SetWeight.enter_weight,
+    SetName.enter_name,
     EditDay.pick_date, EditDay.pick_done, EditDay.pick_rpe,
     SkipReason.pick_date, SkipReason.enter_reason,
 )
@@ -155,6 +156,34 @@ async def set_weight_start_msg(message: types.Message, state: FSMContext):
     await message.answer(t("set_weight_prompt", lang, weight=user["weight_kg"]),
                          parse_mode="Markdown")
     await state.set_state(SetWeight.enter_weight)
+
+
+@router.message(text_filter("btn_change_name"))
+async def set_name_start_msg(message: types.Message, state: FSMContext):
+    user = await get_user(message.from_user.id)
+    if not user:
+        await message.answer(t("register_first", "ru"))
+        return
+    lang = user["lang"] or "ru"
+    current = user["first_name"] or user["username"] or "—"
+    await message.answer(t("set_name_prompt", lang, name=current), parse_mode="Markdown")
+    await state.set_state(SetName.enter_name)
+
+
+@router.message(SetName.enter_name)
+async def set_name_save(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    new_name = (message.text or "").strip()
+    if not new_name:
+        await message.answer(t("set_name_bad", lang))
+        return
+    conn = await get_db()
+    await conn.execute("UPDATE users SET first_name=? WHERE tg_id=?",
+                       (new_name, message.from_user.id))
+    await conn.commit()
+    await message.answer(t("set_name_ok", lang, name=new_name), parse_mode="Markdown")
+    await state.clear()
+    await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
 
 
 @router.message(text_filter("btn_edit_day"))

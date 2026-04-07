@@ -104,9 +104,12 @@ async def rest_override_train(message: types.Message, state: FSMContext):
         return
     lang = user["lang"] or "ru"
     today = date.today()
+    today_str = today.isoformat()
     day_type = "Средний"
     planned = int(user["base_pullups"] * 1.0)
-    await _begin_training(message, state, user, lang, today.isoformat(), planned, day_type)
+    # Overwrite the rest-day DB record so _begin_training reads the override values
+    await upsert_workout(user["id"], today_str, planned=planned, day_type=day_type)
+    await _begin_training(message, state, user, lang, today_str, planned, day_type)
 
 
 @router.message(Training.rest_day, text_filter("rest_day_rest"))

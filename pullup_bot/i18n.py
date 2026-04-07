@@ -265,6 +265,10 @@ STRINGS = {
         "confirm_yes": "✅ Да",
         "confirm_no": "❌ Отмена",
         # Account deletion
+        "btn_change_name": "✏️ Изменить имя",
+        "set_name_prompt": "Текущее имя: *{name}*\n\nВведи новое имя:",
+        "set_name_ok": "✅ Имя изменено на *{name}*",
+        "set_name_bad": "❌ Имя не может быть пустым.",
         "btn_delete_account": "🗑 Удалить аккаунт",
         "delete_account_warning": (
             "⚠️ *Удаление аккаунта*\n\n"
@@ -618,6 +622,10 @@ STRINGS = {
         "confirm_yes": "✅ Yes",
         "confirm_no": "❌ Cancel",
         # Account deletion
+        "btn_change_name": "✏️ Change Name",
+        "set_name_prompt": "Current name: *{name}*\n\nEnter new name:",
+        "set_name_ok": "✅ Name changed to *{name}*",
+        "set_name_bad": "❌ Name cannot be empty.",
         "btn_delete_account": "🗑 Delete Account",
         "delete_account_warning": (
             "⚠️ *Delete Account*\n\n"
