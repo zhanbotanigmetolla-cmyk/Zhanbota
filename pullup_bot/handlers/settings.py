@@ -348,6 +348,29 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
         return
     try:
         done = int(message.text.strip())
+        if done == 0:
+            # Delete the workout record entirely
+            data = await state.get_data()
+            d = data.get("edit_date")
+            if not d:
+                await message.answer(t("edit_no_date", lang))
+                await state.clear()
+                return
+            user = await get_user(message.from_user.id)
+            existing = await get_today_workout(user["id"], d)
+            if existing:
+                old_completed = existing["completed"] or 0
+                conn = await get_db()
+                await conn.execute("DELETE FROM workouts WHERE user_id=? AND date=?",
+                                   (user["id"], d))
+                await conn.commit()
+                if old_completed > 0:
+                    await add_xp(message.from_user.id, -old_completed * XP_PER_PULLUP)
+            date_display = date.fromisoformat(d).strftime("%d.%m.%Y")
+            await message.answer(t("edit_deleted", lang, date=date_display), parse_mode="Markdown")
+            await state.clear()
+            await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+            return
         await state.update_data(edit_done=done)
         await message.answer(t("edit_rpe_prompt", lang), reply_markup=rpe_menu_kb(lang))
         await state.set_state(EditDay.pick_rpe)

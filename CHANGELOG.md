@@ -10,6 +10,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 - **Change name** button in user Settings — users can now update their display name at any time.
 - **Admin: change user name** — new "✏️ Изменить имя" button in the admin user profile panel.
 - **Back buttons throughout training flow** — user can now navigate back from: finish confirmation (RPE screen) → resume training; RPE → activity selection; activity selection → RPE; duration input → activity selection; notes → activity selection.
+- **Edit Day: enter 0 to delete** — if a user enters 0 as completed reps in Edit Day, the workout record is deleted and XP is reversed (no RPE prompt shown).
 
 ### Fixed
 - Admin panel user list now shows the user's display name (first_name) instead of their Telegram username (@handle).
