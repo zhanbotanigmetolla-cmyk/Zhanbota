@@ -87,6 +87,7 @@ def rpe_menu_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
           KeyboardButton(text="😰 8"), KeyboardButton(text="💀 9"),
           KeyboardButton(text="☠️ 10"))
     b.row(KeyboardButton(text=t("btn_skip", lang)))
+    b.row(KeyboardButton(text=t("btn_back", lang)))
     return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
@@ -158,7 +159,14 @@ def activity_reply_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     for label in labels:
         b.button(text=label)
     b.adjust(3)
+    b.row(KeyboardButton(text=t("btn_back", lang)))
     return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def back_only_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    b = ReplyKeyboardBuilder()
+    b.row(KeyboardButton(text=t("btn_back", lang)))
+    return b.as_markup(resize_keyboard=True)
 
 
 def history_nav_kb(offset: int, lang: str = "ru") -> InlineKeyboardMarkup:

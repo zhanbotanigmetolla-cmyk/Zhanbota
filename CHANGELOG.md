@@ -9,10 +9,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ### Added
 - **Change name** button in user Settings — users can now update their display name at any time.
 - **Admin: change user name** — new "✏️ Изменить имя" button in the admin user profile panel.
+- **Back buttons throughout training flow** — user can now navigate back from: finish confirmation (RPE screen) → resume training; RPE → activity selection; activity selection → RPE; duration input → activity selection; notes → activity selection.
 
 ### Fixed
 - Admin panel user list now shows the user's display name (first_name) instead of their Telegram username (@handle).
-- Training button no longer shows "do N pullups" after overriding a rest day — the rest-day record is now correctly updated when the user chooses to train on a rest day.
+- Training button no longer shows "do N pullups" after overriding a rest day — `_begin_training` no longer restores `day_type` or zero `planned` from the DB record, so a rest-day override keeps the correct values without permanently changing the stored day type.
 - `program_day` was stuck on Heavy (index 2) after migration to GCP — the DB was copied while a workout was still in progress on the old server, so the post-workout increment never landed on the new server. Fixed with a one-time SQL update on the server (`program_day + 1`). No code change needed; the logic is correct.
 
 ### Changed

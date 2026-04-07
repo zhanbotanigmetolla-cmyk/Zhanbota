@@ -9,7 +9,7 @@ from ..config import XP_PER_PULLUP, logger
 from ..db import (add_xp, get_db, get_lang, get_today_workout, get_user,
                   update_streak, upsert_workout)
 from ..i18n import t, text_filter, day_name
-from ..keyboards import (activity_reply_kb, cancel_confirm_kb, freeze_confirm_kb,
+from ..keyboards import (activity_reply_kb, back_only_kb, cancel_confirm_kb, freeze_confirm_kb,
                          main_kb, parse_rpe, rest_day_kb, rpe_menu_kb, training_kb)
 from ..states import Training
 from ..services.xp import (activity_reduction, display, level_info, md_escape,
@@ -107,8 +107,6 @@ async def rest_override_train(message: types.Message, state: FSMContext):
     today_str = today.isoformat()
     day_type = "Средний"
     planned = int(user["base_pullups"] * 1.0)
-    # Overwrite the rest-day DB record so _begin_training reads the override values
-    await upsert_workout(user["id"], today_str, planned=planned, day_type=day_type)
     await _begin_training(message, state, user, lang, today_str, planned, day_type)
 
 
@@ -211,9 +209,12 @@ async def _begin_training(message, state, user, lang, today_str, planned, day_ty
     done_before = done_today
 
     if existing:
-        # Preserve the original daily target once it is created for today.
-        planned = existing["planned"] if existing["planned"] is not None else planned
-        day_type = existing["day_type"] or day_type
+        # Restore planned only if the stored value is non-zero (rest days store planned=0;
+        # overriding a rest day passes base_pullups which we must not lose).
+        if existing["planned"]:
+            planned = existing["planned"]
+        # Do NOT restore day_type from DB — the caller already computed it correctly,
+        # and overwriting here would revert a rest-day override back to "Отдых".
     else:
         await upsert_workout(user["id"], today_str, planned=planned, day_type=day_type,
                              sets_json=json.dumps([]), completed=0)
@@ -288,6 +289,16 @@ async def finish_training_btn(message: types.Message, state: FSMContext):
     lang = data.get("lang", "ru")
     await message.answer(t("train_rate_rpe", lang), reply_markup=rpe_menu_kb(lang))
     await state.set_state(Training.rpe)
+
+
+@router.message(text_filter("btn_back"), Training.rpe)
+async def rpe_back(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    sets = data.get("sets", [])
+    planned = data.get("planned", 0)
+    await state.set_state(Training.active)
+    await message.answer(t("train_lets_go", lang), reply_markup=training_kb(sets, planned, lang))
 
 
 async def _cleanup_cancelled_workout(tg_id: int, state_data: dict):
@@ -391,13 +402,22 @@ _ACTIVITY_MAP = {
 
 
 async def _prompt_notes(message, state, lang):
-    from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+    from aiogram.types import KeyboardButton
     from aiogram.utils.keyboard import ReplyKeyboardBuilder
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("train_skip_notes", lang)))
+    b.row(KeyboardButton(text=t("btn_back", lang)))
     await message.answer(t("train_notes_prompt", lang), parse_mode="Markdown",
                          reply_markup=b.as_markup(resize_keyboard=True, one_time_keyboard=True))
     await state.set_state(Training.notes)
+
+
+@router.message(text_filter("btn_back"), Training.activity)
+async def activity_back(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    await state.set_state(Training.rpe)
+    await message.answer(t("train_rate_rpe", lang), reply_markup=rpe_menu_kb(lang))
 
 
 @router.message(Training.activity)
@@ -410,8 +430,18 @@ async def set_activity(message: types.Message, state: FSMContext):
         await _prompt_notes(message, state, lang)
     else:
         await state.update_data(activity=act_val)
-        await message.answer(t("train_how_long", lang, act=act_val), parse_mode="Markdown")
+        await message.answer(t("train_how_long", lang, act=act_val), parse_mode="Markdown",
+                             reply_markup=back_only_kb(lang))
         await state.set_state(Training.act_mins)
+
+
+@router.message(text_filter("btn_back"), Training.act_mins)
+async def act_mins_back(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    await state.set_state(Training.activity)
+    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
+                         reply_markup=activity_reply_kb(lang))
 
 
 @router.message(Training.act_mins)
@@ -427,6 +457,15 @@ async def set_act_mins(message: types.Message, state: FSMContext):
         await _prompt_notes(message, state, lang)
     except ValueError:
         await message.answer(t("train_enter_mins", lang))
+
+
+@router.message(text_filter("btn_back"), Training.notes)
+async def notes_back(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    await state.set_state(Training.activity)
+    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
+                         reply_markup=activity_reply_kb(lang))
 
 
 @router.message(Training.notes)
