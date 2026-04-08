@@ -20,10 +20,9 @@ _INPUT_STATES = (
     SetBase.enter_base,
     SetWeight.enter_weight,
     SetName.enter_name,
-    EditDay.pick_date, EditDay.pick_done, EditDay.pick_rpe,
-    EditDay.confirm_extras, EditDay.activity, EditDay.act_mins, EditDay.notes,
     SkipReason.pick_date, SkipReason.enter_reason,
 )
+# EditDay states are intentionally excluded — each step has its own back handler
 from ..services.xp import level_info
 from ..config import XP_PER_PULLUP
 
@@ -193,6 +192,41 @@ async def set_name_save(message: types.Message, state: FSMContext):
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
 
 
+@router.message(EditDay.pick_date, text_filter("btn_back"))
+async def edit_date_back(message: types.Message, state: FSMContext):
+    user = await get_user(message.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    await state.set_state(Settings.viewing)
+    await message.answer(
+        t("settings_title", lang,
+          base=user["base_pullups"], weight=user["weight_kg"],
+          notify=user["notify_time"], freeze=user["freeze_tokens"]),
+        parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message)))
+
+
+@router.message(EditDay.pick_done, text_filter("btn_back"))
+async def edit_done_back(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    await state.set_state(EditDay.pick_date)
+    await message.answer(t("edit_date_prompt", lang), parse_mode="Markdown")
+
+
+@router.message(EditDay.pick_rpe, text_filter("btn_back"))
+async def edit_rpe_back(message: types.Message, state: FSMContext):
+    lang = await get_lang(message.from_user.id)
+    data = await state.get_data()
+    d = data.get("edit_date", "")
+    try:
+        from datetime import date as _date
+        date_display = _date.fromisoformat(d).strftime("%d.%m")
+    except Exception:
+        date_display = "??"
+    await state.set_state(EditDay.pick_done)
+    await message.answer(
+        t("edit_done_prompt", lang, date=date_display),
+        parse_mode="Markdown", reply_markup=back_only_kb(lang))
+
+
 @router.message(text_filter("btn_edit_day"))
 async def edit_day_btn_msg(message: types.Message, state: FSMContext):
     lang = await get_lang(message.from_user.id)
@@ -341,7 +375,7 @@ async def edit_pick_date(message: types.Message, state: FSMContext):
         await state.update_data(edit_date=d.isoformat())
         await message.answer(
             t("edit_done_prompt", lang, date=message.text.strip()),
-            parse_mode="Markdown")
+            parse_mode="Markdown", reply_markup=back_only_kb(lang))
         await state.set_state(EditDay.pick_done)
     except Exception:
         await message.answer(t("edit_date_bad", lang))

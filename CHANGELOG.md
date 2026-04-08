@@ -7,6 +7,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-08]
 
 ### Fixed
+- Edit Day: back button at every step now returns to the previous step instead of jumping to the main menu. `pick_date` → settings menu; `pick_done` → re-ask date; `pick_rpe` → re-ask pullup count; `confirm_extras` / `activity` / `act_mins` / `notes` → each returns to the step before it. Root cause: all EditDay states were in the generic catch-all back handler which fired before the specific per-step handlers.
 - Edit Day: entering 0 to delete today's workout now also reverts `program_day` (decrements by 1) and restores `last_workout` to the most recent remaining workout. Previously, deleting today's record left `program_day` advanced, so pressing Train afterward showed the wrong day type (e.g. Плотность instead of the correct rest day).
 
 ---
