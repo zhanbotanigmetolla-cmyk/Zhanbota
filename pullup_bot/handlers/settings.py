@@ -373,6 +373,21 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
                 await conn.commit()
                 if old_completed > 0:
                     await add_xp(message.from_user.id, -old_completed * XP_PER_PULLUP)
+                # If deleting today's record, revert program_day and last_workout
+                # (program_day was already incremented when the day was acknowledged)
+                if d == date.today().isoformat():
+                    new_pd = ((user["program_day"] or 0) - 1) % 7
+                    async with conn.execute(
+                        "SELECT date FROM workouts WHERE user_id=? ORDER BY date DESC LIMIT 1",
+                        (user["id"],)
+                    ) as cur:
+                        prev_row = await cur.fetchone()
+                    last_workout = prev_row[0] if prev_row else None
+                    await conn.execute(
+                        "UPDATE users SET program_day=?, last_workout=? WHERE id=?",
+                        (new_pd, last_workout, user["id"])
+                    )
+                    await conn.commit()
             date_display = date.fromisoformat(d).strftime("%d.%m.%Y")
             await message.answer(t("edit_deleted", lang, date=date_display), parse_mode="Markdown")
             await state.clear()
