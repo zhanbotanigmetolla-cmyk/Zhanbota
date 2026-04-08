@@ -4,6 +4,13 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-08]
+
+### Fixed
+- Edit Day: entering 0 to delete today's workout now also reverts `program_day` (decrements by 1) and restores `last_workout` to the most recent remaining workout. Previously, deleting today's record left `program_day` advanced, so pressing Train afterward showed the wrong day type (e.g. Плотность instead of the correct rest day).
+
+---
+
 ## [2026-04-07]
 
 ### Added
