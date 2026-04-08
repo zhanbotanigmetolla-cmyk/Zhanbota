@@ -399,6 +399,7 @@ async def set_rpe_msg(message: types.Message, state: FSMContext):
 _ACTIVITY_MAP = {
     "🏃 Бег/Кардио": "бег", "🏃 Running/Cardio": "бег",
     "🏋️ Зал": "зал", "🏋️ Gym": "зал",
+    "🏃+🏋️ Кардио+Зал": "бег+зал", "🏃+🏋️ Cardio+Gym": "бег+зал",
     "⏭️ Пропустить": "skip", "⏭️ Skip": "skip",
 }
 

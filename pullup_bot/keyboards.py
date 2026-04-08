@@ -153,12 +153,11 @@ def skip_reason_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 def activity_reply_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
     if lang == "en":
-        labels = ["🏃 Running/Cardio", "🏋️ Gym", "⏭️ Skip"]
+        b.row(KeyboardButton(text="🏃 Running/Cardio"), KeyboardButton(text="🏋️ Gym"))
+        b.row(KeyboardButton(text="🏃+🏋️ Cardio+Gym"), KeyboardButton(text="⏭️ Skip"))
     else:
-        labels = ["🏃 Бег/Кардио", "🏋️ Зал", "⏭️ Пропустить"]
-    for label in labels:
-        b.button(text=label)
-    b.adjust(3)
+        b.row(KeyboardButton(text="🏃 Бег/Кардио"), KeyboardButton(text="🏋️ Зал"))
+        b.row(KeyboardButton(text="🏃+🏋️ Кардио+Зал"), KeyboardButton(text="⏭️ Пропустить"))
     b.row(KeyboardButton(text=t("btn_back", lang)))
     return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 

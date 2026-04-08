@@ -29,6 +29,7 @@ from ..config import XP_PER_PULLUP
 _EDIT_ACTIVITY_MAP = {
     "🏃 Бег/Кардио": "бег", "🏃 Running/Cardio": "бег",
     "🏋️ Зал": "зал", "🏋️ Gym": "зал",
+    "🏃+🏋️ Кардио+Зал": "бег+зал", "🏃+🏋️ Cardio+Gym": "бег+зал",
     "⏭️ Пропустить": "skip", "⏭️ Skip": "skip",
 }
 from .admin import _is_admin
