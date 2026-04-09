@@ -1,16 +1,13 @@
 import random
-from datetime import date
+from datetime import date, timedelta
 
 from aiogram import Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
-
-from ..db import get_db, get_today_workout, get_user
-from datetime import timedelta
-
 from aiogram.fsm.context import FSMContext
 
+from ..db import get_db, get_today_workout, get_user
 from ..i18n import t, text_filter
 from ..keyboards import main_kb
 from ..services.xp import display, level_info, md_escape, planned_for_day
@@ -18,6 +15,91 @@ from ..config import logger
 from ..states import Friends
 
 router = Router()
+
+PAGE_SIZE = 8
+
+
+async def _show_friends_page(message: types.Message, state: FSMContext, user, page: int):
+    lang = user["lang"] or "ru"
+    conn = await get_db()
+    async with conn.execute("SELECT * FROM users ORDER BY id ASC") as cur:
+        all_users = await cur.fetchall()
+
+    if not all_users:
+        await message.answer(t("friends_empty", lang), parse_mode="Markdown")
+        return
+
+    total_pages = max(1, (len(all_users) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    page_users = all_users[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
+
+    today_str = date.today().isoformat()
+    you_label = "Вы" if lang == "ru" else "You"
+
+    header = t("friends_title", lang)
+    if total_pages > 1:
+        header += f"  _{t('friends_page', lang, page=page + 1, total=total_pages)}_"
+    text = header + "\n\n"
+
+    for f in page_users:
+        today_w = await get_today_workout(f["id"])
+        done = today_w["completed"] if today_w else 0
+        if today_w:
+            plan = today_w["planned"] if today_w["planned"] is not None else 0
+        elif f["last_workout"] == today_str:
+            plan = 0
+        else:
+            plan, _ = planned_for_day(f)
+        _, lname, _, _ = level_info(f["xp"])
+        today_label = "Сегодня" if lang == "ru" else "Today"
+        is_me = f["id"] == user["id"]
+        me_marker = f" *({you_label})*" if is_me else ""
+        text += f"👤 *{md_escape(display(f))}*{me_marker} — {lname}\n   {today_label}: {done}/{plan} | 🔥{f['streak']}\n\n"
+
+    poke_prefix = "💪 Пнуть " if lang == "ru" else "💪 Poke "
+    b = ReplyKeyboardBuilder()
+    for f in page_users:
+        if f["id"] == user["id"]:
+            continue
+        label = (f"{poke_prefix}{display(f)} (@{f['username']})"
+                 if f["username"]
+                 else f"{poke_prefix}{display(f)} (#{f['id']})")
+        b.button(text=label)
+    b.adjust(2)
+
+    nav = []
+    if page > 0:
+        nav.append(KeyboardButton(text=t("btn_friends_prev", lang)))
+    if page < total_pages - 1:
+        nav.append(KeyboardButton(text=t("btn_friends_next", lang)))
+    if nav:
+        b.row(*nav)
+    b.row(KeyboardButton(text=t("btn_back", lang)))
+
+    await state.set_state(Friends.viewing)
+    await state.update_data(friends_page=page, friends_lang=lang)
+    await message.answer(text, parse_mode="Markdown",
+                         reply_markup=b.as_markup(resize_keyboard=True))
+
+
+@router.message(Friends.viewing, text_filter("btn_friends_prev"))
+async def friends_prev(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    page = data.get("friends_page", 0)
+    user = await get_user(message.from_user.id)
+    if not user:
+        return
+    await _show_friends_page(message, state, user, page - 1)
+
+
+@router.message(Friends.viewing, text_filter("btn_friends_next"))
+async def friends_next(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    page = data.get("friends_page", 0)
+    user = await get_user(message.from_user.id)
+    if not user:
+        return
+    await _show_friends_page(message, state, user, page + 1)
 
 
 @router.message(Friends.viewing, text_filter("btn_back"))
@@ -34,50 +116,7 @@ async def friends_menu(message: types.Message, state: FSMContext):
     if not user:
         await message.answer(t("register_first", "ru"))
         return
-    lang = user["lang"] or "ru"
-    conn = await get_db()
-    async with conn.execute(
-        "SELECT * FROM users ORDER BY id ASC"
-    ) as cur:
-        all_users = await cur.fetchall()
-
-    if not all_users:
-        await message.answer(t("friends_empty", lang), parse_mode="Markdown")
-        return
-
-    you_label = "Вы" if lang == "ru" else "You"
-    today_str = date.today().isoformat()
-    text = t("friends_title", lang) + "\n\n"
-    for f in all_users:
-        today_w = await get_today_workout(f["id"])
-        done = today_w["completed"] if today_w else 0
-        if today_w:
-            plan = today_w["planned"] if today_w["planned"] is not None else 0
-        elif f["last_workout"] == today_str:
-            # User already handled today (rest day) but no workout row was saved
-            plan = 0
-        else:
-            plan, _ = planned_for_day(f)
-        _, lname, _, _ = level_info(f["xp"])
-        today_label = "Сегодня" if lang == "ru" else "Today"
-        is_me = f["id"] == user["id"]
-        me_marker = f" *({you_label})*" if is_me else ""
-        text += f"👤 *{md_escape(display(f))}*{me_marker} — {lname}\n   {today_label}: {done}/{plan} | 🔥{f['streak']}\n\n"
-
-    poke_prefix = "💪 Пнуть " if lang == "ru" else "💪 Poke "
-    b = ReplyKeyboardBuilder()
-    for f in all_users:
-        if f["id"] == user["id"]:
-            continue  # no poke button for yourself
-        label = (f"{poke_prefix}{display(f)} (@{f['username']})"
-                 if f["username"]
-                 else f"{poke_prefix}{display(f)} (#{f['id']})")
-        b.button(text=label)
-    b.adjust(2)
-    b.row(KeyboardButton(text=t("btn_back", lang)))
-    await state.set_state(Friends.viewing)
-    await message.answer(text, parse_mode="Markdown",
-                         reply_markup=b.as_markup(resize_keyboard=True))
+    await _show_friends_page(message, state, user, 0)
 
 
 @router.message(text_filter("btn_leaderboard"))
@@ -88,7 +127,6 @@ async def leaderboard(message: types.Message):
         return
     lang = user["lang"] or "ru"
     conn = await get_db()
-    # Get all users (same logic as friends list — all participants)
     async with conn.execute("SELECT * FROM users", ()) as cur:
         all_users = await cur.fetchall()
 
@@ -130,7 +168,6 @@ async def poke_friend(message: types.Message, state: FSMContext):
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
-    # Strip both RU and EN prefixes
     raw = message.text
     for prefix in ("💪 Пнуть ", "💪 Poke "):
         if raw.startswith(prefix):
@@ -155,7 +192,6 @@ async def poke_friend(message: types.Message, state: FSMContext):
         await message.answer(t("friends_not_found", lang))
         return
 
-    # Rate limit: one poke per friend per day
     today = date.today().isoformat()
     async with conn.execute(
         "SELECT 1 FROM pokes WHERE from_user_id=? AND to_user_id=? AND date=?",

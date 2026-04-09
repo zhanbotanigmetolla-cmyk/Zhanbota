@@ -229,7 +229,10 @@ STRINGS = {
         # Stats
         "stats_title": "📊 *Статистика — {name}*",
         # Friends
+        "btn_friends_prev": "← Пред.",
+        "btn_friends_next": "След. →",
         "friends_title": "👥 *Все участники:*",
+        "friends_page": "Стр. {page} / {total}",
         "friends_empty": "👥 *Участники*\n\nПока никого нет — ты первый! 💪",
         "friends_poke_sent": "✅ Мотивация другу {name} отправлена! 💪",
         "friends_not_found": "❌ Участник не найден.",
@@ -623,7 +626,10 @@ STRINGS = {
         # Stats
         "stats_title": "📊 *Statistics — {name}*",
         # Friends
+        "btn_friends_prev": "← Prev",
+        "btn_friends_next": "Next →",
         "friends_title": "👥 *All participants:*",
+        "friends_page": "Page {page} / {total}",
         "friends_empty": "👥 *Participants*\n\nNo one yet — you're the first! 💪",
         "friends_poke_sent": "✅ Motivation sent to {name}! 💪",
         "friends_not_found": "❌ Participant not found.",

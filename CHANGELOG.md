@@ -7,6 +7,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-09]
 
 ### Changed
+- Friends list now paginates at 8 users per page. "← Пред." / "След. →" buttons appear in the keyboard when there are more pages; the header shows "Стр. X / Y". Poke buttons only appear for users on the current page.
 - Entrance screen: added "Бот полностью бесплатный, навсегда" after the motivation line (both welcome and welcome_intro variants).
 
 ### Fixed
