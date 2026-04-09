@@ -6,6 +6,14 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-04-09]
 
+### Changed
+- Registration: removed example hints from weight and base pullups prompts — users now enter values without suggested numbers.
+- Registration: removed the "program day" step entirely. New users always start at day 0. The question was confusing and irrelevant — load is driven by the user's own base pullup count, not by which day of the cycle they claim to be on.
+
+---
+
+## [2026-04-09]
+
 ### Fixed
 - `start_training` now detects when `last_workout == today` but no workout row exists (row was deleted by a previous cancel). It restores the rest day row and shows the rest/train prompt instead of jumping straight to the next program day's training load.
 - Canceling a rest-day override training now restores the rest day row (`planned=0 / Отдых`) instead of deleting it. Previously, canceling wiped the row, and the next training press used the already-advanced `program_day` to compute a training load — silently skipping the rest day prompt forever. Fix: `_begin_training` now accepts a `was_rest_override` flag stored in FSM state; `_cleanup_cancelled_workout` checks it and upserts the `Отдых` row back on cancel.

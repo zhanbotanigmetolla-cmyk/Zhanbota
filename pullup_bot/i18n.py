@@ -148,8 +148,8 @@ STRINGS = {
         "wrong_code_locked": "🔒 Слишком много попыток. Попробуй снова через 1 час.",
         "poke_already_today": "⏳ Ты уже отправил мотивацию {name} сегодня. Можно снова завтра.",
         "code_accepted": "✅ Код принят!\n\nКак тебя зовут?\n_(Введите минимум 3 символа)_",
-        "hello_name": "👋 Привет, *{name}*!\n\nВведи свой вес в кг (например: 90):\n_Можно изменить позже в настройках._",
-        "enter_base": "Сколько подтягиваний твоя *дневная норма*?\n_(например: 130)_",
+        "hello_name": "👋 Привет, *{name}*!\n\nВведи свой вес в кг:\n_Можно изменить позже в настройках._",
+        "enter_base": "Сколько подтягиваний твоя *дневная норма*?",
         "enter_start_day": (
             "Какой сейчас *день программы*?\n\n"
             "_(1 — если это твой первый день тренировок на турнике\n"
@@ -157,7 +157,7 @@ STRINGS = {
             "Это нужно чтобы бот знал на каком этапе цикла ты находишься.\n"
             "Можно изменить позже в Настройках.)_"
         ),
-        "welcome_user": "🎉 *Добро пожаловать, {name}!*\n\nНорма: *{base}* подтягиваний\nДень программы: *{day}*\nУровень: {level} — начинаем! 💪",
+        "welcome_user": "🎉 *Добро пожаловать, {name}!*\n\nНорма: *{base}* подтягиваний\nУровень: {level} — начинаем! 💪",
         "welcome_back": "👋 С возвращением, *{name}*!\n\nУровень: {level} ⭐ XP: {xp}\n🔥 Стрик: {streak} дней",
         "enter_number": "❌ Введи число, например: {example}",
         # Training
@@ -509,8 +509,8 @@ STRINGS = {
         "wrong_code_locked": "🔒 Too many attempts. Try again in 1 hour.",
         "poke_already_today": "⏳ You already sent motivation to {name} today. Try again tomorrow.",
         "code_accepted": "✅ Code accepted!\n\nWhat's your name?\n_(Enter at least 3 characters)_",
-        "hello_name": "👋 Hi, *{name}*!\n\nEnter your weight in kg (e.g.: 90):\n_You can change it later in settings._",
-        "enter_base": "What's your *daily pullup target*?\n_(e.g.: 130)_",
+        "hello_name": "👋 Hi, *{name}*!\n\nEnter your weight in kg:\n_You can change it later in settings._",
+        "enter_base": "What's your *daily pullup target*?",
         "enter_start_day": (
             "What *program day* are you on?\n\n"
             "_(1 — if this is your very first day of pullup training\n"
@@ -518,7 +518,7 @@ STRINGS = {
             "This tells the bot where you are in the wave cycle.\n"
             "You can change it later in Settings.)_"
         ),
-        "welcome_user": "🎉 *Welcome, {name}!*\n\nTarget: *{base}* pullups\nProgram day: *{day}*\nLevel: {level} — let's go! 💪",
+        "welcome_user": "🎉 *Welcome, {name}!*\n\nTarget: *{base}* pullups\nLevel: {level} — let's go! 💪",
         "welcome_back": "👋 Welcome back, *{name}*!\n\nLevel: {level} ⭐ XP: {xp}\n🔥 Streak: {streak} days",
         "enter_number": "❌ Enter a number, e.g.: {example}",
         # Training

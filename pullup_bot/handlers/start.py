@@ -282,22 +282,6 @@ async def reg_base(message: types.Message, state: FSMContext):
             await message.answer(t("enter_number", lang, example="130"))
             return
         base = int(text)
-        await state.update_data(base=base)
-        await message.answer(t("enter_start_day", lang), parse_mode="Markdown")
-        await state.set_state(Reg.start_day)
-    except ValueError:
-        await message.answer(t("enter_number", lang, example="130"))
-
-
-@router.message(Reg.start_day)
-async def reg_start_day(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    if not message.text:
-        await message.answer(t("enter_number", lang, example="22"))
-        return
-    try:
-        day = int(message.text.strip())
         conn = await get_db()
         await conn.execute(
             "INSERT INTO users (tg_id, username, first_name, base_pullups, start_day, weight_kg, lang, program_day) "
@@ -305,20 +289,20 @@ async def reg_start_day(message: types.Message, state: FSMContext):
             (message.from_user.id,
              message.from_user.username or data.get("first_name"),
              data.get("first_name", message.from_user.first_name),
-             data["base"], day, data["weight"], lang, day))
+             base, 0, data["weight"], lang, 0))
         await conn.commit()
         await state.clear()
         new_name = data.get("first_name", "атлет")
         await message.answer(
             t("welcome_user", lang,
               name=md_escape(new_name),
-              base=data["base"], day=day,
+              base=base,
               level=LEVEL_NAMES[0]),
             parse_mode="Markdown", reply_markup=main_kb(lang))
         # Notify all existing users about the new member
         await _broadcast_new_user(message.from_user.id, new_name)
     except ValueError:
-        await message.answer(t("enter_number", lang, example="22"))
+        await message.answer(t("enter_number", lang, example="10"))
 
 
 @router.callback_query(F.data.startswith("welcome_new:"))

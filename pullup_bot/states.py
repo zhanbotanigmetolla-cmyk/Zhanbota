@@ -13,7 +13,6 @@ class Reg(StatesGroup):
     name = State()
     weight = State()
     base = State()
-    start_day = State()
 
 
 class Training(StatesGroup):
