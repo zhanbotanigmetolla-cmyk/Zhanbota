@@ -7,6 +7,9 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-09]
 
 ### Fixed
+- Admin panel "✖ Закрыть панель" inline button cleared FSM state but never sent `main_kb`, so the next ◀️ Назад press had state=None and triggered `entrance_handler`, showing the landing screen instead of main menu. Fix: after closing the panel, a new message with `main_kb` is sent.
+
+### Fixed
 - Turnikmen AI "Today" data was wrong after acknowledging a rest day: `program_day` is advanced at rest-day acknowledgement, so `planned_for_day` would read the next day (e.g. Medium) as "today". Fix: `_user_data_block` now checks the actual DB workout row for today first; only falls back to `planned_for_day` if no row exists yet.
 
 ### Changed

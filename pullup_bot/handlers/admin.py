@@ -629,6 +629,9 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         except TelegramBadRequest:
             pass
         await callback.answer()
+        user = await get_user(callback.from_user.id)
+        lang = (user["lang"] or "ru") if user else "ru"
+        await callback.message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
 
     else:
         await callback.answer()
