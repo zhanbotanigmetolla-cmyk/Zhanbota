@@ -37,9 +37,26 @@ WAVE = {
 
 XP_PER_PULLUP = 1
 XP_PER_STREAK_DAY = 50
-LEVEL_THRESHOLDS = [0, 500, 1200, 2500, 4500, 7000, 10000, 14000, 19000, 25000, 999999]
-LEVEL_NAMES = ["Новичок", "Стартер", "Любитель", "Атлет", "Боец",
-               "Мастер", "Элита", "Легенда", "Titan", "God Mode", "∞"]
+LEVEL_THRESHOLDS = [
+    0, 500, 1000, 1800, 2800, 4000,        # Silver I – Silver Elite Master
+    5500, 7500, 10000, 13500,              # Gold Nova I – Gold Nova Master
+    18000, 23000, 29000, 36000,            # Master Guardian I – Distinguished MG
+    44000, 53000,                          # Legendary Eagle – LEM
+    63000,                                 # Supreme Master First Class
+    70000,                                 # The Global Elite
+    999999,                                # sentinel (∞)
+]
+LEVEL_NAMES = [
+    "Silver I", "Silver II", "Silver III", "Silver IV",
+    "Silver Elite", "Silver Elite Master",
+    "Gold Nova I", "Gold Nova II", "Gold Nova III", "Gold Nova Master",
+    "Master Guardian I", "Master Guardian II", "Master Guardian Elite",
+    "Distinguished Master Guardian",
+    "Legendary Eagle", "Legendary Eagle Master",
+    "Supreme Master First Class",
+    "The Global Elite",
+    "∞",
+]
 
 START_MENU_LABEL = "/start"
 

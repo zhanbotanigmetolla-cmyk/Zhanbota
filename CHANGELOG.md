@@ -7,6 +7,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-09]
 
 ### Changed
+- Replaced the 10-level XP system (Новичок → God Mode) with 18 CS:GO-style ranks: Silver I through The Global Elite. XP cap raised from 25,000 to 70,000. Thresholds: Silver I (0) → Silver Elite Master (4,000) → Gold Nova Master (13,500) → DMG (36,000) → Global Elite (70,000). DB `level` field auto-corrects on next workout; one-time SQL migration applied for all existing users.
 - "About bot" is now a 3-page flow with ← Back and Next → navigation, mirroring the Guide structure. Page 1: bot overview + wave cycle. Page 2: RPE, freeze tokens, AI coach, disclaimer. Page 3: full XP/level table with the "road to God Mode" estimate (~200+ days, ~14,500 pullups at 70/day with streak).
 - Guide Step 1 registration text updated to remove the "program day" step (removed from registration in a prior release).
 
