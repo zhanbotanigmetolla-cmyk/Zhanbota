@@ -433,7 +433,8 @@ STRINGS = {
         "welcome_intro": (
             "💪 *Pullup Pro*\n\n"
             "Hey! I'm your personal pullup coach. I'll help you track progress, "
-            "adapt your training plan, and stay motivated.\n\n"
+            "adapt your training plan, and stay motivated.\n"
+            "The bot is completely free. Forever.\n\n"
             "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
             "It knows your full training history and answers any question.\n\n"
             "⚠️ _Bot is in Beta. Bugs are possible. "
@@ -443,7 +444,8 @@ STRINGS = {
         "welcome": (
             "💪 *Pullup Pro*\n\n"
             "Hey! I'm your personal pullup coach. I'll help you track progress, "
-            "adapt your training plan, and stay motivated.\n\n"
+            "adapt your training plan, and stay motivated.\n"
+            "The bot is completely free. Forever.\n\n"
             "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
             "It knows your full training history and answers any question.\n\n"
             "⚠️ _Bot is in Beta. Bugs are possible. "
