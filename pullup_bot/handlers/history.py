@@ -35,19 +35,13 @@ def _format_week(rows_by_date: dict, monday: date, sunday: date, lang: str) -> s
             planned = r["planned"]
             dtype = day_name(r["day_type"] or "", lang)
             rpe_str = f"  RPE {r['rpe']}" if r["rpe"] else ""
-            if planned == 0:
-                em = "😴"
-            elif done >= planned:
-                em = "✅"
-            else:
-                em = "❌"
-            note_str = f"\n  📝 {md_escape(r['notes'])}" if r["notes"] else ""
-            lines.append(f"`{em} {d.strftime('%d.%m.%Y')} {wd}  {dtype:<9} {done}/{planned}{rpe_str}`{note_str}")
+            note_str = f"\n     {md_escape(r['notes'])}" if r["notes"] else ""
+            lines.append(f"{d.strftime('%d.%m.%Y')} {wd}  {dtype:<9} {done}/{planned}{rpe_str}{note_str}")
             total_done += done
             total_planned += planned
         else:
             empty_label = t("history_empty_day", lang)
-            lines.append(f"`—  {d.strftime('%d.%m.%Y')} {wd}  {empty_label}`")
+            lines.append(f"{d.strftime('%d.%m.%Y')} {wd}  {empty_label}")
     history_text = "\n".join(lines)
     pct = int(total_done / total_planned * 100) if total_planned else 0
     week_total = t("history_week_total", lang, done=total_done, planned=total_planned, pct=pct)

@@ -7,6 +7,9 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-09]
 
 ### Changed
+- History: removed emojis and monospace backticks — now plain text rows.
+- AI system prompt: workout dates now shown as DD.MM instead of MM-DD (was slicing YYYY-MM-DD incorrectly).
+- Friends poke buttons: no longer expose Telegram usernames (@handle) — use internal `#id` only.
 - Friends list now paginates at 8 users per page. "← Пред." / "След. →" buttons appear in the keyboard when there are more pages; the header shows "Стр. X / Y". Poke buttons only appear for users on the current page.
 - Entrance screen: added "Бот полностью бесплатный, навсегда" after the motivation line (both welcome and welcome_intro variants).
 

@@ -61,9 +61,7 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
     for f in page_users:
         if f["id"] == user["id"]:
             continue
-        label = (f"{poke_prefix}{display(f)} (@{f['username']})"
-                 if f["username"]
-                 else f"{poke_prefix}{display(f)} (#{f['id']})")
+        label = f"{poke_prefix}{display(f)} (#{f['id']})"
         b.button(text=label)
     b.adjust(2)
 

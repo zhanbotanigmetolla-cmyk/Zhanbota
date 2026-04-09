@@ -164,7 +164,9 @@ def _user_data_block(user, workouts) -> str:
 
     history_lines = []
     for r in workouts:
-        line = f"  {r['date'][5:]}  {(r['day_type'] or '?'):10s}  {r['completed']}/{r['planned']}  RPE={r['rpe'] or '—'}"
+        d = r['date']  # YYYY-MM-DD → DD.MM
+        date_fmt = f"{d[8:10]}.{d[5:7]}"
+        line = f"  {date_fmt}  {(r['day_type'] or '?'):10s}  {r['completed']}/{r['planned']}  RPE={r['rpe'] or '—'}"
         if r["extra_activity"]:
             line += f"  activity={r['extra_activity']}"
         if r["notes"]:
