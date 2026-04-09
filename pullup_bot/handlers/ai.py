@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from ..config import GEMINI_KEY, GEMINI_MODEL, logger
 from ..db import get_db, get_user
 from ..i18n import t, text_filter
-from ..keyboards import back_only_kb, main_kb
+from ..keyboards import ai_chat_kb, back_only_kb, main_kb
 from ..services.xp import display, level_info, planned_for_day
 from ..states import AIChat
 
@@ -182,18 +182,18 @@ async def ai_chat_start(message: aiogram_types.Message, state: FSMContext):
     if lang == "ru":
         intro = (
             "🤖 *Турникмен AI*\n\n"
-            "Спрашивай всё что хочешь — про свои тренировки, план, ранги, технику или как работает бот. "
-            "Я знаю всю твою историю.\n\n"
-            "_◀️ Назад — выйти из чата_"
+            "Спрашивай всё что хочешь — про тренировки, план, ранги, технику или как работает бот.\n\n"
+            "У меня есть вся информация о твоих тренировках, поэтому я базируюсь на ней и даю тебе "
+            "персонализированные советы. Нажми *💡 Получить совет* — и я сразу разберу твои данные."
         )
     else:
         intro = (
             "🤖 *Turnikmen AI*\n\n"
-            "Ask me anything — about your training, plan, ranks, technique, or how the bot works. "
-            "I have your full history.\n\n"
-            "_◀️ Back — exit chat_"
+            "Ask me anything — about your training, plan, ranks, technique, or how the bot works.\n\n"
+            "I have all your training data and base my answers on it, so every response is personalised to you. "
+            "Tap *💡 Get Advice* and I'll break down your data right away."
         )
-    await message.answer(intro, parse_mode="Markdown", reply_markup=back_only_kb(lang))
+    await message.answer(intro, parse_mode="Markdown", reply_markup=ai_chat_kb(lang))
 
 
 @router.message(AIChat.chatting, text_filter("btn_back"))
@@ -202,6 +202,52 @@ async def ai_chat_exit(message: aiogram_types.Message, state: FSMContext):
     lang = data.get("ai_lang", "ru")
     await state.clear()
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+
+
+@router.message(AIChat.chatting, text_filter("btn_ai_advice"))
+async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
+    """Advice button — auto-sends a training advice request to the AI."""
+    data = await state.get_data()
+    lang = data.get("ai_lang", "ru")
+    auto_prompt = (
+        "Посмотри на мои последние тренировки и дай конкретный персонализированный совет: "
+        "как я прогрессирую, всё ли идёт по плану, что стоит скорректировать и что делать завтра?"
+    ) if lang == "ru" else (
+        "Look at my recent workouts and give me a specific personalised recommendation: "
+        "how am I progressing, is everything on track, what should I adjust, and what should I focus on tomorrow?"
+    )
+
+    system_prompt = data.get("ai_system", "")
+    history = data.get("ai_history", [])
+
+    thinking = await message.answer(t("ai_thinking", lang))
+
+    reply = await _chat(system_prompt, history, auto_prompt)
+    if reply == _RATE_LIMIT_DAILY:
+        reply = t("ai_limit_daily", lang)
+    elif reply == _RATE_LIMIT_MINUTE:
+        reply = t("ai_limit_minute", lang)
+    elif not reply:
+        reply = t("ai_unavailable", lang)
+
+    history = history + [
+        {"role": "user", "content": auto_prompt},
+        {"role": "model", "content": reply},
+    ]
+    if len(history) > MAX_HISTORY_TURNS * 2:
+        history = history[-(MAX_HISTORY_TURNS * 2):]
+    await state.update_data(ai_history=history)
+
+    try:
+        await thinking.delete()
+    except Exception:
+        pass
+
+    try:
+        await message.answer(f"🤖 {reply}", parse_mode="Markdown",
+                             reply_markup=ai_chat_kb(lang))
+    except Exception:
+        await message.answer(f"🤖 {reply}", reply_markup=ai_chat_kb(lang))
 
 
 @router.message(AIChat.chatting)
@@ -239,6 +285,6 @@ async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
 
     try:
         await message.answer(f"🤖 {reply}", parse_mode="Markdown",
-                             reply_markup=back_only_kb(lang))
+                             reply_markup=ai_chat_kb(lang))
     except Exception:
-        await message.answer(f"🤖 {reply}", reply_markup=back_only_kb(lang))
+        await message.answer(f"🤖 {reply}", reply_markup=ai_chat_kb(lang))
