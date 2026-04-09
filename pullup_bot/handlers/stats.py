@@ -126,9 +126,11 @@ async def show_stats(message: types.Message):
 
     chart_section = f"\n\n{t('stats_chart_title', lang)}\n{chart}" if chart else ""
     schedule_section = f"\n\n{t('stats_schedule_title', lang)}\n{schedule}"
+    champ_line = ("👑 *Кочка недели*\n" if lang == "ru" else "👑 *Beast of the Week*\n") if user["is_weekly_champ"] else ""
 
     await message.answer(
-        f"📊 *{md_escape(display(user))}*\n\n"
+        f"📊 *{md_escape(display(user))}*\n"
+        f"{champ_line}\n"
         f"🏅 {level_label}: *{lname}* (lvl {lvl})\n"
         f"⭐ {xp_label}: {user['xp']} [{bar}] → {to_nxt}\n"
         f"🔥 {streak_label}: *{user['streak']}* | 🧊 {freeze_label}: {user['freeze_tokens']}\n"

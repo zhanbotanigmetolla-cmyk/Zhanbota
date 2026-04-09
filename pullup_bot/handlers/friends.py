@@ -112,7 +112,8 @@ async def leaderboard(message: types.Message):
     for i, (u, week_done, lname) in enumerate(entries):
         medal = medals[i] if i < 3 else f"{i+1}."
         you = t("leaderboard_you_marker", lang) if u["tg_id"] == message.from_user.id else ""
-        text += f"{medal} *{md_escape(display(u))}* — {week_done} | 🔥{u['streak']}{you}\n"
+        crown = " 👑" if u["is_weekly_champ"] else ""
+        text += f"{medal} *{md_escape(display(u))}*{crown} — {week_done} | 🔥{u['streak']}{you}\n"
 
     await message.answer(text, parse_mode="Markdown", reply_markup=main_kb(lang))
 

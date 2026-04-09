@@ -39,6 +39,8 @@ MIGRATIONS = [
         reason    TEXT DEFAULT '',
         banned_at TEXT DEFAULT (datetime('now'))
     )""",
+    # index 13
+    "ALTER TABLE users ADD COLUMN is_weekly_champ INTEGER DEFAULT 0",
 ]
 
 

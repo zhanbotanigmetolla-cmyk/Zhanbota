@@ -63,6 +63,69 @@ async def daily_reminder(bot):
             logger.warning(f"[reminder] {user['tg_id']}: {e}")
 
 
+async def _announce_weekly_champ(bot, conn, users):
+    """Crown the user with the most pullups last week and broadcast the result."""
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+    entries = []
+    for user in users:
+        async with conn.execute(
+            "SELECT COALESCE(SUM(completed),0) as total FROM workouts "
+            "WHERE user_id=? AND date>=? AND date<=?",
+            (user["id"], week_ago, yesterday)
+        ) as cur:
+            row = await cur.fetchone()
+        entries.append((user, row["total"] if row else 0))
+
+    entries.sort(key=lambda x: x[1], reverse=True)
+    if not entries or entries[0][1] == 0:
+        return  # nobody trained — skip the ceremony
+
+    champ, champ_total = entries[0]
+
+    # Crown the new champion, remove old one
+    await conn.execute("UPDATE users SET is_weekly_champ=0")
+    await conn.execute("UPDATE users SET is_weekly_champ=1 WHERE id=?", (champ["id"],))
+    await conn.commit()
+
+    medals = ["🥇", "🥈", "🥉"]
+    top3_text = "\n".join(
+        f"{medals[i]} *{md_escape(display(u))}* — {total}"
+        for i, (u, total) in enumerate(entries[:3])
+        if total > 0
+    )
+    champ_name = md_escape(display(champ))
+
+    for user in users:
+        lang = user["lang"] or "ru"
+        is_winner = user["id"] == champ["id"]
+        if lang == "ru":
+            suffix = "🎉 *Поздравляем — корона твоя!*" if is_winner else "💪 На следующей неделе корона может быть твоей!"
+            msg = (
+                f"👑 *Кочка недели*\n\n"
+                f"Неделя позади — подводим итоги!\n\n"
+                f"🏆 Лучший атлет: *{champ_name}*\n"
+                f"🔢 Подтягиваний за неделю: *{champ_total}*\n\n"
+                f"Топ недели:\n{top3_text}\n\n"
+                f"{suffix}"
+            )
+        else:
+            suffix = "🎉 *Congrats — the crown is yours!*" if is_winner else "💪 Next week the crown could be yours!"
+            msg = (
+                f"👑 *Beast of the Week*\n\n"
+                f"The week is over — here are the results!\n\n"
+                f"🏆 Top athlete: *{champ_name}*\n"
+                f"🔢 Weekly pullups: *{champ_total}*\n\n"
+                f"Top of the week:\n{top3_text}\n\n"
+                f"{suffix}"
+            )
+        try:
+            await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
+        except Exception as e:
+            logger.warning(f"[weekly_champ] {user['tg_id']}: {e}")
+
+
 async def weekly_summary(bot):
     """Send weekly summary to every user every Monday at 08:00."""
     conn = await get_db()
@@ -103,6 +166,9 @@ async def weekly_summary(bot):
             await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
         except Exception as e:
             logger.warning(f"[weekly_summary] {user['tg_id']}: {e}")
+
+    # After personal summaries, crown the week's champion
+    await _announce_weekly_champ(bot, conn, users)
 
 
 async def daily_health_summary(bot):

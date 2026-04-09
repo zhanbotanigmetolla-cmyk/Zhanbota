@@ -7,6 +7,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-08]
 
 ### Added
+- **Кочка недели** — weekly champion system. Every Monday at 08:00, the user with the most pullups in the past week is crowned "Кочка недели" (Beast of the Week). All active users receive an announcement with the winner's name and a top-3 leaderboard. The champion's stats screen shows a `👑 Кочка недели` badge, and the 🏆 Рейтинг leaderboard shows 👑 next to the current holder until the next Monday.
 - "🏃+🏋️ Кардио+Зал" / "🏃+🏋️ Cardio+Gym" option in the extra-activity screen after training and in Edit Day. Selecting it stores `бег+зал` and applies a combined fatigue reduction (higher cap than either alone) to tomorrow's planned pullups.
 
 ### Fixed
