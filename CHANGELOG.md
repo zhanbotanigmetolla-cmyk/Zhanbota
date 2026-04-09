@@ -6,6 +6,9 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-04-09]
 
+### Fixed
+- Turnikmen AI "Today" data was wrong after acknowledging a rest day: `program_day` is advanced at rest-day acknowledgement, so `planned_for_day` would read the next day (e.g. Medium) as "today". Fix: `_user_data_block` now checks the actual DB workout row for today first; only falls back to `planned_for_day` if no row exists yet.
+
 ### Changed
 - Turnikmen AI rate limit handling: daily quota exhaustion (1 500 req/day) shows "бот использовал дневной лимит, попробуй завтра"; per-minute throttle (15 req/min) shows "подожди минуту и попробуй снова". Both messages are localised RU/EN.
 - Welcome/landing screen now mentions Turnikmen AI for both new and returning users.

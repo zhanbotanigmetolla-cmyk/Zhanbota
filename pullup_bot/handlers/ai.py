@@ -142,12 +142,25 @@ If the user describes something that sounds like a bug, unexpected behavior, mis
 
 
 def _user_data_block(user, workouts) -> str:
+    from datetime import date as _date
     lang = user["lang"] or "ru"
     lvl, lname, to_nxt, _ = level_info(user["xp"] or 0)
+    lang_label = "Russian" if lang == "ru" else "English"
+
+    # Use today's actual DB row if it exists (program_day may already be advanced
+    # past a rest day that was just acknowledged, making planned_for_day lie).
+    today_str = str(_date.today())
+    today_row = next((r for r in workouts if r["date"] == today_str), None)
+    if today_row:
+        today_type = today_row["day_type"] or "?"
+        today_summary = f"{today_type} — {today_row['completed']}/{today_row['planned']} pullups (done/planned)"
+    else:
+        today_plan, today_type = planned_for_day(user)
+        today_summary = f"{today_type} — {today_plan} pullups planned"
+
+    # Tomorrow: always computed from program_day
     next_user = {**dict(user), "program_day": ((user["program_day"] or 0) + 1) % 7}
     next_plan, next_type = planned_for_day(next_user)
-    today_plan, today_type = planned_for_day(user)
-    lang_label = "Russian" if lang == "ru" else "English"
 
     history_lines = []
     for r in workouts:
@@ -163,7 +176,7 @@ def _user_data_block(user, workouts) -> str:
         f"Rank: {lname}  ({user['xp'] or 0} XP — {to_nxt} XP to next rank)\n"
         f"Streak: {user['streak'] or 0} days  |  Freeze tokens: {user['freeze_tokens'] or 0}  |  Personal record: {user['personal_record'] or 0} pullups\n"
         f"Daily base: {user['base_pullups']} pullups/day  |  Weight: {user['weight_kg']} kg\n"
-        f"Today: {today_type} — {today_plan} pullups planned\n"
+        f"Today: {today_summary}\n"
         f"Tomorrow: {next_type} — {next_plan} pullups planned\n\n"
         f"Last {len(workouts)} workouts (newest first):\n"
         + ("\n".join(history_lines) if history_lines else "  No workouts yet.") + "\n\n"
