@@ -139,6 +139,12 @@ async def rest_override_rest(message: types.Message, state: FSMContext):
                 (new_pd, today, message.from_user.id)
             )
             await conn.commit()
+            if new_pd % 7 == 0:
+                progression_base = await _check_weekly_progression(
+                    message.from_user.id, user["id"], user["base_pullups"])
+                if progression_base:
+                    await message.answer(t("train_progression", lang, base=progression_base),
+                                         parse_mode="Markdown")
         await _mark_rest_day_if_missing(user["id"], today)
     await state.clear()
     await message.answer(t("reminder_rest", lang), reply_markup=main_kb(lang))
@@ -169,6 +175,12 @@ async def freeze_yes(message: types.Message, state: FSMContext):
     await conn.execute("UPDATE users SET program_day=? WHERE tg_id=?",
                        (new_pd, message.from_user.id))
     await conn.commit()
+    if new_pd % 7 == 0:
+        progression_base = await _check_weekly_progression(
+            message.from_user.id, user["id"], user["base_pullups"])
+        if progression_base:
+            await message.answer(t("train_progression", lang, base=progression_base),
+                                 parse_mode="Markdown")
     await _mark_rest_day_if_missing(user["id"], today)
     await state.clear()
     await message.answer(t("freeze_used", lang, streak=new_streak, tokens=new_tokens),
@@ -189,6 +201,12 @@ async def freeze_no(message: types.Message, state: FSMContext):
             (new_pd, today, message.from_user.id)
         )
         await conn.commit()
+        if new_pd % 7 == 0:
+            progression_base = await _check_weekly_progression(
+                message.from_user.id, user["id"], user["base_pullups"])
+            if progression_base:
+                await message.answer(t("train_progression", lang, base=progression_base),
+                                     parse_mode="Markdown")
         await _mark_rest_day_if_missing(user["id"], today)
     await state.clear()
     await message.answer(t("reminder_rest", lang), reply_markup=main_kb(lang))
