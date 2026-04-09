@@ -109,7 +109,8 @@ async def rest_override_train(message: types.Message, state: FSMContext):
     today_str = today.isoformat()
     day_type = "Средний"
     planned = int(user["base_pullups"] * 1.0)
-    await _begin_training(message, state, user, lang, today_str, planned, day_type)
+    await _begin_training(message, state, user, lang, today_str, planned, day_type,
+                          was_rest_override=True)
 
 
 @router.message(Training.rest_day, text_filter("rest_day_rest"))
@@ -212,7 +213,7 @@ async def freeze_no(message: types.Message, state: FSMContext):
     await message.answer(t("reminder_rest", lang), reply_markup=main_kb(lang))
 
 
-async def _begin_training(message, state, user, lang, today_str, planned, day_type, tg_id=None):
+async def _begin_training(message, state, user, lang, today_str, planned, day_type, tg_id=None, was_rest_override=False):
     if tg_id is None:
         tg_id = user["tg_id"]
     today = date.fromisoformat(today_str)
@@ -243,7 +244,8 @@ async def _begin_training(message, state, user, lang, today_str, planned, day_ty
                       if reduction < 1 else "")
     await state.set_state(Training.active)
     await state.update_data(date=today_str, planned=planned, sets=session_sets,
-                            done_before=done_before, lang=lang)
+                            done_before=done_before, lang=lang,
+                            was_rest_override=was_rest_override)
 
     day_display = day_name(day_type, lang)
     em = "🟢" if day_type != "Отдых" else "😴"
@@ -325,17 +327,23 @@ async def _cleanup_cancelled_workout(tg_id: int, state_data: dict):
     """Delete or restore workout record when training is cancelled."""
     done_before = state_data.get("done_before", 0)
     d = state_data.get("date", date.today().isoformat())
+    was_rest_override = state_data.get("was_rest_override", False)
     user = await get_user(tg_id)
     if not user:
         return
     if done_before == 0:
-        # No prior progress — delete the ghost record entirely
-        conn = await get_db()
-        await conn.execute(
-            "DELETE FROM workouts WHERE user_id=? AND date=?",
-            (user["id"], d)
-        )
-        await conn.commit()
+        if was_rest_override:
+            # Restore the rest day row that existed before the user chose to train
+            await upsert_workout(user["id"], d, planned=0, day_type="Отдых",
+                                 completed=0, sets_json=json.dumps([]))
+        else:
+            # No prior progress — delete the ghost record entirely
+            conn = await get_db()
+            await conn.execute(
+                "DELETE FROM workouts WHERE user_id=? AND date=?",
+                (user["id"], d)
+            )
+            await conn.commit()
     # If done_before > 0, the DB record still holds the previous completed value — no action needed
 
 

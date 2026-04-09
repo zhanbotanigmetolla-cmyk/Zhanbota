@@ -7,6 +7,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-09]
 
 ### Fixed
+- Canceling a rest-day override training now restores the rest day row (`planned=0 / Отдых`) instead of deleting it. Previously, canceling wiped the row, and the next training press used the already-advanced `program_day` to compute a training load — silently skipping the rest day prompt forever. Fix: `_begin_training` now accepts a `was_rest_override` flag stored in FSM state; `_cleanup_cancelled_workout` checks it and upserts the `Отдых` row back on cancel.
+
+---
+
+### Fixed
 - Friends list: rest day now correctly shows `0/0` instead of tomorrow's training load. Root cause: when a rest day is acknowledged, `program_day` is incremented before the display; if no workout row exists, the fallback `planned_for_day` was reading the already-advanced day and showing the next day's plan. Fix: when no workout row exists but `last_workout == today`, show `0/0`.
 - Streak race condition: if a training session was started on day N but saved after server midnight (day N+1), `update_streak` stamped `last_workout = N+1`, causing day N+1's real session to skip streak increment. Fixed by passing the session's own date to `update_streak` instead of using `date.today()`. Manually corrected streaks for all affected users: Zhanbota102 (→5), fabulousayan (→4), kamikadze24 (→0), Maffettone_Burger (→0), Bakhyt_Adilet (→0), Kris (→0).
 - Progression check (+5% base) was skipped when the 7th program day fell on a rest day. The check now also runs in all three rest-day `program_day` advance paths (rest day acknowledgement, freeze token used, freeze token declined). Also manually applied the missed bump for Zhanbota102 (70 → 73).
