@@ -600,7 +600,7 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
             if new_pd % 7 == 0:
                 progression_base = await _check_weekly_progression(
                     tg_id, user_before["id"], user_before["base_pullups"])
-        await update_streak(tg_id)
+        await update_streak(tg_id, d)
 
     # Refresh after streak/program_day update
     user = await get_user(tg_id)

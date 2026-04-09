@@ -46,12 +46,16 @@ async def friends_menu(message: types.Message, state: FSMContext):
         return
 
     you_label = "Вы" if lang == "ru" else "You"
+    today_str = date.today().isoformat()
     text = t("friends_title", lang) + "\n\n"
     for f in all_users:
         today_w = await get_today_workout(f["id"])
         done = today_w["completed"] if today_w else 0
         if today_w:
             plan = today_w["planned"] if today_w["planned"] is not None else 0
+        elif f["last_workout"] == today_str:
+            # User already handled today (rest day) but no workout row was saved
+            plan = 0
         else:
             plan, _ = planned_for_day(f)
         _, lname, _, _ = level_info(f["xp"])

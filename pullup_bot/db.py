@@ -221,13 +221,14 @@ async def add_xp(tg_id: int, amount: int):
     await conn.commit()
 
 
-async def update_streak(tg_id: int):
+async def update_streak(tg_id: int, today: str = None):
     user = await get_user(tg_id)
     if not user:
         return
-    today = date.today().isoformat()
+    if today is None:
+        today = date.today().isoformat()
     last = user["last_workout"]
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
     conn = await get_db()
     if last == today:
         return

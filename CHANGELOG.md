@@ -7,6 +7,8 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-09]
 
 ### Fixed
+- Friends list: rest day now correctly shows `0/0` instead of tomorrow's training load. Root cause: when a rest day is acknowledged, `program_day` is incremented before the display; if no workout row exists, the fallback `planned_for_day` was reading the already-advanced day and showing the next day's plan. Fix: when no workout row exists but `last_workout == today`, show `0/0`.
+- Streak race condition: if a training session was started on day N but saved after server midnight (day N+1), `update_streak` stamped `last_workout = N+1`, causing day N+1's real session to skip streak increment. Fixed by passing the session's own date to `update_streak` instead of using `date.today()`.
 - Progression check (+5% base) was skipped when the 7th program day fell on a rest day. The check now also runs in all three rest-day `program_day` advance paths (rest day acknowledgement, freeze token used, freeze token declined). Also manually applied the missed bump for Zhanbota102 (70 → 73).
 
 ---
