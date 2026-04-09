@@ -8,7 +8,7 @@ load_dotenv(os.path.expanduser("~/.env.pullup_bot"))
 # Set PULLUP_TESTING=1 to skip the hard validation.
 _TESTING = os.environ.get("PULLUP_TESTING") == "1"
 
-_REQUIRED_ENV = ["PULLUP_BOT_TOKEN", "PULLUP_SECRET", "ADMIN_TG_ID", "GROQ_API_KEY"]
+_REQUIRED_ENV = ["PULLUP_BOT_TOKEN", "PULLUP_SECRET", "ADMIN_TG_ID", "GEMINI_API_KEY"]
 if not _TESTING:
     _missing_env = [k for k in _REQUIRED_ENV if not os.environ.get(k)]
     if _missing_env:
@@ -16,7 +16,9 @@ if not _TESTING:
 
 BOT_TOKEN = os.environ.get("PULLUP_BOT_TOKEN", "")
 SECRET_CODE = os.environ.get("PULLUP_SECRET", "TESTCODE")
-GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_KEY = os.environ.get("GROQ_API_KEY", "")  # kept for backward compat, no longer used
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-2.0-flash"
 DB_PATH = os.environ.get("PULLUP_DB", os.path.expanduser("~/pullups.db"))
 FSM_DB_PATH = os.environ.get("PULLUP_FSM_DB", os.path.expanduser("~/pullups_fsm.db"))
 SECRET_CODE_NORM = SECRET_CODE.strip().upper()

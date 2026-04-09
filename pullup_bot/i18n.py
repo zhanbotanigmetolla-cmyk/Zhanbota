@@ -6,7 +6,7 @@ STRINGS = {
         "btn_train": "🏋️ Тренировка",
         "btn_stats": "📊 Статистика",
         "btn_friends": "👥 Друзья",
-        "btn_ai": "🤖 ИИ-совет",
+        "btn_ai": "🤖 Турникмен AI",
         "btn_settings": "⚙️ Настройки",
         "btn_bug": "🐛 Сообщить о баге",
         "btn_back": "◀️ Назад",
@@ -67,10 +67,11 @@ STRINGS = {
             "Бот корректирует план автоматически на основе скользящего среднего.\n\n"
             "🧊 *Токены заморозки:*\n"
             "Пропустил день — потрать токен, стрик сохранится.\n"
-            "Как заработать: каждые 7 дней стрика подряд, при повышении уровня, при новом рекорде.\n"
+            "Как заработать: каждые 7 дней стрика подряд, при повышении ранга, при новом рекорде.\n"
             "Максимум — 5 токенов.\n\n"
-            "🤖 *ИИ-тренер:*\n"
-            "Советы с учётом твоей истории, веса и стрика.\n\n"
+            "🤖 *Турникмен AI:*\n"
+            "Чат с ИИ на базе Google Gemini 2.0 Flash. Знает всю историю твоих тренировок. "
+            "Спрашивай про прогресс, план, технику — или просто о том, как работает бот.\n\n"
             "🌱 *Важно:*\n"
             "Бот — это инструмент. Настоящий прогресс строится на сне, питании и восстановлении."
         ),
@@ -154,8 +155,8 @@ STRINGS = {
             "📈 *Статистика и история*\n\n"
             "• «📊 Статистика» — прогресс, XP, уровень, стрик\n"
             "• «🗓 История» — все прошлые тренировки по неделям\n\n"
-            "🤖 *ИИ-тренер*\n\n"
-            "Нажми «🤖 ИИ-совет» — получи совет с учётом твоей истории, веса и стрика.\n\n"
+            "🤖 *Турникмен AI*\n\n"
+            "Нажми «🤖 Турникмен AI» — задай любой вопрос про тренировки или бот. ИИ знает всю твою историю.\n\n"
             "💡 *Совет*\n\n"
             "Начни с консервативной нормы (50–80 подтягиваний в день). "
             "Бот сам повысит её, когда ты будешь готов."
@@ -390,7 +391,7 @@ STRINGS = {
         "btn_train": "🏋️ Training",
         "btn_stats": "📊 Statistics",
         "btn_friends": "👥 Friends",
-        "btn_ai": "🤖 AI Advice",
+        "btn_ai": "🤖 Turnikmen AI",
         "btn_settings": "⚙️ Settings",
         "btn_bug": "🐛 Report a Bug",
         "btn_back": "◀️ Back",
@@ -451,10 +452,11 @@ STRINGS = {
             "The bot adjusts your plan automatically using a rolling average.\n\n"
             "🧊 *Freeze tokens:*\n"
             "Miss a day? Spend a token and keep your streak.\n"
-            "Earn tokens: every 7-day streak milestone, on each level-up, on a new personal record.\n"
+            "Earn tokens: every 7-day streak milestone, on each rank-up, on a new personal record.\n"
             "Maximum 5 tokens.\n\n"
-            "🤖 *AI coach:*\n"
-            "Personalized advice based on your history, weight, and streak.\n\n"
+            "🤖 *Turnikmen AI:*\n"
+            "Full chat powered by Google Gemini 2.0 Flash. It knows your entire training history. "
+            "Ask about your progress, plan, technique — or how any feature works.\n\n"
             "🌱 *Important:*\n"
             "The bot is a tool. Real progress is built on sleep, nutrition, and recovery."
         ),
@@ -538,8 +540,8 @@ STRINGS = {
             "📈 *Stats & History*\n\n"
             "• «📊 Statistics» — progress, XP, level, streak\n"
             "• «🗓 History» — all past workouts by week\n\n"
-            "🤖 *AI Coach*\n\n"
-            "Tap «🤖 AI Advice» for personalized coaching based on your history, weight, and streak.\n\n"
+            "🤖 *Turnikmen AI*\n\n"
+            "Tap «🤖 Turnikmen AI» to chat — ask anything about your training or how the bot works. It knows your full history.\n\n"
             "💡 *Tip*\n\n"
             "Start with a conservative target (50–80 pullups per day). "
             "The bot will raise it automatically when you're ready."

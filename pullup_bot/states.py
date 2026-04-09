@@ -84,6 +84,10 @@ class DeleteAccount(StatesGroup):
     confirm = State()
 
 
+class AIChat(StatesGroup):
+    chatting = State()
+
+
 class Friends(StatesGroup):
     viewing = State()
 
