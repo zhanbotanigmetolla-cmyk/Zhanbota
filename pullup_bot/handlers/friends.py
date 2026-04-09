@@ -58,10 +58,18 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
 
     poke_prefix = "💪 Пнуть " if lang == "ru" else "💪 Poke "
     b = ReplyKeyboardBuilder()
+    poke_map: dict[str, int] = {}  # button label → db user id
     for f in page_users:
         if f["id"] == user["id"]:
             continue
-        label = f"{poke_prefix}{display(f)} (#{f['id']})"
+        base = f"{poke_prefix}{display(f)}"
+        label = base
+        # Deduplicate if two users share the same display name
+        suffix = 2
+        while label in poke_map:
+            label = f"{base} {suffix}"
+            suffix += 1
+        poke_map[label] = f["id"]
         b.button(text=label)
     b.adjust(2)
 
@@ -75,7 +83,7 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
     b.row(KeyboardButton(text=t("btn_back", lang)))
 
     await state.set_state(Friends.viewing)
-    await state.update_data(friends_page=page, friends_lang=lang)
+    await state.update_data(friends_page=page, friends_lang=lang, poke_map=poke_map)
     await message.answer(text, parse_mode="Markdown",
                          reply_markup=b.as_markup(resize_keyboard=True))
 
@@ -158,34 +166,25 @@ async def leaderboard(message: types.Message):
     await message.answer(text, parse_mode="Markdown", reply_markup=main_kb(lang))
 
 
-@router.message(lambda m: m.text and (m.text.startswith("💪 Пнуть ") or m.text.startswith("💪 Poke ")))
+@router.message(Friends.viewing, lambda m: m.text and (m.text.startswith("💪 Пнуть ") or m.text.startswith("💪 Poke ")))
 async def poke_friend(message: types.Message, state: FSMContext):
-    import re
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
-    raw = message.text
-    for prefix in ("💪 Пнуть ", "💪 Poke "):
-        if raw.startswith(prefix):
-            raw = raw[len(prefix):].strip()
-            break
+
+    data = await state.get_data()
+    poke_map: dict = data.get("poke_map", {})
+    friend_db_id = poke_map.get(message.text)
+
     conn = await get_db()
-    m_user = re.search(r"\(@([A-Za-z0-9_]{1,32})\)$", raw)
-    m_id = re.search(r"\(#(\d+)\)$", raw)
-    if m_user:
-        async with conn.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE",
-                                (m_user.group(1),)) as cur:
-            friend = await cur.fetchone()
-    elif m_id:
-        async with conn.execute("SELECT * FROM users WHERE id=?",
-                                (int(m_id.group(1)),)) as cur:
+    if friend_db_id:
+        async with conn.execute("SELECT * FROM users WHERE id=?", (friend_db_id,)) as cur:
             friend = await cur.fetchone()
     else:
-        async with conn.execute("SELECT * FROM users WHERE first_name=? OR username=?",
-                                (raw, raw)) as cur:
-            friend = await cur.fetchone()
+        friend = None
+
     if not friend:
         await message.answer(t("friends_not_found", lang))
         return
