@@ -7,6 +7,13 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-09]
 
 ### Changed
+- Turnikmen AI rate limit handling: daily quota exhaustion (1 500 req/day) shows "бот использовал дневной лимит, попробуй завтра"; per-minute throttle (15 req/min) shows "подожди минуту и попробуй снова". Both messages are localised RU/EN.
+- Welcome/landing screen now mentions Turnikmen AI for both new and returning users.
+- Guide intro screen now mentions Turnikmen AI.
+- Privacy policy updated: Section 4 replaced with a full Turnikmen AI / Google Gemini data disclosure (what is sent, why, link to Google Privacy Policy).
+- README updated with a dedicated Turnikmen AI section covering model, free-tier limits, and system prompt design.
+
+### Changed (prior)
 - AI coach replaced: Groq/Llama dropped in favour of Google Gemini 3 Flash (free tier, `gemini-3-flash-preview`). SDK switched from deprecated `google-generativeai` to `google-genai`. Button renamed to "🤖 Турникмен AI" / "🤖 Turnikmen AI". Now a full multi-turn chat — user can ask anything across multiple messages; AI retains context for up to 10 exchanges. System prompt includes complete bot knowledge base + user's current rank, streak, base, last 14 workouts, and tomorrow's plan so answers are always personalised and accurate.
 
 ### Replaced the 10-level XP system (Новичок → God Mode) with 18 CS:GO-style ranks: Silver I through The Global Elite. XP cap raised from 25,000 to 70,000. Thresholds: Silver I (0) → Silver Elite Master (4,000) → Gold Nova Master (13,500) → DMG (36,000) → Global Elite (70,000). DB `level` field auto-corrects on next workout; one-time SQL migration applied for all existing users.

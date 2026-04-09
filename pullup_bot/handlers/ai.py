@@ -129,6 +129,10 @@ def _to_gemini_history(history: list) -> list:
     ]
 
 
+_RATE_LIMIT_DAILY = "__LIMIT_DAILY__"
+_RATE_LIMIT_MINUTE = "__LIMIT_MINUTE__"
+
+
 async def _chat(system_prompt: str, history: list, user_msg: str) -> str:
     try:
         chat_session = _client.aio.chats.create(
@@ -139,6 +143,11 @@ async def _chat(system_prompt: str, history: list, user_msg: str) -> str:
         response = await chat_session.send_message(user_msg)
         return response.text or ""
     except Exception as e:
+        err = str(e).lower()
+        if "429" in err or "quota" in err or "resource_exhausted" in err or "rate" in err:
+            if "per_minute" in err or "per minute" in err or "minute" in err:
+                return _RATE_LIMIT_MINUTE
+            return _RATE_LIMIT_DAILY
         logger.error(f"[Gemini] {e}")
         return ""
 
@@ -207,7 +216,11 @@ async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
     thinking = await message.answer(t("ai_thinking", lang))
 
     reply = await _chat(system_prompt, history, message.text)
-    if not reply:
+    if reply == _RATE_LIMIT_DAILY:
+        reply = t("ai_limit_daily", lang)
+    elif reply == _RATE_LIMIT_MINUTE:
+        reply = t("ai_limit_minute", lang)
+    elif not reply:
         reply = t("ai_unavailable", lang)
 
     # Append and trim history

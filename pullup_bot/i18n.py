@@ -33,20 +33,21 @@ STRINGS = {
         "welcome_intro": (
             "💪 *Турникмен*\n\n"
             "Привет! Я твой персональный тренер по подтягиваниям. Я помогу тебе следить за прогрессом, "
-            "адаптировать план тренировок и не терять мотивацию. Давай начнём с регистрации или входа в систему!\n\n"
+            "адаптировать план тренировок и не терять мотивацию.\n\n"
+            "🤖 Включает *Турникмен AI* — персональный ИИ-тренер на базе Google Gemini 3 Flash. "
+            "Знает всю историю твоих тренировок, отвечает на любые вопросы.\n\n"
             "⚠️ _Бот на стадии Бета-тестирования. Возможны баги и недоработки. "
             "Если бот перестал работать, напишите в чате /start для перезапуска._⚠️\n\n"
-            "Если вы нашли баг или у вас есть идеи как улучшить бота — напишите через кнопку:\n\n"
             "🐛 Сообщить о баге"
         ),
         "welcome": (
             "💪 *Турникмен*\n\n"
             "Привет! Я твой персональный тренер по подтягиваниям. Я помогу тебе следить за прогрессом, "
-            "адаптировать план тренировок и не терять мотивацию. Давай начнём с регистрации или входа в систему!\n\n"
+            "адаптировать план тренировок и не терять мотивацию.\n\n"
+            "🤖 Включает *Турникмен AI* — персональный ИИ-тренер на базе Google Gemini 3 Flash. "
+            "Знает всю историю твоих тренировок, отвечает на любые вопросы.\n\n"
             "⚠️ _Бот на стадии Бета-тестирования. Возможны баги и недоработки. "
             "Если бот перестал работать, напишите в чате /start для перезапуска._⚠️\n\n"
-            "Если вы нашли баг или у вас есть идеи как улучшить бота — напишите через кнопку:\n\n"
-            "🐛 Сообщить о баге \n\n"
             "Выбери действие:"
         ),
         "about": (
@@ -113,7 +114,8 @@ STRINGS = {
         "guide_intro": (
             "📖 *Руководство для новичка*\n\n"
             "Бот помогает систематически увеличивать количество подтягиваний. "
-            "Он строит план, отслеживает прогресс и адаптирует нагрузку под тебя."
+            "Он строит план, отслеживает прогресс и адаптирует нагрузку под тебя.\n\n"
+            "🤖 Есть встроенный *Турникмен AI* — задавай любые вопросы про тренировки или бот."
         ),
         "guide_step1": (
             "📋 *Шаг 1 — Регистрация*\n\n"
@@ -236,6 +238,8 @@ STRINGS = {
         "ai_thinking": "🤖 Анализирую твои данные...",
         "ai_no_data": "Сначала запиши несколько тренировок!",
         "ai_unavailable": "⚠️ ИИ временно недоступен.",
+        "ai_limit_daily": "🤖 Бот использовал дневной лимит запросов к ИИ. Попробуй снова завтра!",
+        "ai_limit_minute": "🤖 Слишком много запросов к ИИ за раз. Подожди минуту и попробуй снова.",
         "ai_system_prompt": (
             "Ты персональный тренер по подтягиваниям. Анализируй данные атлета и давай "
             "конкретные, персонализированные советы на русском языке (4-5 предложений). "
@@ -418,20 +422,21 @@ STRINGS = {
         "welcome_intro": (
             "💪 *Pullup Pro*\n\n"
             "Hey! I'm your personal pullup coach. I'll help you track progress, "
-            "adapt your training plan, and stay motivated. Let's start with registration!\n\n"
+            "adapt your training plan, and stay motivated.\n\n"
+            "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
+            "It knows your full training history and answers any question.\n\n"
             "⚠️ _Bot is in Beta. Bugs are possible. "
             "If the bot stops working, type /start to restart._⚠️\n\n"
-            "Found a bug? Report it via: \n\n"
             "🐛 Report a Bug"
         ),
         "welcome": (
             "💪 *Pullup Pro*\n\n"
             "Hey! I'm your personal pullup coach. I'll help you track progress, "
-            "adapt your training plan, and stay motivated. Let's start with registration!\n\n"
+            "adapt your training plan, and stay motivated.\n\n"
+            "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
+            "It knows your full training history and answers any question.\n\n"
             "⚠️ _Bot is in Beta. Bugs are possible. "
             "If the bot stops working, type /start to restart._⚠️\n\n"
-            "Found a bug? Report it via: \n\n"
-            "🐛 Report a Bug \n\n"
             "Choose an action:"
         ),
         "about": (
@@ -498,7 +503,8 @@ STRINGS = {
         "guide_intro": (
             "📖 *Beginner's Guide*\n\n"
             "The bot helps you systematically increase your pullup count. "
-            "It builds your plan, tracks progress, and automatically adapts load to you."
+            "It builds your plan, tracks progress, and automatically adapts load to you.\n\n"
+            "🤖 Includes built-in *Turnikmen AI* — ask anything about your training or the bot."
         ),
         "guide_step1": (
             "📋 *Step 1 — Registration*\n\n"
@@ -621,6 +627,8 @@ STRINGS = {
         "ai_thinking": "🤖 Analyzing your data...",
         "ai_no_data": "Log some workouts first!",
         "ai_unavailable": "⚠️ AI is temporarily unavailable.",
+        "ai_limit_daily": "🤖 The bot has used up its daily AI request limit. Please try again tomorrow!",
+        "ai_limit_minute": "🤖 Too many AI requests at once. Wait a minute and try again.",
         "ai_system_prompt": (
             "You are a personal pullup coach. Analyze the athlete's data and give "
             "specific, personalized advice in English (4-5 sentences). "
