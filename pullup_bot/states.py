@@ -9,6 +9,11 @@ class Guide(StatesGroup):
     extra = State()
 
 
+class About(StatesGroup):
+    page2 = State()
+    page3 = State()
+
+
 class Reg(StatesGroup):
     name = State()
     weight = State()

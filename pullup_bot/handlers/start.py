@@ -10,9 +10,9 @@ from ..config import LEVEL_NAMES, SECRET_CODE_NORM, logger
 from ..db import add_welcome_greeting, get_db, get_lang, get_user
 from ..i18n import t, text_filter
 from ..keyboards import (LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
-                         guide_kb, landing_kb, lang_kb, logout_confirm_kb,
-                         main_kb, welcome_new_user_kb)
-from ..states import Guide, Login, Logout, Reg
+                         about_kb, guide_kb, landing_kb, lang_kb,
+                         logout_confirm_kb, main_kb, welcome_new_user_kb)
+from ..states import About, Guide, Login, Logout, Reg
 from ..services.xp import display, md_escape
 
 router = Router()
@@ -90,8 +90,36 @@ async def about_bot(message: types.Message, state: FSMContext):
     user = await get_user(message.from_user.id)
     data = await state.get_data()
     lang = (user["lang"] or "ru") if user else data.get("lang", "ru")
+    await state.set_state(About.page2)
+    await state.update_data(about_lang=lang)
     await message.answer(t("about", lang), parse_mode="Markdown",
+                         reply_markup=about_kb("page1", lang))
+
+
+@router.message(About.page2, text_filter("btn_about_next"))
+async def about_page2(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("about_lang", "ru")
+    await state.set_state(About.page3)
+    await message.answer(t("about_page2", lang), parse_mode="Markdown",
+                         reply_markup=about_kb("page2", lang))
+
+
+@router.message(About.page3, text_filter("btn_about_next"))
+async def about_page3(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("about_lang", "ru")
+    await state.clear()
+    await message.answer(t("about_page3", lang), parse_mode="Markdown",
                          reply_markup=landing_kb(lang))
+
+
+@router.message(StateFilter(About.page2, About.page3), text_filter("btn_back"))
+async def about_back(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("about_lang", "ru")
+    await state.clear()
+    await message.answer(t("main_menu", lang), reply_markup=landing_kb(lang))
 
 
 @router.message(text_filter("btn_guide"))
