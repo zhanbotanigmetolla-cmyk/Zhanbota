@@ -60,6 +60,13 @@ async def start_training(message: types.Message, state: FSMContext):
         # Keep today's saved plan/day type stable if the user re-enters training.
         planned = existing_today["planned"] or 0
         day_type = existing_today["day_type"] or planned_for_day(user)[1]
+    elif user["last_workout"] == today_str:
+        # User already handled today (acknowledged a rest day) but the row was
+        # lost (e.g. cancelled a rest-override session). Restore the rest row so
+        # the rest/train prompt appears again instead of jumping to a training day.
+        await _mark_rest_day_if_missing(user["id"], today_str)
+        planned = 0
+        day_type = "Отдых"
     else:
         planned, day_type = planned_for_day(user)
     days_off = _days_since_last(user)
