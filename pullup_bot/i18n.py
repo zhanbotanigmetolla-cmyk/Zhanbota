@@ -238,6 +238,9 @@ STRINGS = {
         # AI
         "ai_thinking": "🤖 Анализирую твои данные...",
         "ai_thinking_chat": "💭 Думаю...",
+        "ai_thinking_long": "⏳ Думаю дольше чем обычно, ещё немного...",
+        "ai_thinking_longer": "⏳ Ещё обрабатываю... почти готово",
+        "ai_thinking_almost": "⏳ Почти готово...",
         "ai_no_data": "Сначала запиши несколько тренировок!",
         "ai_unavailable": "⚠️ ИИ временно недоступен.",
         "ai_limit_daily": "🤖 Бот использовал дневной лимит запросов к ИИ. Попробуй снова завтра!",
@@ -629,6 +632,9 @@ STRINGS = {
         # AI
         "ai_thinking": "🤖 Analyzing your data...",
         "ai_thinking_chat": "💭 Thinking...",
+        "ai_thinking_long": "⏳ Taking a bit longer than usual, almost there...",
+        "ai_thinking_longer": "⏳ Still processing... nearly done",
+        "ai_thinking_almost": "⏳ Almost ready...",
         "ai_no_data": "Log some workouts first!",
         "ai_unavailable": "⚠️ AI is temporarily unavailable.",
         "ai_limit_daily": "🤖 The bot has used up its daily AI request limit. Please try again tomorrow!",

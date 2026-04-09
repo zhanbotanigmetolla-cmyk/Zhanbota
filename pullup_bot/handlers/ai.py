@@ -1,3 +1,5 @@
+import asyncio
+
 from google import genai
 from google.genai import types
 from aiogram import Router, types as aiogram_types
@@ -14,10 +16,34 @@ router = Router()
 
 _client = genai.Client(api_key=GEMINI_KEY)
 
-MAX_HISTORY_TURNS = 10  # keep last N user+model exchanges
+MAX_HISTORY_TURNS = 10
 
 # ---------------------------------------------------------------------------
-# System prompt — complete bot knowledge base + dynamic user data
+# Progressive loading: update the "thinking" message while waiting
+# ---------------------------------------------------------------------------
+# (seconds after which to update, i18n key for the new text)
+_PROGRESS_STEPS = [
+    (8,  "ai_thinking_long"),
+    (6,  "ai_thinking_longer"),
+    (6,  "ai_thinking_almost"),
+]
+
+
+async def _wait_with_updates(task: asyncio.Task, thinking_msg, lang: str) -> str:
+    """Await *task*, editing *thinking_msg* at each timeout milestone."""
+    for delay, key in _PROGRESS_STEPS:
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout=delay)
+        except asyncio.TimeoutError:
+            try:
+                await thinking_msg.edit_text(t(key, lang))
+            except Exception:
+                pass
+    return await task  # final wait — no more updates
+
+
+# ---------------------------------------------------------------------------
+# System prompt
 # ---------------------------------------------------------------------------
 
 _SYSTEM_TEMPLATE = """You are Turnikmen AI — the built-in intelligent assistant for the Turnikmen / Pullup Bot, a Telegram-based pullup training application.
@@ -40,42 +66,62 @@ Every user follows a repeating weekly pattern based on their personal daily base
 ### Automatic progression rules
 - Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥90% across the last 5 real training sessions
 - RPE too high (−5% base): triggers when the 3-session rolling avg RPE ≥8.5
-- RPE too low (+3% base): triggers when 3-session rolling avg RPE ≤4.5 AND all sessions were fully completed
-- Extra activity reduction: logging running/cardio/gym after training reduces tomorrow's load proportionally to prevent overtraining
+- RPE too low (+3% base): triggers when 3-session rolling avg RPE ≤4.5 AND all sessions fully completed
+- Extra activity reduction: logging running/cardio/gym after training reduces tomorrow's load proportionally
 
 ### RPE — Rate of Perceived Exertion
-After each workout the user rates effort from 1 to 10.
-1–3 = very easy, 4–6 = moderate, 7–8 = hard, 9–10 = near maximum / total failure.
+After each workout the user rates effort 1–10.
+1–3 = very easy, 4–6 = moderate, 7–8 = hard, 9–10 = near maximum / failure.
 The bot uses a rolling 3-session average to adjust load smoothly.
 
 ### XP and CS:GO-style ranks
 XP earned: +1 XP per pullup completed, +50 XP per consecutive streak day.
-18 ranks in total:
+18 ranks:
 Silver I (0 XP) → Silver II (500) → Silver III (1,000) → Silver IV (1,800) → Silver Elite (2,800) → Silver Elite Master (4,000) → Gold Nova I (5,500) → Gold Nova II (7,500) → Gold Nova III (10,000) → Gold Nova Master (13,500) → Master Guardian I (18,000) → Master Guardian II (23,000) → Master Guardian Elite (29,000) → Distinguished Master Guardian / DMG (36,000) → Legendary Eagle (44,000) → Legendary Eagle Master / LEM (53,000) → Supreme Master First Class / SMFC (63,000) → The Global Elite (70,000 XP)
-Road to Global Elite: approximately 1.5 years and ~40,000 pullups at 70/day with an active streak.
 
 ### Streak & Freeze tokens
-- Streak: consecutive days where the user trained OR acknowledged a scheduled rest day
-- Missed day without a token: streak resets to 0
-- Freeze tokens: spending one protects the streak for one missed day
-- How to earn: every 7-day streak milestone (automatic), on each rank-up (after workout), when setting a new personal record
-- Maximum 5 tokens at once
+- Streak: consecutive days the user trained OR acknowledged a rest day
+- Missed day without a token → streak resets to 0
+- Freeze tokens: spending one saves the streak for a missed day
+- Earn: every 7-day streak milestone, on each rank-up, on a new personal record; max 5
 
 ### Кочка недели / Beast of the Week
-Every Monday at 08:00, the user with the most pullups in the past 7 days is crowned champion. All users receive an announcement with top-3. The champion gets a 👑 badge in stats and on the leaderboard until next Monday.
+Every Monday 08:00 the user with the most pullups in the past 7 days is crowned champion. 👑 badge in stats and leaderboard until next Monday.
 
-### Friends vs Leaderboard (different features)
-- Friends button (👥): shows all participants' current day status — today's target, how many done, streak count. Live daily view.
-- Leaderboard button (🏆): weekly ranking by total pullups. Competitive weekly scoreboard.
+### Friends vs Leaderboard
+- Friends (👥): everyone's today status — target, done so far, streak. Live daily view.
+- Leaderboard (🏆): weekly ranking by total pullups. Competitive weekly scoreboard.
 
-### Editing past days
-Via Edit Day in Settings: change reps, RPE, extra activity, notes for any past date. Entering 0 reps deletes the record and reverses XP.
+### Navigation & UI — Main menu buttons
+After logging in the user sees these buttons:
+- 🏋️ Тренировка / Training — starts or continues today's training session
+- 📊 Статистика / Statistics — shows rank, XP progress bar, streak, today's target, 7-day history, next 7-day schedule
+- 📋 История / History — full workout history browsable by week (← → navigation)
+- 👥 Друзья / Friends — all participants with today's live progress
+- 🤖 Турникмен AI / Turnikmen AI — opens this AI chat
+- ⚙️ Настройки / Settings — user settings panel
+- 🐛 Сообщить о баге / Report a Bug — submit a bug report or feature suggestion
+- 🏆 Рейтинг / Leaderboard — weekly pullup ranking
+- ◀️ Назад / Back — returns to the landing screen
 
-### Registration
-Users provide: secret code (from organizer), name, weight in kg, daily pullup base. Starts at Silver I, program day 0.
+### Navigation & UI — Settings menu
+Opened via ⚙️ Настройки / Settings:
+- 🔔 Время уведомлений / Notification Time — set daily reminder time, format HH:MM (e.g. 08:00)
+- 📊 Изменить базу / Change Base — update the daily pullup target (the number the wave cycle is based on)
+- ⚖️ Изменить вес / Change Weight — update body weight in kg
+- ✏️ Изменить имя / Change Name — change the display name shown in the friends list and leaderboard
+- 📝 Редактировать день / Edit Day — edit any past workout: enter date as DD.MM, then corrected reps, RPE, activity, notes; entering 0 reps deletes the record
+- 📅 Причина пропуска / Skip Reason — log a reason for a missed day (illness, travel, etc.) which can restore the streak
+- 🚪 Выйти из системы / Log Out — pauses the bot; data and streak are preserved
+- 🌐 Язык / Language — switch interface language between Russian and English
+- 🗑 Удалить аккаунт / Delete Account — permanently erases all data
 
-### AI (you)
-Powered by Google Gemini 3 Flash. Full multi-turn chat with access to the user's training history and live data below.
+### Guide and About
+- 📖 Как начать / Getting Started — multi-page beginner guide (accessible from the landing screen before login and from the main menu)
+- ℹ️ О боте / About — 3-page overview of the bot's features, XP system, and rank table
+
+### Bug reports and underdeveloped features
+If the user describes something that sounds like a bug, unexpected behavior, missing functionality, or an improvement they'd like to see, gently mention: «Если хочешь сообщить об этом — нажми 🐛 в главном меню, там можно описать баг или предложить улучшение» / "If you'd like to report this, tap 🐛 in the main menu — you can describe the bug or suggest an improvement there."
 
 ---
 
@@ -86,11 +132,11 @@ Powered by Google Gemini 3 Flash. Full multi-turn chat with access to the user's
 ---
 
 ## INSTRUCTIONS
-- Respond in the user's preferred language shown above, unless they write in a different language — then match theirs
+- Respond in the user's preferred language (shown above), unless they write in a different language — then match theirs
 - Be conversational, direct, and motivating
-- When giving training advice, use the user's actual numbers (base, streak, recent RPE, rank)
+- When giving training advice, use the user's actual numbers (base, streak, recent RPE, rank, notes)
 - Keep responses concise (2–4 sentences) unless the user asks for a detailed plan or explanation
-- If asked something outside your knowledge, say so honestly
+- If asked how to do something in the bot, describe the exact button path (e.g. "open ⚙️ Settings → ✏️ Изменить имя")
 - Never fabricate training data — only reference what is in the user data block above
 """
 
@@ -126,14 +172,13 @@ def _user_data_block(user, workouts) -> str:
 
 
 def _to_gemini_history(history: list) -> list:
-    """Convert stored [{role, content}] list to google.genai Content objects."""
     return [
         types.Content(role=h["role"], parts=[types.Part(text=h["content"])])
         for h in history
     ]
 
 
-_RATE_LIMIT_DAILY = "__LIMIT_DAILY__"
+_RATE_LIMIT_DAILY  = "__LIMIT_DAILY__"
 _RATE_LIMIT_MINUTE = "__LIMIT_MINUTE__"
 
 
@@ -154,6 +199,39 @@ async def _chat(system_prompt: str, history: list, user_msg: str) -> str:
             return _RATE_LIMIT_DAILY
         logger.error(f"[Gemini] {e}")
         return ""
+
+
+def _resolve_reply(raw: str, lang: str) -> str:
+    if raw == _RATE_LIMIT_DAILY:
+        return t("ai_limit_daily", lang)
+    if raw == _RATE_LIMIT_MINUTE:
+        return t("ai_limit_minute", lang)
+    if not raw:
+        return t("ai_unavailable", lang)
+    return raw
+
+
+async def _send_reply(message, thinking_msg, reply: str, lang: str, history: list,
+                      user_text: str, state: FSMContext):
+    """Update history, delete thinking indicator, send the AI reply."""
+    new_history = history + [
+        {"role": "user",  "content": user_text},
+        {"role": "model", "content": reply},
+    ]
+    if len(new_history) > MAX_HISTORY_TURNS * 2:
+        new_history = new_history[-(MAX_HISTORY_TURNS * 2):]
+    await state.update_data(ai_history=new_history)
+
+    try:
+        await thinking_msg.delete()
+    except Exception:
+        pass
+
+    try:
+        await message.answer(f"🤖 {reply}", parse_mode="Markdown",
+                             reply_markup=ai_chat_kb(lang))
+    except Exception:
+        await message.answer(f"🤖 {reply}", reply_markup=ai_chat_kb(lang))
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +288,6 @@ async def ai_chat_exit(message: aiogram_types.Message, state: FSMContext):
 
 @router.message(AIChat.chatting, text_filter("btn_ai_advice"))
 async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
-    """Advice button — auto-sends a training advice request to the AI."""
     data = await state.get_data()
     lang = data.get("ai_lang", "ru")
     auto_prompt = (
@@ -225,33 +302,10 @@ async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
     history = data.get("ai_history", [])
 
     thinking = await message.answer(t("ai_thinking", lang))
-
-    reply = await _chat(system_prompt, history, auto_prompt)
-    if reply == _RATE_LIMIT_DAILY:
-        reply = t("ai_limit_daily", lang)
-    elif reply == _RATE_LIMIT_MINUTE:
-        reply = t("ai_limit_minute", lang)
-    elif not reply:
-        reply = t("ai_unavailable", lang)
-
-    history = history + [
-        {"role": "user", "content": auto_prompt},
-        {"role": "model", "content": reply},
-    ]
-    if len(history) > MAX_HISTORY_TURNS * 2:
-        history = history[-(MAX_HISTORY_TURNS * 2):]
-    await state.update_data(ai_history=history)
-
-    try:
-        await thinking.delete()
-    except Exception:
-        pass
-
-    try:
-        await message.answer(f"🤖 {reply}", parse_mode="Markdown",
-                             reply_markup=ai_chat_kb(lang))
-    except Exception:
-        await message.answer(f"🤖 {reply}", reply_markup=ai_chat_kb(lang))
+    task = asyncio.create_task(_chat(system_prompt, history, auto_prompt))
+    raw = await _wait_with_updates(task, thinking, lang)
+    reply = _resolve_reply(raw, lang)
+    await _send_reply(message, thinking, reply, lang, history, auto_prompt, state)
 
 
 @router.message(AIChat.chatting)
@@ -264,31 +318,7 @@ async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
     history = data.get("ai_history", [])
 
     thinking = await message.answer(t("ai_thinking_chat", lang))
-
-    reply = await _chat(system_prompt, history, message.text)
-    if reply == _RATE_LIMIT_DAILY:
-        reply = t("ai_limit_daily", lang)
-    elif reply == _RATE_LIMIT_MINUTE:
-        reply = t("ai_limit_minute", lang)
-    elif not reply:
-        reply = t("ai_unavailable", lang)
-
-    # Append and trim history
-    history = history + [
-        {"role": "user", "content": message.text},
-        {"role": "model", "content": reply},
-    ]
-    if len(history) > MAX_HISTORY_TURNS * 2:
-        history = history[-(MAX_HISTORY_TURNS * 2):]
-    await state.update_data(ai_history=history)
-
-    try:
-        await thinking.delete()
-    except Exception:
-        pass
-
-    try:
-        await message.answer(f"🤖 {reply}", parse_mode="Markdown",
-                             reply_markup=ai_chat_kb(lang))
-    except Exception:
-        await message.answer(f"🤖 {reply}", reply_markup=ai_chat_kb(lang))
+    task = asyncio.create_task(_chat(system_prompt, history, message.text))
+    raw = await _wait_with_updates(task, thinking, lang)
+    reply = _resolve_reply(raw, lang)
+    await _send_reply(message, thinking, reply, lang, history, message.text, state)
