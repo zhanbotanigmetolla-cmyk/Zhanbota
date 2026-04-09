@@ -7,6 +7,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-09]
 
 ### Changed
+- Stats screen redesigned for clarity: level now shows current→next with XP progress as `n/total XP`; streak/freezes/record merged into one line; dates shortened to dd.mm; "Total" now reads "За всё время: N подтягиваний"; chart removed (redundant with 7-day log); schedule dates shortened to dd.mm.
 - Registration: removed example hints from weight and base pullups prompts — users now enter values without suggested numbers.
 - Registration: removed the "program day" step entirely. New users always start at day 0. The question was confusing and irrelevant — load is driven by the user's own base pullup count, not by which day of the cycle they claim to be on.
 

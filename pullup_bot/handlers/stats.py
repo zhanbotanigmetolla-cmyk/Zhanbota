@@ -5,8 +5,8 @@ from aiogram import Router, types
 from ..db import get_db, get_today_workout, get_user
 from ..i18n import t, text_filter, day_name
 from ..keyboards import main_kb
-from ..config import WAVE
-from ..services.xp import display, level_info, md_escape, planned_for_day, progress_bar, weekly_chart
+from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE
+from ..services.xp import display, level_info, md_escape, planned_for_day, progress_bar
 
 router = Router()
 
@@ -69,7 +69,7 @@ async def show_stats(message: types.Message):
         d_obj = today - timedelta(days=i)
         ds = d_obj.isoformat()
         r = rows_by_date.get(ds)
-        date_label = d_obj.strftime("%d.%m.%Y")
+        date_label = d_obj.strftime("%d.%m")
         if r:
             done_v = r["completed"]; p = r["planned"]
             dtype = day_name(r["day_type"] or "—", lang)
@@ -92,54 +92,54 @@ async def show_stats(message: types.Message):
         today_plan, today_type = planned_for_day(user)
     today_type_display = day_name(today_type, lang)
 
-    # Personal record
     pr = user["personal_record"] or 0
+
+    # XP: show progress within current level
+    cur_threshold = LEVEL_THRESHOLDS[lvl]
+    nxt_threshold = LEVEL_THRESHOLDS[lvl + 1]
+    next_lname = LEVEL_NAMES[lvl + 1] if lvl + 1 < len(LEVEL_NAMES) else "—"
+    xp_in_level = user["xp"] - cur_threshold
+    xp_needed = nxt_threshold - cur_threshold
 
     # Upcoming 7-day schedule
     schedule_lines = []
     for i in range(1, 8):
         future_pd = ((user["program_day"] or 0) + i) % 7
         day_type_name, coeff = WAVE[future_pd]
-        if coeff == 0:
-            planned_label = t("stats_schedule_rest", lang)
-        else:
-            planned_n = int(user["base_pullups"] * coeff)
-            planned_label = f"{planned_n}"
+        planned_label = t("stats_schedule_rest", lang) if coeff == 0 else str(int(user["base_pullups"] * coeff))
         dt_display = day_name(day_type_name, lang)
-        future_date = (today + timedelta(days=i)).strftime("%d.%m.%Y")
+        future_date = (today + timedelta(days=i)).strftime("%d.%m")
         schedule_lines.append(f"`{future_date}  {dt_display:<9} {planned_label}`")
     schedule = "\n".join(schedule_lines)
 
-    # Progress chart (last 7 days, oldest first)
-    chart_rows = [rows_by_date[ds] for ds in sorted(rows_by_date)[-7:]]
-    chart = weekly_chart(chart_rows, lang)
-
-    week_label = "Неделя" if lang == "ru" else "Week"
-    total_label = "Всего" if lang == "ru" else "Total"
-    today_label = "Сегодня" if lang == "ru" else "Today"
-    history_label = "Последние 7 дней" if lang == "ru" else "Last 7 days"
-    streak_label = "Стрик" if lang == "ru" else "Streak"
-    freeze_label = "Заморозок" if lang == "ru" else "Freezes"
-    level_label = "Уровень" if lang == "ru" else "Level"
-    xp_label = "XP"
-    pr_label = t("personal_best", lang)
-
-    chart_section = f"\n\n{t('stats_chart_title', lang)}\n{chart}" if chart else ""
-    schedule_section = f"\n\n{t('stats_schedule_title', lang)}\n{schedule}"
     champ_line = ("👑 *Кочка недели*\n" if lang == "ru" else "👑 *Beast of the Week*\n") if user["is_weekly_champ"] else ""
+
+    if lang == "ru":
+        level_line = f"🏅 *{lname}* → {next_lname}   {bar}   {xp_in_level}/{xp_needed} XP"
+        streak_line = f"🔥 Стрик: *{user['streak']}* дн.  |  🧊 Заморозок: {user['freeze_tokens']}  |  🏆 Рекорд: {pr}"
+        today_line = f"📅 Сегодня ({today_type_display}): *{today_done}/{today_plan}*"
+        week_line = f"📆 Эта неделя: {week_done}/{week_planned} подтяг. ({week_pct}%)"
+        total_line = f"🏋️ За всё время: *{total}* подтягиваний"
+        history_header = "📋 *Последние 7 дней:*"
+        schedule_header = "📅 *Следующие 7 дней:*"
+    else:
+        level_line = f"🏅 *{lname}* → {next_lname}   {bar}   {xp_in_level}/{xp_needed} XP"
+        streak_line = f"🔥 Streak: *{user['streak']}* days  |  🧊 Freezes: {user['freeze_tokens']}  |  🏆 Best: {pr}"
+        today_line = f"📅 Today ({today_type_display}): *{today_done}/{today_plan}*"
+        week_line = f"📆 This week: {week_done}/{week_planned} pullups ({week_pct}%)"
+        total_line = f"🏋️ All time: *{total}* pullups"
+        history_header = "📋 *Last 7 days:*"
+        schedule_header = "📅 *Next 7 days:*"
 
     await message.answer(
         f"📊 *{md_escape(display(user))}*\n"
-        f"{champ_line}\n"
-        f"🏅 {level_label}: *{lname}* (lvl {lvl})\n"
-        f"⭐ {xp_label}: {user['xp']} [{bar}] → {to_nxt}\n"
-        f"🔥 {streak_label}: *{user['streak']}* | 🧊 {freeze_label}: {user['freeze_tokens']}\n"
-        f"{pr_label}: *{pr}*\n\n"
-        f"📅 {today_label} ({today_type_display}): *{today_done}/{today_plan}*\n"
-        f"📆 {week_label}: {week_done}/{week_planned} ({week_pct}%)\n"
-        f"🏋️ {total_label}: *{total}*\n\n"
-        f"📋 *{history_label}:*\n{history}"
-        f"{chart_section}"
-        f"{schedule_section}",
+        f"{champ_line}"
+        f"{level_line}\n"
+        f"{streak_line}\n\n"
+        f"{today_line}\n"
+        f"{week_line}\n"
+        f"{total_line}\n\n"
+        f"{history_header}\n{history}\n\n"
+        f"{schedule_header}\n{schedule}",
         parse_mode="Markdown",
         reply_markup=main_kb(lang))

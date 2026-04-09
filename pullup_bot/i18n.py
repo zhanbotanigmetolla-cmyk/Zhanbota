@@ -326,7 +326,7 @@ STRINGS = {
         "welcome_greet_missing": "Не удалось отправить приветствие: пользователь недоступен.",
         "welcome_greet_self": "Себя приветствовать не нужно 😄",
         # Personal record
-        "personal_best": "🏆 Рекорд дня",
+        "personal_best": "🏆 Рекорд",
         "new_pr": "\n\n🏆 *Новый рекорд дня: {done} подтягиваний!* 🎉",
         # Workout notes
         "train_notes_prompt": "📝 Заметки к тренировке?\n_(Что чувствовал, условия, мысли — любой текст)_",
@@ -687,7 +687,7 @@ STRINGS = {
         "welcome_greet_already": "You already welcomed {name}.",
         "welcome_greet_missing": "Couldn't send greeting: user is unavailable.",
         "welcome_greet_self": "No need to welcome yourself 😄",
-        "personal_best": "🏆 Day record",
+        "personal_best": "🏆 Best",
         "new_pr": "\n\n🏆 *New day record: {done} pullups!* 🎉",
         # Workout notes
         "train_notes_prompt": "📝 Any notes about this workout?\n_(How you felt, conditions, thoughts — anything)_",
