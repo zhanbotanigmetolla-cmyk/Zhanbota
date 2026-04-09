@@ -103,10 +103,14 @@ def _user_data_block(user, workouts) -> str:
     today_plan, today_type = planned_for_day(user)
     lang_label = "Russian" if lang == "ru" else "English"
 
-    history_lines = [
-        f"  {r['date'][5:]}  {(r['day_type'] or '?'):10s}  {r['completed']}/{r['planned']}  RPE={r['rpe'] or '—'}"
-        for r in workouts
-    ]
+    history_lines = []
+    for r in workouts:
+        line = f"  {r['date'][5:]}  {(r['day_type'] or '?'):10s}  {r['completed']}/{r['planned']}  RPE={r['rpe'] or '—'}"
+        if r["extra_activity"]:
+            line += f"  activity={r['extra_activity']}"
+        if r["notes"]:
+            line += f"  note: {r['notes']}"
+        history_lines.append(line)
 
     return (
         f"Name: {display(user)}\n"
@@ -166,7 +170,7 @@ async def ai_chat_start(message: aiogram_types.Message, state: FSMContext):
 
     conn = await get_db()
     async with conn.execute(
-        "SELECT date, completed, planned, rpe, day_type FROM workouts "
+        "SELECT date, completed, planned, rpe, day_type, extra_activity, notes FROM workouts "
         "WHERE user_id=? ORDER BY date DESC LIMIT 14",
         (user["id"],),
     ) as cur:
@@ -259,7 +263,7 @@ async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
     system_prompt = data.get("ai_system", "")
     history = data.get("ai_history", [])
 
-    thinking = await message.answer(t("ai_thinking", lang))
+    thinking = await message.answer(t("ai_thinking_chat", lang))
 
     reply = await _chat(system_prompt, history, message.text)
     if reply == _RATE_LIMIT_DAILY:

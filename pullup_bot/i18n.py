@@ -237,6 +237,7 @@ STRINGS = {
         "friends_error": "❌ Не удалось отправить.",
         # AI
         "ai_thinking": "🤖 Анализирую твои данные...",
+        "ai_thinking_chat": "💭 Думаю...",
         "ai_no_data": "Сначала запиши несколько тренировок!",
         "ai_unavailable": "⚠️ ИИ временно недоступен.",
         "ai_limit_daily": "🤖 Бот использовал дневной лимит запросов к ИИ. Попробуй снова завтра!",
@@ -627,6 +628,7 @@ STRINGS = {
         "friends_error": "❌ Failed to send.",
         # AI
         "ai_thinking": "🤖 Analyzing your data...",
+        "ai_thinking_chat": "💭 Thinking...",
         "ai_no_data": "Log some workouts first!",
         "ai_unavailable": "⚠️ AI is temporarily unavailable.",
         "ai_limit_daily": "🤖 The bot has used up its daily AI request limit. Please try again tomorrow!",
