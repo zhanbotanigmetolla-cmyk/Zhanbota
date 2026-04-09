@@ -188,13 +188,7 @@ async def admin_panel_back(message: types.Message, state: FSMContext):
     await state.clear()
     user = await get_user(message.from_user.id)
     lang = (user["lang"] or "ru") if user else "ru"
-    await message.answer(
-        t("settings_title", lang,
-          base=user["base_pullups"], weight=user["weight_kg"],
-          notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown",
-        reply_markup=settings_kb(lang, is_admin=True)
-    )
+    await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
 
 
 async def _show_user_profile(callback: types.CallbackQuery, state: FSMContext, tg_id: int):
