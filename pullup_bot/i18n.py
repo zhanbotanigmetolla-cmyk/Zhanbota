@@ -253,7 +253,7 @@ STRINGS = {
         "ai_thinking_longer": "⏳ Ещё обрабатываю... почти готово",
         "ai_thinking_almost": "⏳ Почти готово...",
         "ai_no_data": "Сначала запиши несколько тренировок!",
-        "ai_unavailable": "⚠️ ИИ временно недоступен.",
+        "ai_unavailable": "⚠️ ИИ временно недоступен — серверы перегружены. Попробуй ещё раз, обычно со второй-третьей попытки работает.",
         "ai_limit_daily": "🤖 Бот использовал дневной лимит запросов к ИИ. Попробуй снова завтра!",
         "ai_limit_minute": "🤖 Слишком много запросов к ИИ за раз. Подожди минуту и попробуй снова.",
         "ai_system_prompt": (
@@ -657,7 +657,7 @@ STRINGS = {
         "ai_thinking_longer": "⏳ Still processing... nearly done",
         "ai_thinking_almost": "⏳ Almost ready...",
         "ai_no_data": "Log some workouts first!",
-        "ai_unavailable": "⚠️ AI is temporarily unavailable.",
+        "ai_unavailable": "⚠️ AI is temporarily unavailable — servers are overloaded. Try again, it usually works on the second or third attempt.",
         "ai_limit_daily": "🤖 The bot has used up its daily AI request limit. Please try again tomorrow!",
         "ai_limit_minute": "🤖 Too many AI requests at once. Wait a minute and try again.",
         "ai_system_prompt": (
