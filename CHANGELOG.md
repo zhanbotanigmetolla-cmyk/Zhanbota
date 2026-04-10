@@ -4,6 +4,24 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-10] (4)
+
+### Fixed
+- **Race condition in training**: concurrent rapid set inputs no longer corrupt the sets list — added per-user lock to `custom_set_input` handler
+- **Atomic user deletion**: all related table deletes now wrapped in a single transaction; crash mid-delete no longer leaves orphaned data; also cleans `ai_usage_log`
+- **Mute enforcement**: muted users are now actually blocked from sending messages/callbacks in middleware (previously only ban was enforced)
+- **Deleted users re-registration**: permanently banned users can no longer re-register — `banned_ids` check added at secret code acceptance
+- **N+1 weekly champion query**: replaced per-user loop with a single `GROUP BY` query
+- **Weekly champion crown race**: atomic single-statement UPDATE instead of two sequential updates
+- **40+ bare `except: pass`** replaced with specific exception types or logging (`logger.warning`/`logger.debug`) across db.py, main.py, admin.py, training.py, start.py, friends.py, ai.py, gemini.py
+
+### Changed
+- Added DB indexes on `ai_usage_log.date` and `bug_reports.status` for query performance (migration 17–18)
+- Removed unused `GROQ_KEY` from config
+- Moved `import re` from inline function to module-level in start.py
+
+---
+
 ## [2026-04-10] (3)
 
 ### Changed

@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, is_admin_id, logger
-from .db import close_db, get_user, init_db, is_permanently_banned
+from .db import close_db, get_user, init_db, is_muted, is_permanently_banned
 from .handlers import register_all
 from .storage import SqliteStorage
 from .services.scheduler import (auto_cleanup_inactive, daily_health_summary,
@@ -51,8 +51,20 @@ async def errors_handler(event: types.ErrorEvent) -> bool:
     )
     try:
         await bot.send_message(ADMIN_TG_ID, alert)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[errors_handler] failed to notify admin: {e}")
+
+
+async def _check_ban_and_mute(uid: int) -> str | None:
+    """Return a reason string if user is blocked/muted, or None if OK."""
+    if await is_permanently_banned(uid):
+        return "banned"
+    user = await get_user(uid)
+    if user and user["is_banned"]:
+        return "banned"
+    if user and await is_muted(uid):
+        return "muted"
+    return None
 
 
 @dp.message.middleware()
@@ -60,15 +72,14 @@ async def ban_check_middleware(handler, event: types.Message, data):
     uid = event.from_user.id if event.from_user else None
     if uid and not is_admin_id(uid):
         try:
-            if await is_permanently_banned(uid):
+            reason = await _check_ban_and_mute(uid)
+            if reason == "banned":
                 await event.answer("⛔ Ваш аккаунт заблокирован.")
                 return
-            user = await get_user(uid)
-            if user and user["is_banned"]:
-                await event.answer("⛔ Ваш аккаунт заблокирован.")
-                return
-        except Exception:
-            pass
+            if reason == "muted":
+                return  # silently drop messages from muted users
+        except Exception as e:
+            logger.warning(f"[ban_check] user={uid}: {e}")
     return await handler(event, data)
 
 
@@ -77,15 +88,15 @@ async def ban_check_cb_middleware(handler, event: types.CallbackQuery, data):
     uid = event.from_user.id if event.from_user else None
     if uid and not is_admin_id(uid):
         try:
-            if await is_permanently_banned(uid):
+            reason = await _check_ban_and_mute(uid)
+            if reason == "banned":
                 await event.answer("⛔ Заблокирован.", show_alert=True)
                 return
-            user = await get_user(uid)
-            if user and user["is_banned"]:
-                await event.answer("⛔ Заблокирован.", show_alert=True)
+            if reason == "muted":
+                await event.answer("🔇 Вы временно заглушены.", show_alert=True)
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[ban_check_cb] user={uid}: {e}")
     return await handler(event, data)
 
 

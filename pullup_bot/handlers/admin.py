@@ -135,7 +135,7 @@ async def bug_report_decision(callback: types.CallbackQuery):
                 callback.message.text + "\n\n✅ <b>Принято</b>",
                 parse_mode="HTML"
             )
-        except Exception:
+        except TelegramBadRequest:
             pass
         await callback.answer("✅ Принято", show_alert=False)
 
@@ -149,7 +149,7 @@ async def bug_report_decision(callback: types.CallbackQuery):
                 callback.message.text + "\n\n❌ <b>Отклонено</b>",
                 parse_mode="HTML"
             )
-        except Exception:
+        except TelegramBadRequest:
             pass
         await callback.answer("❌ Отклонено", show_alert=False)
 
@@ -726,8 +726,8 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
                         os.kill(pid, signal.SIGTERM)
                 except (ValueError, ProcessLookupError):
                     pass
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[restart] sibling cleanup failed: {e}")
         os.execv(sys.executable, [sys.executable, "-m", "pullup_bot"])
 
     # ── Maintenance toggle ──────────────────────────────────────────────────
@@ -825,7 +825,8 @@ async def admin_broadcast_input(message: types.Message, state: FSMContext):
             await asyncio.sleep(0.05)
         except TelegramForbiddenError:
             failed += 1
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[broadcast] {u['tg_id']}: {e}")
             failed += 1
     await state.set_state(AdminPanel.main)
     report_text, kb = await _build_main_panel_view()

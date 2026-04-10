@@ -49,8 +49,8 @@ def _load_state() -> dict:
             data = json.load(f)
         if data.get("date") == str(date.today()):
             return data
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[gemini] load state: {e}")
     return {"date": str(date.today()), "exhausted": [], "daily_count": 0}
 
 
@@ -62,8 +62,8 @@ def _save_state(exhausted: set, daily_count: int):
                 "exhausted": [list(e) for e in exhausted],
                 "daily_count": daily_count,
             }, f)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[gemini] save state failed: {e}")
 
 
 class APIKeyManager:

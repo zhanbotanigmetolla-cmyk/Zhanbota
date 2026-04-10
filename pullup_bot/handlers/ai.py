@@ -292,8 +292,8 @@ async def _send_reply(message, thinking_msg, reply: str, lang: str, history: lis
     if model_used and reply not in (RATE_LIMIT_DAILY, RATE_LIMIT_MINUTE, ""):
         try:
             await log_ai_usage(user_id, model_used, question=user_text, answer=reply)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[ai] failed to log usage: {e}")
 
     try:
         await thinking_msg.delete()

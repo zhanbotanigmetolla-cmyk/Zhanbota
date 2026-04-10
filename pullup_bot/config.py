@@ -16,7 +16,6 @@ if not _TESTING:
 
 BOT_TOKEN = os.environ.get("PULLUP_BOT_TOKEN", "")
 SECRET_CODE = os.environ.get("PULLUP_SECRET", "TESTCODE")
-GROQ_KEY = os.environ.get("GROQ_API_KEY", "")  # kept for backward compat, no longer used
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_KEYS = [k for k in [
     os.environ.get("GEMINI_API_KEY", ""),

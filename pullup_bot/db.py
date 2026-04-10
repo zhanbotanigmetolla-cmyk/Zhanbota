@@ -55,6 +55,10 @@ MIGRATIONS = [
     "ALTER TABLE ai_usage_log ADD COLUMN question TEXT",
     # index 16
     "ALTER TABLE ai_usage_log ADD COLUMN answer TEXT",
+    # index 17 — missing indexes for frequently queried columns
+    "CREATE INDEX IF NOT EXISTS idx_ai_usage_log_date ON ai_usage_log(date)",
+    # index 18
+    "CREATE INDEX IF NOT EXISTS idx_bug_reports_status ON bug_reports(status)",
 ]
 
 
@@ -145,8 +149,9 @@ async def init_db():
     for i in range(current, len(MIGRATIONS)):
         try:
             await conn.executescript(MIGRATIONS[i])
-        except Exception:
-            pass  # Column/index may already exist
+        except Exception as e:
+            # Column/index may already exist — log for visibility
+            logger.debug(f"[migration {i}] skipped: {e}")
     if current < len(MIGRATIONS):
         await conn.execute("UPDATE migrations SET version=?", (len(MIGRATIONS),))
     # Legacy migrations (idempotent — safe to run even if column already exists)
@@ -157,7 +162,7 @@ async def init_db():
         try:
             await conn.execute(col_sql)
         except Exception:
-            pass
+            pass  # column already exists
     # Seed program_day from start_day for existing users
     await conn.execute(
         "UPDATE users SET program_day = start_day WHERE program_day = 0 OR program_day IS NULL"
@@ -302,8 +307,8 @@ async def ban_user(tg_id: int, reason: str = "") -> None:
             "INSERT OR REPLACE INTO banned_ids (tg_id, reason) VALUES (?, ?)",
             (tg_id, reason)
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[ban_user] failed to insert banned_ids for {tg_id}: {e}")
     await conn.commit()
 
 
@@ -392,23 +397,27 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
     conn = await get_db()
     async with conn.execute("SELECT id FROM users WHERE tg_id=?", (tg_id,)) as cur:
         row = await cur.fetchone()
-    if row:
-        user_id = row[0]
-        await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
-        await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?",
-                           (user_id, user_id))
-        await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
-        await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
-        await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
-    if permanent_ban:
-        try:
+    # Wrap all deletes in a single transaction to avoid orphaned data on crash
+    try:
+        if row:
+            user_id = row[0]
+            await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
+            await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?",
+                               (user_id, user_id))
+            await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
+            await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
+            await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
+            await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+        if permanent_ban:
             await conn.execute(
                 "INSERT OR REPLACE INTO banned_ids (tg_id, reason) VALUES (?, ?)",
                 (tg_id, "admin_deleted")
             )
-        except Exception:
-            pass
-    await conn.commit()
+        await conn.commit()
+    except Exception as e:
+        logger.error(f"[delete_user] failed for tg_id={tg_id}: {e}")
+        await conn.rollback()
+        raise
 
 
 async def log_ai_usage(user_id: int, model: str, question: str = "", answer: str = "") -> None:

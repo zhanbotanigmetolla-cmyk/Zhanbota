@@ -1,3 +1,5 @@
+import re
+
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.filters import Command, StateFilter
@@ -7,7 +9,7 @@ from aiogram.types import ReplyKeyboardRemove
 from datetime import date, datetime, timedelta
 
 from ..config import LEVEL_NAMES, SECRET_CODE_NORM, logger
-from ..db import add_welcome_greeting, get_db, get_lang, get_user
+from ..db import add_welcome_greeting, get_db, get_lang, get_user, is_permanently_banned
 from ..i18n import t, text_filter
 from ..keyboards import (LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
                          about_kb, guide_kb, landing_kb, lang_kb,
@@ -257,6 +259,14 @@ async def login_check(message: types.Message, state: FSMContext):
             await message.answer(t("wrong_code", lang, attempts=attempts))
         return
 
+    # Check if this user was permanently banned (deleted account)
+    if await is_permanently_banned(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Ваш аккаунт был удалён. Регистрация невозможна."
+                             if lang == "ru" else
+                             "⛔ Your account was deleted. Registration is not possible.")
+        return
+
     await state.update_data(attempts=0, locked_until=None)
     await message.answer(t("code_accepted", lang), parse_mode="Markdown")
     await state.set_state(Reg.name)
@@ -284,7 +294,6 @@ async def reg_weight(message: types.Message, state: FSMContext):
         await message.answer(t("enter_number", lang, example="90"))
         return
     try:
-        import re
         text = re.sub(r'(?i)\s*к?г\w*$|\s*kg\w*$', '', message.text.strip()).strip()
         if len(text) > 8:
             await message.answer(t("enter_number", lang, example="90"))
@@ -413,5 +422,5 @@ async def _broadcast_new_user(new_tg_id: int, name: str):
                 parse_mode="Markdown",
                 reply_markup=welcome_new_user_kb(name, new_tg_id, ulang),
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[broadcast_new_user] {u['tg_id']}: {e}")

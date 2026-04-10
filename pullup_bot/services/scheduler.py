@@ -70,25 +70,27 @@ async def _announce_weekly_champ(bot, conn, users):
     week_ago = (date.today() - timedelta(days=7)).isoformat()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
 
-    entries = []
-    for user in users:
-        async with conn.execute(
-            "SELECT COALESCE(SUM(completed),0) as total FROM workouts "
-            "WHERE user_id=? AND date>=? AND date<=?",
-            (user["id"], week_ago, yesterday)
-        ) as cur:
-            row = await cur.fetchone()
-        entries.append((user, row["total"] if row else 0))
+    # Single query instead of N+1 per-user loop
+    async with conn.execute(
+        "SELECT user_id, COALESCE(SUM(completed),0) as total FROM workouts "
+        "WHERE date>=? AND date<=? GROUP BY user_id",
+        (week_ago, yesterday)
+    ) as cur:
+        totals_rows = await cur.fetchall()
+    totals_map = {r["user_id"]: r["total"] for r in totals_rows}
 
+    entries = [(user, totals_map.get(user["id"], 0)) for user in users]
     entries.sort(key=lambda x: x[1], reverse=True)
     if not entries or entries[0][1] == 0:
         return  # nobody trained — skip the ceremony
 
     champ, champ_total = entries[0]
 
-    # Crown the new champion, remove old one
-    await conn.execute("UPDATE users SET is_weekly_champ=0")
-    await conn.execute("UPDATE users SET is_weekly_champ=1 WHERE id=?", (champ["id"],))
+    # Crown the new champion atomically
+    await conn.execute(
+        "UPDATE users SET is_weekly_champ = CASE WHEN id=? THEN 1 ELSE 0 END",
+        (champ["id"],)
+    )
     await conn.commit()
 
     medals = ["🥇", "🥈", "🥉"]

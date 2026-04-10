@@ -392,17 +392,26 @@ async def cancel_back_msg(message: types.Message, state: FSMContext):
 
 @router.message(Training.active, F.text.regexp(r"^\s*\d+\s*$"))
 async def custom_set_input(message: types.Message, state: FSMContext):
-    reps = int(message.text.strip())
-    if reps < 1 or reps > 500:
+    uid = message.from_user.id
+    if uid not in _user_locks:
+        _user_locks[uid] = asyncio.Lock()
+    if _user_locks[uid].locked():
+        return  # duplicate rapid message — drop silently
+    async with _user_locks[uid]:
+        current_state = await state.get_state()
+        if current_state != Training.active:
+            return
+        reps = int(message.text.strip())
+        if reps < 1 or reps > 500:
+            data = await state.get_data()
+            lang = data.get("lang", "ru")
+            await message.answer(t("enter_number", lang, example="10"))
+            return
         data = await state.get_data()
-        lang = data.get("lang", "ru")
-        await message.answer(t("enter_number", lang, example="10"))
-        return
-    data = await state.get_data()
-    sets = data.get("sets", [])
-    sets.append(reps)
-    await state.update_data(sets=sets)
-    await _training_status(message, state)
+        sets = data.get("sets", [])
+        sets.append(reps)
+        await state.update_data(sets=sets)
+        await _training_status(message, state)
 
 
 @router.message(Training.rpe)
@@ -725,5 +734,5 @@ async def _notify_friends(tg_id: int, done: int, planned: int, sets_count: int, 
                   name=md_escape(display(user)),
                   emoji=emoji, done=done, planned=planned, sets=sets_count),
                 parse_mode="Markdown")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[notify_friends] {p['tg_id']}: {e}")

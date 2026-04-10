@@ -215,5 +215,6 @@ async def poke_friend(message: types.Message, state: FSMContext):
         await message.answer(t("friends_poke_sent", lang, name=md_escape(display(friend))))
     except TelegramForbiddenError:
         await message.answer(t("friends_blocked", lang))
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[friends_poke] {message.from_user.id}: {e}")
         await message.answer(t("friends_error", lang))
