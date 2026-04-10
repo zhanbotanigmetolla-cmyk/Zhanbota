@@ -7,7 +7,7 @@ from aiogram.types import KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 
-from ..db import get_db, get_today_workout, get_user
+from ..db import get_db, get_user
 from ..i18n import t, text_filter
 from ..keyboards import main_kb
 from ..services.xp import display, level_info, md_escape, planned_for_day
@@ -36,13 +36,23 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
     today_str = date.today().isoformat()
     you_label = "Вы" if lang == "ru" else "You"
 
+    # Batch-fetch today's workouts for all page users in one query
+    page_ids = [f["id"] for f in page_users]
+    placeholders = ",".join("?" * len(page_ids))
+    async with conn.execute(
+        f"SELECT * FROM workouts WHERE user_id IN ({placeholders}) AND date=?",
+        page_ids + [today_str]
+    ) as cur:
+        today_rows = await cur.fetchall()
+    today_map = {r["user_id"]: r for r in today_rows}
+
     header = t("friends_title", lang)
     if total_pages > 1:
         header += f"  _{t('friends_page', lang, page=page + 1, total=total_pages)}_"
     text = header + "\n\n"
 
     for f in page_users:
-        today_w = await get_today_workout(f["id"])
+        today_w = today_map.get(f["id"])
         done = today_w["completed"] if today_w else 0
         if today_w:
             plan = today_w["planned"] if today_w["planned"] is not None else 0
@@ -142,14 +152,18 @@ async def leaderboard(message: types.Message):
         return
 
     week_ago = (date.today() - timedelta(days=7)).isoformat()
+    # Batch query: get weekly totals for all users in one go
+    async with conn.execute(
+        "SELECT user_id, COALESCE(SUM(completed), 0) as week_done "
+        "FROM workouts WHERE date>=? GROUP BY user_id",
+        (week_ago,)
+    ) as cur:
+        weekly_rows = await cur.fetchall()
+    weekly_map = {r["user_id"]: r["week_done"] for r in weekly_rows}
+
     entries = []
     for u in all_users:
-        async with conn.execute(
-            "SELECT COALESCE(SUM(completed), 0) as week_done FROM workouts "
-            "WHERE user_id=? AND date>=?", (u["id"], week_ago)
-        ) as cur:
-            row = await cur.fetchone()
-        week_done = row["week_done"] if row else 0
+        week_done = weekly_map.get(u["id"], 0)
         _, lname, _, _ = level_info(u["xp"])
         entries.append((u, week_done, lname))
 

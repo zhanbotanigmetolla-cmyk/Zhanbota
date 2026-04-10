@@ -59,6 +59,8 @@ MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_ai_usage_log_date ON ai_usage_log(date)",
     # index 18
     "CREATE INDEX IF NOT EXISTS idx_bug_reports_status ON bug_reports(status)",
+    # index 19 — opt-in workout finish notifications (default OFF)
+    "ALTER TABLE users ADD COLUMN notify_workouts INTEGER DEFAULT 0",
 ]
 
 
@@ -407,6 +409,8 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
             await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
             await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
             await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
+            await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
+                               (user_id, user_id))
             await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
         if permanent_ban:
             await conn.execute(

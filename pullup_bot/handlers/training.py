@@ -17,8 +17,20 @@ from ..services.xp import (activity_reduction, display, level_info, md_escape,
 
 router = Router()
 
-# Per-user locks to prevent duplicate processing when messages arrive in rapid succession
+# Per-user locks to prevent duplicate processing when messages arrive in rapid succession.
+# Capped to prevent unbounded memory growth — evicts oldest entries when full.
+_MAX_LOCKS = 200
 _user_locks: dict[int, asyncio.Lock] = {}
+
+
+def _get_lock(uid: int) -> asyncio.Lock:
+    if uid not in _user_locks:
+        if len(_user_locks) >= _MAX_LOCKS:
+            # Evict the oldest entry
+            oldest = next(iter(_user_locks))
+            del _user_locks[oldest]
+        _user_locks[uid] = asyncio.Lock()
+    return _user_locks[uid]
 
 
 def _days_since_last(user) -> int:
@@ -393,11 +405,10 @@ async def cancel_back_msg(message: types.Message, state: FSMContext):
 @router.message(Training.active, F.text.regexp(r"^\s*\d+\s*$"))
 async def custom_set_input(message: types.Message, state: FSMContext):
     uid = message.from_user.id
-    if uid not in _user_locks:
-        _user_locks[uid] = asyncio.Lock()
-    if _user_locks[uid].locked():
+    lock = _get_lock(uid)
+    if lock.locked():
         return  # duplicate rapid message — drop silently
-    async with _user_locks[uid]:
+    async with lock:
         current_state = await state.get_state()
         if current_state != Training.active:
             return
@@ -417,11 +428,10 @@ async def custom_set_input(message: types.Message, state: FSMContext):
 @router.message(Training.rpe)
 async def set_rpe_msg(message: types.Message, state: FSMContext):
     uid = message.from_user.id
-    if uid not in _user_locks:
-        _user_locks[uid] = asyncio.Lock()
-    if _user_locks[uid].locked():
+    lock = _get_lock(uid)
+    if lock.locked():
         return  # duplicate rapid message — drop silently
-    async with _user_locks[uid]:
+    async with lock:
         # Re-check state in case a concurrent message already advanced it
         current_state = await state.get_state()
         if current_state != Training.rpe:
@@ -719,9 +729,9 @@ async def _notify_friends(tg_id: int, done: int, planned: int, sets_count: int, 
     if not user:
         return
     conn = await get_db()
-    # Participant model: notify all users except the sender
+    # Only notify users who opted in to workout notifications
     async with conn.execute(
-        "SELECT * FROM users WHERE tg_id != ?", (tg_id,)
+        "SELECT * FROM users WHERE tg_id != ? AND notify_workouts = 1", (tg_id,)
     ) as cur:
         participants = await cur.fetchall()
     emoji = "🔥" if done >= planned else "💪"

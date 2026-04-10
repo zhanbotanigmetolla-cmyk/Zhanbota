@@ -15,6 +15,9 @@ async def _delete_user(conn, user_id: int):
     await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?", (user_id, user_id))
     await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
     await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
+                       (user_id, user_id))
     await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     await conn.commit()
 

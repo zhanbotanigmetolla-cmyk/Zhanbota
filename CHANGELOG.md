@@ -4,6 +4,18 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-10] (5)
+
+### Changed
+- **Workout notifications now opt-in**: friend workout finish notifications are OFF by default; users can toggle them in Settings. Stops spam as user count grows.
+- **Friends list & leaderboard optimized**: replaced N+1 per-user DB queries with single batch queries (1 query instead of N)
+- **User locks capped at 200**: prevents unbounded memory growth from per-user asyncio.Lock objects
+
+### Fixed
+- **Orphaned data on account delete**: self-delete (Settings) now also cleans `ai_usage_log` and `pokes` tables; scheduler auto-cleanup and admin delete also clean `pokes`
+
+---
+
 ## [2026-04-10] (4)
 
 ### Fixed

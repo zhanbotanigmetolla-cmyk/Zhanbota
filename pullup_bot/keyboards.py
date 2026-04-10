@@ -52,11 +52,13 @@ def about_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
     return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-def settings_kb(lang: str = "ru", is_admin: bool = False) -> ReplyKeyboardMarkup:
+def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool = False) -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_notify_time", lang)), KeyboardButton(text=t("btn_change_base", lang)))
     b.row(KeyboardButton(text=t("btn_change_weight", lang)), KeyboardButton(text=t("btn_change_name", lang)))
     b.row(KeyboardButton(text=t("btn_edit_day", lang)), KeyboardButton(text=t("btn_skip_reason", lang)))
+    nw_key = "btn_notify_workouts_on" if notify_workouts else "btn_notify_workouts_off"
+    b.row(KeyboardButton(text=t(nw_key, lang)))
     b.row(KeyboardButton(text=t("btn_logout", lang)), KeyboardButton(text=t("btn_language", lang)))
     b.row(KeyboardButton(text=t("btn_delete_account", lang)))
     if is_admin:

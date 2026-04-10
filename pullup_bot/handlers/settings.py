@@ -63,7 +63,8 @@ async def settings_menu(message: types.Message, state: FSMContext):
         t("settings_title", lang,
           base=user["base_pullups"], weight=user["weight_kg"],
           notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message)))
+        parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message),
+                                                         notify_workouts=bool(user["notify_workouts"])))
 
 
 @router.message(text_filter("btn_logout"))
@@ -110,6 +111,9 @@ async def delete_account_confirm(message: types.Message, state: FSMContext):
                            (user["id"], user["id"]))
         await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user["id"],))
         await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user["id"],))
+        await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user["id"],))
+        await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
+                           (user["id"], user["id"]))
         await conn.execute("DELETE FROM users WHERE id=?", (user["id"],))
         await conn.commit()
     from aiogram.types import ReplyKeyboardRemove
@@ -129,7 +133,8 @@ async def delete_account_cancel(message: types.Message, state: FSMContext):
         t("settings_title", lang,
           base=user["base_pullups"], weight=user["weight_kg"],
           notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown", reply_markup=settings_kb(lang))
+        parse_mode="Markdown", reply_markup=settings_kb(lang,
+                                                       notify_workouts=bool(user["notify_workouts"])))
 
 
 @router.message(text_filter("btn_notify_time"))
@@ -202,7 +207,8 @@ async def edit_date_back(message: types.Message, state: FSMContext):
         t("settings_title", lang,
           base=user["base_pullups"], weight=user["weight_kg"],
           notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message)))
+        parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message),
+                                                         notify_workouts=bool(user["notify_workouts"])))
 
 
 @router.message(EditDay.pick_done, text_filter("btn_back"))
@@ -261,7 +267,8 @@ async def language_back(message: types.Message, state: FSMContext):
         t("settings_title", lang,
           base=user["base_pullups"], weight=user["weight_kg"],
           notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown", reply_markup=settings_kb(lang))
+        parse_mode="Markdown", reply_markup=settings_kb(lang,
+                                                       notify_workouts=bool(user["notify_workouts"]) if user else False))
 
 
 @router.message(Settings.pick_lang, F.text.in_({LANG_RU_BTN, LANG_EN_BTN, LANG_TOGGLE_BTN}))
@@ -278,6 +285,25 @@ async def set_lang_toggle(message: types.Message, state: FSMContext):
     await conn.commit()
     await state.clear()
     await message.answer(t("lang_ok", new_lang), reply_markup=main_kb(new_lang))
+
+
+@router.message(text_filter("btn_notify_workouts_on"))
+@router.message(text_filter("btn_notify_workouts_off"))
+async def toggle_notify_workouts(message: types.Message, state: FSMContext):
+    user = await get_user(message.from_user.id)
+    if not user:
+        await message.answer(t("register_first", "ru"))
+        return
+    lang = user["lang"] or "ru"
+    new_val = 0 if user["notify_workouts"] else 1
+    conn = await get_db()
+    await conn.execute("UPDATE users SET notify_workouts=? WHERE tg_id=?",
+                       (new_val, message.from_user.id))
+    await conn.commit()
+    msg_key = "notify_workouts_enabled" if new_val else "notify_workouts_disabled"
+    await message.answer(t(msg_key, lang), parse_mode="Markdown",
+                         reply_markup=settings_kb(lang, is_admin=_is_admin(message),
+                                                  notify_workouts=bool(new_val)))
 
 
 @router.message(SetNotify.enter_time)
