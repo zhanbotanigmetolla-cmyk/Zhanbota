@@ -550,30 +550,42 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
 
     # ── AI usage stats ──────────────────────────────────────────────────────
     elif action == "ai_stats":
-        from ..services.gemini import get_manager, TIERS
+        from ..services.gemini import get_manager, TIERS, TIER_LABELS
         usage = await get_ai_usage_stats()
         mgr = get_manager()
-        exhausted_info = ""
+
+        # Per-tier/key exhaustion grid  (20 RPD each tier, 500 RPD for tier 4)
+        RPD = {0: 20, 1: 20, 2: 20, 3: 500}
+        tier_lines = ""
         for t_idx, model in enumerate(TIERS):
-            keys_exhausted = sum(1 for k_idx in range(len(mgr._keys)) if (k_idx, t_idx) in mgr._exhausted)
-            if keys_exhausted:
-                exhausted_info += f"\n  ⚠️ {model}: {keys_exhausted}/{len(mgr._keys)} ключей исчерпаны"
+            label = TIER_LABELS.get(model, model)
+            rpd = RPD.get(t_idx, 20)
+            key_statuses = []
+            for k_idx in range(len(mgr._keys)):
+                key_statuses.append("🔴" if (k_idx, t_idx) in mgr._exhausted else "🟢")
+            keys_str = " ".join(key_statuses)
+            total_left = sum(1 for k in range(len(mgr._keys)) if (k, t_idx) not in mgr._exhausted) * rpd
+            tier_lines += f"\n  {keys_str}  <code>{label}</code> (~{total_left} RPD left)"
+
         per_user_text = ""
         for row in (usage["per_user"] or []):
-            per_user_text += f"\n  • {row['name']}: {row['cnt']} запросов"
+            per_user_text += f"\n  • {row['name']}: {row['cnt']}"
         per_model_text = ""
         for row in (usage["per_model"] or []):
-            per_model_text += f"\n  • {row['model']}: {row['cnt']}"
-        all_ex = "🔴 ВСЕ КЛЮЧИ ИСЧЕРПАНЫ" if mgr.is_daily_exhausted() else "🟢 Работает"
+            short = TIER_LABELS.get(row['model'], row['model'])
+            per_model_text += f"\n  • {short}: {row['cnt']}"
+
+        all_ex = "🔴 ВСЕ ИСЧЕРПАНЫ — AI недоступен" if mgr.is_daily_exhausted() else "🟢 Работает"
         text = (
             f"<b>🤖 AI Использование</b>\n\n"
             f"Статус: {all_ex}\n"
-            f"Ключей: {len(mgr._keys)} × {len(TIERS)} тиров\n\n"
+            f"Ключей: {len(mgr._keys)}  |  Тиров: {len(TIERS)}\n"
+            f"Лимит: 20 RPD/ключ (Tier 1-3) · 500 RPD/ключ (Tier 4)\n\n"
             f"📊 Сегодня: <b>{usage['today']}</b> запросов\n"
-            f"📈 Всего за всё время: {usage['total']}\n"
-            f"{exhausted_info}"
-            f"\n\n<b>По пользователям (сегодня):</b>{per_user_text or ' нет данных'}"
-            f"\n\n<b>По моделям (сегодня):</b>{per_model_text or ' нет данных'}"
+            f"📈 Всего за всё время: {usage['total']}\n\n"
+            f"<b>Статус по тирам (🟢=OK 🔴=исчерпан):</b>{tier_lines}\n\n"
+            f"<b>По пользователям (сегодня):</b>{per_user_text or ' нет данных'}\n\n"
+            f"<b>По моделям (сегодня):</b>{per_model_text or ' нет данных'}"
         )
         from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
         b_back = _IKB()

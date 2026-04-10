@@ -1,11 +1,20 @@
 """
-Triple-tier Gemini API key rotation.
+Quad-tier Gemini API key rotation.
 
-Tier 1 (Priority):   gemini-3-flash-preview  — rotates through all keys
-Tier 2 (Fallback):   gemini-2.5-flash        — if all keys hit daily limit on Tier 1
-Tier 3 (Emergency):  gemini-2.5-flash-lite   — if Tier 2 also exhausted
+Real free-tier limits (20 RPD per key per model, except Tier 4):
+  Tier 1: gemini-3-flash-preview   — 20 RPD × 4 keys = 80/day  (best quality)
+  Tier 2: gemini-2.5-flash         — 20 RPD × 4 keys = 80/day
+  Tier 3: gemini-2.5-flash-lite    — 20 RPD × 4 keys = 80/day
+  Tier 4: gemini-3.1-flash-lite    — 500 RPD × 4 keys = 2000/day (emergency volume)
+
+Total theoretical max: ~2240 requests/day across all keys and tiers.
+
+Exhaustion state persists across bot restarts within the same calendar day
+by writing to a small JSON sidecar file.
 """
 
+import json
+import os
 from datetime import date
 from google import genai
 from google.genai import types as genai_types
@@ -16,20 +25,64 @@ TIERS = [
     "gemini-3-flash-preview",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite",
 ]
+
+# Human-readable short names for admin display
+TIER_LABELS = {
+    "gemini-3-flash-preview": "3-Flash",
+    "gemini-2.5-flash":       "2.5-Flash",
+    "gemini-2.5-flash-lite":  "2.5-Lite",
+    "gemini-3.1-flash-lite":  "3.1-Lite★",
+}
 
 RATE_LIMIT_DAILY  = "__LIMIT_DAILY__"
 RATE_LIMIT_MINUTE = "__LIMIT_MINUTE__"
+
+# Sidecar file: persists exhaustion state across restarts within the same day
+_STATE_FILE = os.path.expanduser("~/pullup_gemini_state.json")
+
+
+def _load_state() -> dict:
+    try:
+        with open(_STATE_FILE) as f:
+            data = json.load(f)
+        if data.get("date") == str(date.today()):
+            return data
+    except Exception:
+        pass
+    return {"date": str(date.today()), "exhausted": [], "daily_count": 0}
+
+
+def _save_state(exhausted: set, daily_count: int):
+    try:
+        with open(_STATE_FILE, "w") as f:
+            json.dump({
+                "date": str(date.today()),
+                "exhausted": [list(e) for e in exhausted],
+                "daily_count": daily_count,
+            }, f)
+    except Exception:
+        pass
 
 
 class APIKeyManager:
     def __init__(self, keys: list):
         self._keys = keys if keys else [GEMINI_KEYS[0] if GEMINI_KEYS else ""]
         self._clients = [genai.Client(api_key=k) for k in self._keys]
-        self._exhausted: set = set()  # (key_idx, tier_idx) pairs that hit daily limit
-        self._daily_count = 0
+
+        state = _load_state()
+        self._exhausted: set = {tuple(e) for e in state.get("exhausted", [])}
+        self._daily_count: int = state.get("daily_count", 0)
         self._count_date = date.today()
-        self._all_exhausted = False
+        self._all_exhausted = self._check_all_exhausted()
+
+    def _check_all_exhausted(self) -> bool:
+        for t in range(len(TIERS)):
+            for k in range(len(self._keys)):
+                if (k, t) not in self._exhausted:
+                    return False
+        return True
 
     def _reset_if_new_day(self):
         today = date.today()
@@ -38,6 +91,7 @@ class APIKeyManager:
             self._daily_count = 0
             self._count_date = today
             self._all_exhausted = False
+            _save_state(self._exhausted, self._daily_count)
 
     def daily_count(self) -> int:
         self._reset_if_new_day()
@@ -46,6 +100,14 @@ class APIKeyManager:
     def is_daily_exhausted(self) -> bool:
         self._reset_if_new_day()
         return self._all_exhausted
+
+    def exhausted_summary(self) -> list[dict]:
+        """Returns list of {tier, key, model} for all exhausted combos — for admin display."""
+        return [
+            {"tier": t, "key": k, "model": TIERS[t]}
+            for (k, t) in sorted(self._exhausted)
+            if t < len(TIERS) and k < len(self._keys)
+        ]
 
     async def chat(self, system_prompt: str, history: list, user_msg: str) -> tuple[str, str]:
         """
@@ -76,6 +138,7 @@ class APIKeyManager:
                     )
                     response = await session.send_message(user_msg)
                     self._daily_count += 1
+                    _save_state(self._exhausted, self._daily_count)
                     logger.info(
                         f"[Gemini] key={key_idx} tier={tier_idx} ({model}) "
                         f"ok, daily_total={self._daily_count}"
@@ -90,6 +153,7 @@ class APIKeyManager:
                             f"[Gemini] key={key_idx} tier={tier_idx} ({model}) daily limit hit"
                         )
                         self._exhausted.add((key_idx, tier_idx))
+                        _save_state(self._exhausted, self._daily_count)
                         continue  # try next key in same tier
                     logger.error(f"[Gemini] key={key_idx} tier={tier_idx} ({model}): {e}")
                     return "", ""
