@@ -4,6 +4,16 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-10] (6)
+
+### Added
+- **Self-diagnosis watchdog**: runs every 5 min — checks DB connection liveness (auto-reconnect if dead), detects stale FSM states from previous days (auto-clears and notifies user), monitors error rate spikes (alerts admin immediately if 5+ errors/5min or >50% failure rate)
+
+### Changed
+- **AI waiting messages**: all phrases now end with "..." for consistency; fixed coffee message text
+
+---
+
 ## [2026-04-10] (5)
 
 ### Changed

@@ -10,7 +10,8 @@ from .db import close_db, get_user, init_db, is_muted, is_permanently_banned
 from .handlers import register_all
 from .storage import SqliteStorage
 from .services.scheduler import (auto_cleanup_inactive, daily_health_summary,
-                                  daily_reminder, db_integrity_check, weekly_summary)
+                                  daily_reminder, db_integrity_check,
+                                  watchdog_health_check, weekly_summary)
 from .services import monitoring
 from . import globals as g
 
@@ -143,6 +144,7 @@ async def main():
     scheduler.add_job(db_integrity_check, "cron", hour=3, minute=0, args=[bot])
     scheduler.add_job(weekly_summary, "cron", day_of_week="mon", hour=8, minute=0, args=[bot])
     scheduler.add_job(auto_cleanup_inactive, "cron", hour=4, minute=0, args=[bot])
+    scheduler.add_job(watchdog_health_check, "interval", minutes=5, args=[bot])
     scheduler.start()
     logger.info("✅ Turnikmen Bot запущен!")
 

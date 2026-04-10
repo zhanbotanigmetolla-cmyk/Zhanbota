@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from aiogram.exceptions import TelegramForbiddenError
 
@@ -303,3 +303,118 @@ async def auto_cleanup_inactive(bot):
             )
         except Exception as e:
             logger.warning(f"[cleanup] admin notify failed: {e}")
+
+
+# ── Self-diagnosis watchdog ─────────────────────────────────────────────────
+
+# Track consecutive error-only intervals to detect silent failures
+_watchdog_prev_errors = 0
+_watchdog_prev_actions = 0
+_watchdog_error_streak = 0
+
+
+async def watchdog_health_check(bot):
+    """
+    Runs every 5 minutes. Detects:
+    1. DB connection dead → reconnect
+    2. Stale FSM states (user stuck 2+ hours) → auto-clear and notify user
+    3. Error rate spikes → alert admin immediately
+    """
+    global _watchdog_prev_errors, _watchdog_prev_actions, _watchdog_error_streak
+    issues = []
+
+    # ── 1. DB liveness check ────────────────────────────────────────────────
+    try:
+        conn = await get_db()
+        async with conn.execute("SELECT 1") as cur:
+            await cur.fetchone()
+    except Exception as e:
+        issues.append(f"DB connection dead: {e}")
+        logger.error(f"[watchdog] DB connection failed: {e}")
+        # Force reconnect
+        from ..db import close_db
+        try:
+            await close_db()
+        except Exception:
+            pass
+
+    # ── 2. Stale FSM state detection ────────────────────────────────────────
+    try:
+        from ..storage import SqliteStorage
+        from ..config import FSM_DB_PATH
+        import aiosqlite
+        async with aiosqlite.connect(FSM_DB_PATH) as fsm_conn:
+            fsm_conn.row_factory = aiosqlite.Row
+            async with fsm_conn.execute(
+                "SELECT chat_id, user_id, state, data FROM fsm_states WHERE state IS NOT NULL"
+            ) as cur:
+                stuck_rows = await cur.fetchall()
+        import json
+        cleared = 0
+        for row in stuck_rows:
+            try:
+                data = json.loads(row["data"]) if row["data"] else {}
+            except (json.JSONDecodeError, TypeError):
+                data = {}
+            # Check if state has a timestamp we can use — otherwise use a heuristic
+            # States with active training data older than 2 hours are likely stale
+            state_name = row["state"] or ""
+            # Training and AI states are the ones most likely to get stuck
+            if not any(s in state_name for s in ["Training", "AIChat", "EditDay",
+                                                   "SetNotify", "SetBase", "SetWeight",
+                                                   "SetName", "SkipReason"]):
+                continue
+            # For training states: check if the stored date is today
+            stored_date = data.get("date")
+            if stored_date and stored_date != date.today().isoformat():
+                # Stale — from a previous day
+                async with aiosqlite.connect(FSM_DB_PATH) as fsm_w:
+                    await fsm_w.execute(
+                        "UPDATE fsm_states SET state=NULL, data='{}' WHERE chat_id=? AND user_id=?",
+                        (row["chat_id"], row["user_id"])
+                    )
+                    await fsm_w.commit()
+                cleared += 1
+                user_tg_id = row["user_id"]
+                try:
+                    from ..db import get_lang
+                    lang = await get_lang(user_tg_id)
+                    if lang == "ru":
+                        msg = "🔄 Бот перезапустил твою сессию — предыдущее действие было прервано. Нажми /start или любую кнопку меню."
+                    else:
+                        msg = "🔄 Bot reset your session — the previous action was interrupted. Tap /start or any menu button."
+                    await bot.send_message(user_tg_id, msg)
+                except Exception as e:
+                    logger.debug(f"[watchdog] notify stale user {user_tg_id}: {e}")
+        if cleared:
+            issues.append(f"Cleared {cleared} stale FSM state(s)")
+            logger.info(f"[watchdog] cleared {cleared} stale FSM states")
+    except Exception as e:
+        logger.warning(f"[watchdog] FSM check failed: {e}")
+
+    # ── 3. Error rate spike detection ───────────────────────────────────────
+    current_errors = monitoring.get("errors")
+    current_actions = monitoring.get("actions")
+    new_errors = current_errors - _watchdog_prev_errors
+    new_actions = current_actions - _watchdog_prev_actions
+    _watchdog_prev_errors = current_errors
+    _watchdog_prev_actions = current_actions
+
+    if new_errors >= 5:
+        _watchdog_error_streak += 1
+        issues.append(f"Error spike: {new_errors} errors in last 5 min (streak: {_watchdog_error_streak})")
+    elif new_errors > 0 and new_actions > 0 and new_errors / new_actions > 0.5:
+        _watchdog_error_streak += 1
+        issues.append(f"High error rate: {new_errors}/{new_actions} actions failed (streak: {_watchdog_error_streak})")
+    else:
+        _watchdog_error_streak = 0
+
+    # ── Alert admin if issues found ─────────────────────────────────────────
+    if issues:
+        msg = "🩺 *Watchdog alert*\n\n" + "\n".join(f"• {i}" for i in issues)
+        try:
+            await bot.send_message(ADMIN_TG_ID, msg, parse_mode="Markdown")
+        except Exception as e:
+            logger.warning(f"[watchdog] alert failed: {e}")
+
+    logger.debug(f"[watchdog] ok — errors={new_errors} actions={new_actions}")
