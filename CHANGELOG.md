@@ -4,6 +4,12 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-10] (2)
+
+### Added
+- Admin panel: "📝 Диалоги пользователей" page accessible from AI stats — shows full question and Gemini answer per user with pagination (5 per page)
+- `ai_usage_log` now stores `question` and `answer` text for every AI exchange
+
 ## [2026-04-10]
 
 ### Added

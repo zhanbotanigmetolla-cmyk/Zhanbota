@@ -14,7 +14,8 @@ from ..config import ADMIN_TG_ID, ADMIN_USERNAMES, logger
 from ..db import (ban_user, delete_user_by_tg_id, get_db, get_lang, get_user,
                   give_freeze_tokens, is_muted, mute_user, reset_streak,
                   reset_xp, search_users, unban_user, unmute_user,
-                  get_all_users_paginated, get_bot_stats, get_ai_usage_stats)
+                  get_all_users_paginated, get_bot_stats, get_ai_usage_stats,
+                  get_ai_conversations)
 from ..i18n import t, text_filter
 from ..keyboards import (admin_bugs_kb, admin_confirm_kb, admin_confirm_restart_kb,
                          admin_panel_main_kb, admin_user_profile_kb, admin_users_kb,
@@ -576,9 +577,47 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         )
         from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
         b_back = _IKB()
+        b_back.button(text="📝 Диалоги пользователей", callback_data="ap:ai_logs:0")
         b_back.button(text="◀◀ Главная", callback_data="ap:main")
+        b_back.adjust(1)
         try:
             await callback.message.edit_text(text, reply_markup=b_back.as_markup(), parse_mode="HTML")
+        except TelegramBadRequest:
+            pass
+        await callback.answer()
+
+    # ── AI conversation logs ─────────────────────────────────────────────────
+    elif action == "ai_logs":
+        page = int(parts[2]) if len(parts) > 2 else 0
+        rows, has_more = await get_ai_conversations(page=page, per_page=5)
+
+        if not rows:
+            text = "<b>📝 AI Диалоги</b>\n\nПока нет записей."
+        else:
+            lines = []
+            for r in rows:
+                ts = (r["created"] or "")[:16]
+                name = r["name"] or "unknown"
+                model_short = (r["model"] or "?").replace("gemini-", "").replace("-preview", "★")
+                q = (r["question"] or "")[:200]
+                a = (r["answer"] or "")[:300]
+                lines.append(
+                    f"<b>{name}</b> · {ts} · <code>{model_short}</code>\n"
+                    f"❓ {q}\n"
+                    f"🤖 {a}"
+                )
+            text = f"<b>📝 AI Диалоги</b> (стр. {page + 1})\n\n" + "\n\n──────\n\n".join(lines)
+
+        from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
+        nav = _IKB()
+        if page > 0:
+            nav.button(text="◀ Пред.", callback_data=f"ap:ai_logs:{page - 1}")
+        if has_more:
+            nav.button(text="След. ▶", callback_data=f"ap:ai_logs:{page + 1}")
+        nav.button(text="◀◀ AI Статистика", callback_data="ap:ai_stats")
+        nav.adjust(2, 1)
+        try:
+            await callback.message.edit_text(text, reply_markup=nav.as_markup(), parse_mode="HTML")
         except TelegramBadRequest:
             pass
         await callback.answer()

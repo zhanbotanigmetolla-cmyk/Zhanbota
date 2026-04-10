@@ -47,8 +47,14 @@ MIGRATIONS = [
         date     TEXT NOT NULL,
         user_id  INTEGER,
         model    TEXT,
+        question TEXT,
+        answer   TEXT,
         created  TEXT DEFAULT (datetime('now'))
     )""",
+    # index 15
+    "ALTER TABLE ai_usage_log ADD COLUMN question TEXT",
+    # index 16
+    "ALTER TABLE ai_usage_log ADD COLUMN answer TEXT",
 ]
 
 
@@ -405,12 +411,12 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
     await conn.commit()
 
 
-async def log_ai_usage(user_id: int, model: str) -> None:
+async def log_ai_usage(user_id: int, model: str, question: str = "", answer: str = "") -> None:
     from datetime import date as _date
     conn = await get_db()
     await conn.execute(
-        "INSERT INTO ai_usage_log (date, user_id, model) VALUES (?, ?, ?)",
-        (str(_date.today()), user_id, model),
+        "INSERT INTO ai_usage_log (date, user_id, model, question, answer) VALUES (?, ?, ?, ?, ?)",
+        (str(_date.today()), user_id, model, question, answer),
     )
     await conn.commit()
 
@@ -450,6 +456,23 @@ async def get_ai_usage_stats() -> dict:
         "per_user": per_user,
         "per_model": per_model,
     }
+
+
+async def get_ai_conversations(page: int = 0, per_page: int = 5) -> tuple:
+    conn = await get_db()
+    offset = page * per_page
+    async with conn.execute(
+        """SELECT a.id, a.created, a.model, a.question, a.answer,
+                  COALESCE(u.first_name, u.username, 'unknown') as name
+           FROM ai_usage_log a
+           LEFT JOIN users u ON u.id = a.user_id
+           ORDER BY a.id DESC
+           LIMIT ? OFFSET ?""",
+        (per_page + 1, offset),
+    ) as cur:
+        rows = await cur.fetchall()
+    has_more = len(rows) > per_page
+    return rows[:per_page], has_more
 
 
 async def add_welcome_greeting(from_tg_id: int, to_tg_id: int) -> bool:

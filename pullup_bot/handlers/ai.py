@@ -208,7 +208,7 @@ async def _send_reply(message, thinking_msg, reply: str, lang: str, history: lis
 
     if model_used and reply not in (RATE_LIMIT_DAILY, RATE_LIMIT_MINUTE, ""):
         try:
-            await log_ai_usage(user_id, model_used)
+            await log_ai_usage(user_id, model_used, question=user_text, answer=reply)
         except Exception:
             pass
 
