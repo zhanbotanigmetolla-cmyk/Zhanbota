@@ -7,7 +7,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-10] (3)
 
 ### Changed
-- AI waiting messages: replaced static "thinking..." with 12 random funny phrases per language (RU+EN), cycling every 6s with reshuffle — shown from the very first second while Gemini responds
+- AI waiting messages: two-phase system — Phase 1 shows original "Анализирую..." / "Thinking..." for 3 seconds; Phase 2 cycles 30 funny phrases (RU+EN) in smart-random order (full pool shown before reshuffle, no early repeats), switching every 6 seconds
 - Auto-bug-fix cron: reduced from hourly to every 3 hours (8 checks/day vs 24) to save session token usage
 
 ## [2026-04-10] (2)

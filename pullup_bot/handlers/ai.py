@@ -33,6 +33,24 @@ _WAITING_RU = [
     "📡 Связь установлена, данные передаются... медленно",
     "🐢 Быстрее черепахи, медленнее света — нормально",
     "🌀 Завис в квантовой суперпозиции, скоро определюсь",
+    "🛸 Жду ответа от международной космической станции, придётся немного подождать...",
+    "🧩 Складываю пазл из твоих тренировок по кусочку...",
+    "📊 Перебираю 847 возможных ответов, выбираю лучший...",
+    "🌊 Медитирую над твоим вопросом у воображаемого океана...",
+    "🐌 Быстрее уже не могу, это физически невозможно...",
+    "🦾 Качаю бицепс пока думаю над ответом...",
+    "🎵 Напеваю себе под нос чтоб лучше думалось...",
+    "⚙️ Прогреваю двигатели интеллекта...",
+    "🌙 Консультируюсь с луной по твоему вопросу...",
+    "📚 Листаю 3847 страниц по теме подтягиваний...",
+    "🏋️ Сам подтягиваюсь пока жду ответа от серверов...",
+    "🤔 Думаю так усердно, что дым пошёл...",
+    "⏰ Тик-так, тик-так... нет, серьёзно, уже скоро",
+    "🔬 Провожу анализ на молекулярном уровне...",
+    "💫 Звёзды выстраиваются в нужную конфигурацию...",
+    "🎯 Прицеливаюсь в идеальный ответ с лазерной точностью...",
+    "🧊 Замёрз ненадолго, уже оттаиваю...",
+    "🌍 Запрашиваю консультацию у всех континентов...",
 ]
 
 _WAITING_EN = [
@@ -48,33 +66,60 @@ _WAITING_EN = [
     "📡 Connection established, transmitting... slowly",
     "🐢 Faster than a turtle, slower than light — it's fine",
     "🌀 Stuck in quantum superposition, deciding soon",
+    "🛸 Waiting for a reply from the International Space Station, hang tight...",
+    "🧩 Assembling your training data piece by piece...",
+    "📊 Scanning through 847 possible answers, picking the best...",
+    "🌊 Meditating on your question by an imaginary ocean...",
+    "🐌 Can't go faster, this is physically impossible...",
+    "🦾 Doing curls while thinking about your answer...",
+    "🎵 Humming to myself to think better...",
+    "⚙️ Warming up the intelligence engines...",
+    "🌙 Consulting the moon about your question...",
+    "📚 Flipping through 3847 pages on pull-up training...",
+    "🏋️ Doing pull-ups myself while waiting for the server...",
+    "🤔 Thinking so hard smoke is starting to come out...",
+    "⏰ Tick-tock, tick-tock... seriously though, almost there",
+    "🔬 Running analysis at the molecular level...",
+    "💫 Stars aligning in the right configuration...",
+    "🎯 Laser-targeting the perfect answer...",
+    "🧊 Froze for a moment, thawing now...",
+    "🌍 Consulting all continents for advice...",
 ]
 
 
 async def _wait_with_updates(task: asyncio.Task, thinking_msg, lang: str) -> tuple:
-    """Cycle through random funny phrases while waiting for Gemini."""
-    phrases = _WAITING_RU[:] if lang == "ru" else _WAITING_EN[:]
-    random.shuffle(phrases)
+    """
+    Phase 1: keep original 'thinking' message for 3 seconds.
+    Phase 2: cycle through ALL funny phrases in shuffled order (no repeats
+             until the full pool is exhausted), then reshuffle and repeat.
+    """
+    # Phase 1 — original message, 3 seconds
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=3)
+    except asyncio.TimeoutError:
+        pass
+
+    # Phase 2 — smart-random phrase cycling
+    pool = (_WAITING_RU if lang == "ru" else _WAITING_EN)[:]
+    random.shuffle(pool)
     idx = 0
-    interval = 6  # seconds between phrase updates
+
     while not task.done():
+        phrase = pool[idx % len(pool)]
+        idx += 1
+        # Reshuffle only after the entire pool has been shown
+        if idx % len(pool) == 0:
+            random.shuffle(pool)
         try:
-            return await asyncio.wait_for(asyncio.shield(task), timeout=interval)
+            await thinking_msg.edit_text(phrase)
+        except Exception:
+            pass
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout=6)
         except asyncio.TimeoutError:
-            try:
-                await thinking_msg.edit_text(phrases[idx % len(phrases)])
-            except Exception:
-                pass
-            idx += 1
-            if idx > 0 and idx % len(phrases) == 0:
-                random.shuffle(phrases)  # reshuffle after full cycle
+            pass
+
     return await task
-
-
-def _first_phrase(lang: str) -> str:
-    """Pick a random opening phrase for the thinking indicator."""
-    pool = _WAITING_RU if lang == "ru" else _WAITING_EN
-    return random.choice(pool)
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +379,7 @@ async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
     history = data.get("ai_history", [])
 
     user = await get_user(message.from_user.id)
-    thinking = await message.answer(_first_phrase(lang))
+    thinking = await message.answer(t("ai_thinking", lang))
     manager = get_manager()
     task = asyncio.create_task(manager.chat(system_prompt, history, auto_prompt))
     raw, model_used = await _wait_with_updates(task, thinking, lang)
@@ -354,7 +399,7 @@ async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
     history = data.get("ai_history", [])
 
     user = await get_user(message.from_user.id)
-    thinking = await message.answer(_first_phrase(lang))
+    thinking = await message.answer(t("ai_thinking_chat", lang))
     manager = get_manager()
     task = asyncio.create_task(manager.chat(system_prompt, history, message.text))
     raw, model_used = await _wait_with_updates(task, thinking, lang)
