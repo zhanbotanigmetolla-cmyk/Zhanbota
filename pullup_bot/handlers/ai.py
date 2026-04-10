@@ -1,4 +1,5 @@
 import asyncio
+import random
 
 from aiogram import Router, types as aiogram_types
 from aiogram.fsm.context import FSMContext
@@ -16,27 +17,64 @@ router = Router()
 MAX_HISTORY_TURNS = 10
 
 # ---------------------------------------------------------------------------
-# Progressive loading: update the "thinking" message while waiting
+# Funny waiting phrases — shown randomly while Gemini thinks
 # ---------------------------------------------------------------------------
-# (seconds after which to update, i18n key for the new text)
-_PROGRESS_STEPS = [
-    (8,  "ai_thinking_long"),
-    (6,  "ai_thinking_longer"),
-    (6,  "ai_thinking_almost"),
+
+_WAITING_RU = [
+    "🌌 Жду ответа от космоса...",
+    "⚡ Ещё пару фемтосекунд, принимаю лазерные сигналы...",
+    "🐕 Оказывается, ждать приходится дольше, чем Хатико...",
+    "🍳 Готовлю еду, ещё пару секунд, пожалуйста",
+    "🧠 Нейроны перегрелись, охлаждаю...",
+    "🔭 Ищу ответ в параллельной вселенной...",
+    "☕ Заварил чай пока жду от Google...",
+    "🚀 Сигнал летит туда-обратно несколько раз...",
+    "🎲 Считаю нейроны вручную, не торопи...",
+    "📡 Связь установлена, данные передаются... медленно",
+    "🐢 Быстрее черепахи, медленнее света — нормально",
+    "🌀 Завис в квантовой суперпозиции, скоро определюсь",
+]
+
+_WAITING_EN = [
+    "🌌 Waiting for a signal from outer space...",
+    "⚡ Just a few femtoseconds, receiving laser data...",
+    "🐕 Turns out the wait is longer than Hachiko's...",
+    "🍳 Cooking dinner, just a couple more seconds please",
+    "🧠 Neurons overheated, cooling down...",
+    "🔭 Searching for the answer in a parallel universe...",
+    "☕ Made tea while waiting for Google's reply...",
+    "🚀 Signal bouncing off the server a few times...",
+    "🎲 Counting neurons manually, don't rush me...",
+    "📡 Connection established, transmitting... slowly",
+    "🐢 Faster than a turtle, slower than light — it's fine",
+    "🌀 Stuck in quantum superposition, deciding soon",
 ]
 
 
 async def _wait_with_updates(task: asyncio.Task, thinking_msg, lang: str) -> tuple:
-    """Await *task*, editing *thinking_msg* at each timeout milestone."""
-    for delay, key in _PROGRESS_STEPS:
+    """Cycle through random funny phrases while waiting for Gemini."""
+    phrases = _WAITING_RU[:] if lang == "ru" else _WAITING_EN[:]
+    random.shuffle(phrases)
+    idx = 0
+    interval = 6  # seconds between phrase updates
+    while not task.done():
         try:
-            return await asyncio.wait_for(asyncio.shield(task), timeout=delay)
+            return await asyncio.wait_for(asyncio.shield(task), timeout=interval)
         except asyncio.TimeoutError:
             try:
-                await thinking_msg.edit_text(t(key, lang))
+                await thinking_msg.edit_text(phrases[idx % len(phrases)])
             except Exception:
                 pass
-    return await task  # final wait — no more updates
+            idx += 1
+            if idx > 0 and idx % len(phrases) == 0:
+                random.shuffle(phrases)  # reshuffle after full cycle
+    return await task
+
+
+def _first_phrase(lang: str) -> str:
+    """Pick a random opening phrase for the thinking indicator."""
+    pool = _WAITING_RU if lang == "ru" else _WAITING_EN
+    return random.choice(pool)
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +334,7 @@ async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
     history = data.get("ai_history", [])
 
     user = await get_user(message.from_user.id)
-    thinking = await message.answer(t("ai_thinking", lang))
+    thinking = await message.answer(_first_phrase(lang))
     manager = get_manager()
     task = asyncio.create_task(manager.chat(system_prompt, history, auto_prompt))
     raw, model_used = await _wait_with_updates(task, thinking, lang)
@@ -316,7 +354,7 @@ async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
     history = data.get("ai_history", [])
 
     user = await get_user(message.from_user.id)
-    thinking = await message.answer(t("ai_thinking_chat", lang))
+    thinking = await message.answer(_first_phrase(lang))
     manager = get_manager()
     task = asyncio.create_task(manager.chat(system_prompt, history, message.text))
     raw, model_used = await _wait_with_updates(task, thinking, lang)
