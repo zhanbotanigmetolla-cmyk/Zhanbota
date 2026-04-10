@@ -4,6 +4,13 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-10] (7)
+
+### Fixed
+- **Gemini 503 fallback**: when a model tier returns 503 UNAVAILABLE (overloaded), the bot now falls through to the next tier instead of immediately returning "AI unavailable"
+
+---
+
 ## [2026-04-10] (6)
 
 ### Added

@@ -155,6 +155,11 @@ class APIKeyManager:
                         self._exhausted.add((key_idx, tier_idx))
                         _save_state(self._exhausted, self._daily_count)
                         continue  # try next key in same tier
+                    if "503" in err or "unavailable" in err or "overloaded" in err:
+                        logger.warning(
+                            f"[Gemini] key={key_idx} tier={tier_idx} ({model}) overloaded, trying next tier"
+                        )
+                        break  # skip remaining keys for this tier, try next tier
                     logger.error(f"[Gemini] key={key_idx} tier={tier_idx} ({model}): {e}")
                     return "", ""
 
