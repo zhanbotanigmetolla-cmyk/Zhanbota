@@ -295,13 +295,15 @@ async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
     system_prompt = data.get("ai_system", "")
     history = data.get("ai_history", [])
 
+    user = await get_user(message.from_user.id)
     thinking = await message.answer(t("ai_thinking", lang))
     manager = get_manager()
     task = asyncio.create_task(manager.chat(system_prompt, history, auto_prompt))
     raw, model_used = await _wait_with_updates(task, thinking, lang)
     reply = _resolve_reply(raw, lang)
+    user_id = user["id"] if user else 0
     await _send_reply(message, thinking, reply, lang, history, auto_prompt, state,
-                      user_id=user["id"], model_used=model_used)
+                      user_id=user_id, model_used=model_used)
 
 
 @router.message(AIChat.chatting)
