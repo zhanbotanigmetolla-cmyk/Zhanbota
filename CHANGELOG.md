@@ -4,6 +4,22 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-10]
+
+### Added
+- Triple-tier Gemini API key rotation: up to 4 keys × 3 models (gemini-3-flash-preview → gemini-2.5-flash → gemini-2.5-flash-lite) with automatic fallback on daily quota exhaustion
+- AI usage tracking in DB (`ai_usage_log` table): per-user, per-model, per-day stats
+- Admin panel: new "🤖 AI Использование" button shows today's request count, per-user and per-model breakdown, key exhaustion status
+- AI limit pre-check: entering Turnikmen AI section immediately shows limit message if all quotas are exhausted, before trying to send a message
+- Smart fallback: bot now responds to random free-form text via Gemini (1 call/60s per user) instead of staying silent — suggests bug report button if the message looks like a report
+- Bug report approval workflow: non-admin bug reports arrive with Accept/Reject inline buttons; admin's own reports are auto-approved
+- Silent notifications: reminders set at 22:00 or later are sent with `disable_notification=True`
+
+### Changed
+- History: each day now shown in monospace (`code`) style with blank line between days for better readability
+- "About AI" section text updated: explains that AI analyses all workouts, sets, RPE, rest and missed days to give personalised advice
+- Gemini key manager centralised in `services/gemini.py`; old single-client setup removed from `handlers/ai.py`
+
 ## [2026-04-09]
 
 ### Changed

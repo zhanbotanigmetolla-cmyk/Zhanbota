@@ -48,8 +48,10 @@ async def daily_reminder(bot):
             msg = t("reminder_train", lang,
                     day_type=day_name(day_type, lang),
                     planned=planned, status=status)
+        notify_time = user["notify_time"] or "09:00"
+        silent = notify_time >= "22:00"
         try:
-            await bot.send_message(user["tg_id"], msg)
+            await bot.send_message(user["tg_id"], msg, disable_notification=silent)
         except TelegramForbiddenError:
             last = user["last_workout"]
             inactive = (not last or

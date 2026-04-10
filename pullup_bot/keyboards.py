@@ -256,12 +256,13 @@ def admin_panel_main_kb(maintenance_on: bool) -> InlineKeyboardMarkup:
     b.button(text="👥 Пользователи", callback_data="ap:users:0")
     b.button(text="📊 Статистика", callback_data="ap:stats")
     b.button(text="🐛 Баг-репорты", callback_data="ap:bugs:0")
+    b.button(text="🤖 AI Использование", callback_data="ap:ai_stats")
     b.button(text="📢 Рассылка", callback_data="ap:broadcast")
     maint_label = "🔧 Техобслуживание: ВКЛ" if maintenance_on else "🔧 Техобслуживание: ВЫКЛ"
     b.button(text=maint_label, callback_data="ap:maintenance")
     b.button(text="🔄 Перезапустить бота", callback_data="ap:restart")
     b.button(text="✖ Закрыть панель", callback_data="ap:close")
-    b.adjust(2, 2, 1, 1, 1)
+    b.adjust(2, 2, 2, 1, 1, 1)
     return b.as_markup()
 
 
@@ -332,9 +333,17 @@ def admin_confirm_restart_kb() -> InlineKeyboardMarkup:
 def admin_bugs_kb(reports: list, page: int, has_more: bool) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     for r in reports:
-        status = "🔴" if r["status"] == "new" else "✅"
+        st = r["status"]
+        if st == "new":
+            icon = "🔴"
+        elif st == "approved":
+            icon = "🟡"
+        elif st == "rejected":
+            icon = "⛔"
+        else:
+            icon = "✅"
         uname = (r["username"] or "?")[:15]
-        label = f"{status} #{r['id']} — {uname}"
+        label = f"{icon} #{r['id']} — {uname}"
         b.button(text=label, callback_data=f"ap:fix_bug:{r['id']}")
     b.adjust(1)
     if page > 0:

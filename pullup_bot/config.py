@@ -18,6 +18,12 @@ BOT_TOKEN = os.environ.get("PULLUP_BOT_TOKEN", "")
 SECRET_CODE = os.environ.get("PULLUP_SECRET", "TESTCODE")
 GROQ_KEY = os.environ.get("GROQ_API_KEY", "")  # kept for backward compat, no longer used
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_KEYS = [k for k in [
+    os.environ.get("GEMINI_API_KEY", ""),
+    os.environ.get("GEMINI_API_KEY_2", ""),
+    os.environ.get("GEMINI_API_KEY_3", ""),
+    os.environ.get("GEMINI_API_KEY_4", ""),
+] if k]
 GEMINI_MODEL = "gemini-3-flash-preview"
 DB_PATH = os.environ.get("PULLUP_DB", os.path.expanduser("~/pullups.db"))
 FSM_DB_PATH = os.environ.get("PULLUP_FSM_DB", os.path.expanduser("~/pullups_fsm.db"))

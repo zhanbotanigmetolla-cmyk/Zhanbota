@@ -41,6 +41,14 @@ MIGRATIONS = [
     )""",
     # index 13
     "ALTER TABLE users ADD COLUMN is_weekly_champ INTEGER DEFAULT 0",
+    # index 14
+    """CREATE TABLE IF NOT EXISTS ai_usage_log (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        date     TEXT NOT NULL,
+        user_id  INTEGER,
+        model    TEXT,
+        created  TEXT DEFAULT (datetime('now'))
+    )""",
 ]
 
 
@@ -395,6 +403,53 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
         except Exception:
             pass
     await conn.commit()
+
+
+async def log_ai_usage(user_id: int, model: str) -> None:
+    from datetime import date as _date
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO ai_usage_log (date, user_id, model) VALUES (?, ?, ?)",
+        (str(_date.today()), user_id, model),
+    )
+    await conn.commit()
+
+
+async def get_ai_usage_stats() -> dict:
+    from datetime import date as _date
+    conn = await get_db()
+    today = str(_date.today())
+    async with conn.execute(
+        "SELECT COUNT(*) as cnt FROM ai_usage_log WHERE date=?", (today,)
+    ) as cur:
+        today_row = await cur.fetchone()
+    async with conn.execute(
+        "SELECT COUNT(*) as cnt FROM ai_usage_log"
+    ) as cur:
+        total_row = await cur.fetchone()
+    async with conn.execute(
+        """SELECT COALESCE(u.first_name, u.username, 'unknown') as name,
+                  COUNT(*) as cnt
+           FROM ai_usage_log a
+           LEFT JOIN users u ON u.id = a.user_id
+           WHERE a.date=?
+           GROUP BY a.user_id ORDER BY cnt DESC LIMIT 10""",
+        (today,),
+    ) as cur:
+        per_user = await cur.fetchall()
+    async with conn.execute(
+        """SELECT model, COUNT(*) as cnt
+           FROM ai_usage_log WHERE date=?
+           GROUP BY model ORDER BY cnt DESC""",
+        (today,),
+    ) as cur:
+        per_model = await cur.fetchall()
+    return {
+        "today": today_row["cnt"] if today_row else 0,
+        "total": total_row["cnt"] if total_row else 0,
+        "per_user": per_user,
+        "per_model": per_model,
+    }
 
 
 async def add_welcome_greeting(from_tg_id: int, to_tg_id: int) -> bool:

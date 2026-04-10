@@ -1,20 +1,17 @@
 import asyncio
 
-from google import genai
-from google.genai import types
 from aiogram import Router, types as aiogram_types
 from aiogram.fsm.context import FSMContext
 
-from ..config import GEMINI_KEY, GEMINI_MODEL, logger
-from ..db import get_db, get_user
+from ..config import logger
+from ..db import get_db, get_user, log_ai_usage
 from ..i18n import t, text_filter
 from ..keyboards import ai_chat_kb, back_only_kb, main_kb
 from ..services.xp import display, level_info, planned_for_day
+from ..services.gemini import get_manager, RATE_LIMIT_DAILY, RATE_LIMIT_MINUTE
 from ..states import AIChat
 
 router = Router()
-
-_client = genai.Client(api_key=GEMINI_KEY)
 
 MAX_HISTORY_TURNS = 10
 
@@ -29,7 +26,7 @@ _PROGRESS_STEPS = [
 ]
 
 
-async def _wait_with_updates(task: asyncio.Task, thinking_msg, lang: str) -> str:
+async def _wait_with_updates(task: asyncio.Task, thinking_msg, lang: str) -> tuple:
     """Await *task*, editing *thinking_msg* at each timeout milestone."""
     for delay, key in _PROGRESS_STEPS:
         try:
@@ -186,40 +183,11 @@ def _user_data_block(user, workouts) -> str:
     )
 
 
-def _to_gemini_history(history: list) -> list:
-    return [
-        types.Content(role=h["role"], parts=[types.Part(text=h["content"])])
-        for h in history
-    ]
-
-
-_RATE_LIMIT_DAILY  = "__LIMIT_DAILY__"
-_RATE_LIMIT_MINUTE = "__LIMIT_MINUTE__"
-
-
-async def _chat(system_prompt: str, history: list, user_msg: str) -> str:
-    try:
-        chat_session = _client.aio.chats.create(
-            model=GEMINI_MODEL,
-            config=types.GenerateContentConfig(system_instruction=system_prompt),
-            history=_to_gemini_history(history),
-        )
-        response = await chat_session.send_message(user_msg)
-        return response.text or ""
-    except Exception as e:
-        err = str(e).lower()
-        if "429" in err or "quota" in err or "resource_exhausted" in err or "rate" in err:
-            if "per_minute" in err or "per minute" in err or "minute" in err:
-                return _RATE_LIMIT_MINUTE
-            return _RATE_LIMIT_DAILY
-        logger.error(f"[Gemini] {e}")
-        return ""
-
 
 def _resolve_reply(raw: str, lang: str) -> str:
-    if raw == _RATE_LIMIT_DAILY:
+    if raw == RATE_LIMIT_DAILY:
         return t("ai_limit_daily", lang)
-    if raw == _RATE_LIMIT_MINUTE:
+    if raw == RATE_LIMIT_MINUTE:
         return t("ai_limit_minute", lang)
     if not raw:
         return t("ai_unavailable", lang)
@@ -227,7 +195,8 @@ def _resolve_reply(raw: str, lang: str) -> str:
 
 
 async def _send_reply(message, thinking_msg, reply: str, lang: str, history: list,
-                      user_text: str, state: FSMContext):
+                      user_text: str, state: FSMContext,
+                      user_id: int = 0, model_used: str = ""):
     """Update history, delete thinking indicator, send the AI reply."""
     new_history = history + [
         {"role": "user",  "content": user_text},
@@ -236,6 +205,12 @@ async def _send_reply(message, thinking_msg, reply: str, lang: str, history: lis
     if len(new_history) > MAX_HISTORY_TURNS * 2:
         new_history = new_history[-(MAX_HISTORY_TURNS * 2):]
     await state.update_data(ai_history=new_history)
+
+    if model_used and reply not in (RATE_LIMIT_DAILY, RATE_LIMIT_MINUTE, ""):
+        try:
+            await log_ai_usage(user_id, model_used)
+        except Exception:
+            pass
 
     try:
         await thinking_msg.delete()
@@ -260,6 +235,10 @@ async def ai_chat_start(message: aiogram_types.Message, state: FSMContext):
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
+
+    if get_manager().is_daily_exhausted():
+        await message.answer(t("ai_limit_daily", lang))
+        return
 
     conn = await get_db()
     async with conn.execute(
@@ -317,10 +296,12 @@ async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
     history = data.get("ai_history", [])
 
     thinking = await message.answer(t("ai_thinking", lang))
-    task = asyncio.create_task(_chat(system_prompt, history, auto_prompt))
-    raw = await _wait_with_updates(task, thinking, lang)
+    manager = get_manager()
+    task = asyncio.create_task(manager.chat(system_prompt, history, auto_prompt))
+    raw, model_used = await _wait_with_updates(task, thinking, lang)
     reply = _resolve_reply(raw, lang)
-    await _send_reply(message, thinking, reply, lang, history, auto_prompt, state)
+    await _send_reply(message, thinking, reply, lang, history, auto_prompt, state,
+                      user_id=user["id"], model_used=model_used)
 
 
 @router.message(AIChat.chatting)
@@ -332,8 +313,12 @@ async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
     system_prompt = data.get("ai_system", "")
     history = data.get("ai_history", [])
 
+    user = await get_user(message.from_user.id)
     thinking = await message.answer(t("ai_thinking_chat", lang))
-    task = asyncio.create_task(_chat(system_prompt, history, message.text))
-    raw = await _wait_with_updates(task, thinking, lang)
+    manager = get_manager()
+    task = asyncio.create_task(manager.chat(system_prompt, history, message.text))
+    raw, model_used = await _wait_with_updates(task, thinking, lang)
     reply = _resolve_reply(raw, lang)
-    await _send_reply(message, thinking, reply, lang, history, message.text, state)
+    user_id = user["id"] if user else 0
+    await _send_reply(message, thinking, reply, lang, history, message.text, state,
+                      user_id=user_id, model_used=model_used)

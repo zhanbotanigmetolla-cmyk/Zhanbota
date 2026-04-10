@@ -14,7 +14,7 @@ from ..config import ADMIN_TG_ID, ADMIN_USERNAMES, logger
 from ..db import (ban_user, delete_user_by_tg_id, get_db, get_lang, get_user,
                   give_freeze_tokens, is_muted, mute_user, reset_streak,
                   reset_xp, search_users, unban_user, unmute_user,
-                  get_all_users_paginated, get_bot_stats)
+                  get_all_users_paginated, get_bot_stats, get_ai_usage_stats)
 from ..i18n import t, text_filter
 from ..keyboards import (admin_bugs_kb, admin_confirm_kb, admin_confirm_restart_kb,
                          admin_panel_main_kb, admin_user_profile_kb, admin_users_kb,
@@ -72,23 +72,85 @@ async def bug_report_send(message: types.Message, state: FSMContext):
     if not bug_text:
         await message.answer(t("bug_enter_text", lang))
         return
+
+    is_reporter_admin = _is_admin(message)
+    initial_status = "approved" if is_reporter_admin else "new"
+
     conn = await get_db()
-    await conn.execute("INSERT INTO bug_reports (user_id, username, text) VALUES (?,?,?)",
-                       (user["id"], user["username"], bug_text))
+    async with conn.execute(
+        "INSERT INTO bug_reports (user_id, username, text, status) VALUES (?,?,?,?)",
+        (user["id"], user["username"], bug_text, initial_status)
+    ) as cur:
+        bug_id = cur.lastrowid
     await conn.commit()
+
+    def html_escape(s):
+        return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
     try:
-        def html_escape(s):
-            return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        from ..main import bot
         safe = html_escape(bug_text)
         safe_name = html_escape(user['username'] or user['first_name'] or 'unknown')
-        from ..main import bot
-        await bot.send_message(ADMIN_TG_ID,
-            f"🐛 <b>Баг</b> от <b>{safe_name}</b>\n\n{safe}", parse_mode="HTML")
+        if is_reporter_admin:
+            await bot.send_message(ADMIN_TG_ID,
+                f"🐛 <b>Твой баг #{bug_id}</b>\n\n{safe}", parse_mode="HTML")
+        else:
+            from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
+            kb = _IKB()
+            kb.button(text="✅ Принять", callback_data=f"br:approve:{bug_id}")
+            kb.button(text="❌ Отклонить", callback_data=f"br:reject:{bug_id}")
+            kb.adjust(2)
+            await bot.send_message(
+                ADMIN_TG_ID,
+                f"🐛 <b>Баг #{bug_id}</b> от <b>{safe_name}</b>\n\n{safe}\n\n"
+                f"<i>Принять → применяется / Отклонить → архив</i>",
+                parse_mode="HTML",
+                reply_markup=kb.as_markup()
+            )
     except Exception as e:
         logger.error(f"[bug_report] {e}")
+
     await message.answer(t("bug_ok", lang), parse_mode="Markdown",
                          reply_markup=main_kb(lang))
     await state.clear()
+
+
+@router.callback_query(F.data.startswith("br:"))
+async def bug_report_decision(callback: types.CallbackQuery):
+    if not _is_admin_cb(callback):
+        await callback.answer("⛔ Нет доступа.", show_alert=True)
+        return
+    parts = callback.data.split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    bug_id = int(parts[2]) if len(parts) > 2 else 0
+
+    if action == "approve":
+        conn = await get_db()
+        await conn.execute("UPDATE bug_reports SET status='approved' WHERE id=?", (bug_id,))
+        await conn.commit()
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+            await callback.message.edit_text(
+                callback.message.text + "\n\n✅ <b>Принято</b>",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+        await callback.answer("✅ Принято", show_alert=False)
+
+    elif action == "reject":
+        conn = await get_db()
+        await conn.execute("UPDATE bug_reports SET status='rejected' WHERE id=?", (bug_id,))
+        await conn.commit()
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+            await callback.message.edit_text(
+                callback.message.text + "\n\n❌ <b>Отклонено</b>",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+        await callback.answer("❌ Отклонено", show_alert=False)
 
 
 @router.message(Command("bugs"))
@@ -475,6 +537,42 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
             f"📋 Тренировок всего: {stats['total_workouts']}\n"
             f"🚫 Заблокировано: {stats['banned_count']}"
             f"{sec_text}"
+        )
+        from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
+        b_back = _IKB()
+        b_back.button(text="◀◀ Главная", callback_data="ap:main")
+        try:
+            await callback.message.edit_text(text, reply_markup=b_back.as_markup(), parse_mode="HTML")
+        except TelegramBadRequest:
+            pass
+        await callback.answer()
+
+    # ── AI usage stats ──────────────────────────────────────────────────────
+    elif action == "ai_stats":
+        from ..services.gemini import get_manager, TIERS
+        usage = await get_ai_usage_stats()
+        mgr = get_manager()
+        exhausted_info = ""
+        for t_idx, model in enumerate(TIERS):
+            keys_exhausted = sum(1 for k_idx in range(len(mgr._keys)) if (k_idx, t_idx) in mgr._exhausted)
+            if keys_exhausted:
+                exhausted_info += f"\n  ⚠️ {model}: {keys_exhausted}/{len(mgr._keys)} ключей исчерпаны"
+        per_user_text = ""
+        for row in (usage["per_user"] or []):
+            per_user_text += f"\n  • {row['name']}: {row['cnt']} запросов"
+        per_model_text = ""
+        for row in (usage["per_model"] or []):
+            per_model_text += f"\n  • {row['model']}: {row['cnt']}"
+        all_ex = "🔴 ВСЕ КЛЮЧИ ИСЧЕРПАНЫ" if mgr.is_daily_exhausted() else "🟢 Работает"
+        text = (
+            f"<b>🤖 AI Использование</b>\n\n"
+            f"Статус: {all_ex}\n"
+            f"Ключей: {len(mgr._keys)} × {len(TIERS)} тиров\n\n"
+            f"📊 Сегодня: <b>{usage['today']}</b> запросов\n"
+            f"📈 Всего за всё время: {usage['total']}\n"
+            f"{exhausted_info}"
+            f"\n\n<b>По пользователям (сегодня):</b>{per_user_text or ' нет данных'}"
+            f"\n\n<b>По моделям (сегодня):</b>{per_model_text or ' нет данных'}"
         )
         from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
         b_back = _IKB()

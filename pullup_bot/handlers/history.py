@@ -5,7 +5,7 @@ from aiogram import F, Router, types
 from ..db import get_db, get_user
 from ..i18n import t, text_filter, day_name
 from ..keyboards import history_nav_kb, main_kb
-from ..services.xp import md_escape
+
 
 router = Router()
 
@@ -22,7 +22,7 @@ def _week_dates(offset: int):
 
 def _format_week(rows_by_date: dict, monday: date, sunday: date, lang: str) -> str:
     weekdays = WEEKDAYS_RU if lang == "ru" else WEEKDAYS_EN
-    lines = []
+    blocks = []
     total_done = 0
     total_planned = 0
     for i in range(7):
@@ -35,14 +35,18 @@ def _format_week(rows_by_date: dict, monday: date, sunday: date, lang: str) -> s
             planned = r["planned"]
             dtype = day_name(r["day_type"] or "", lang)
             rpe_str = f"  RPE {r['rpe']}" if r["rpe"] else ""
-            note_str = f"\n     {md_escape(r['notes'])}" if r["notes"] else ""
-            lines.append(f"{d.strftime('%d.%m.%Y')} {wd}  {dtype:<9} {done}/{planned}{rpe_str}{note_str}")
+            main_line = f"`{d.strftime('%d.%m.%Y')} {wd}  {dtype:<9} {done}/{planned}{rpe_str}`"
+            if r["notes"]:
+                note_line = f"   📝 {r['notes']}"
+                blocks.append(f"{main_line}\n{note_line}")
+            else:
+                blocks.append(main_line)
             total_done += done
             total_planned += planned
         else:
             empty_label = t("history_empty_day", lang)
-            lines.append(f"{d.strftime('%d.%m.%Y')} {wd}  {empty_label}")
-    history_text = "\n".join(lines)
+            blocks.append(f"`{d.strftime('%d.%m.%Y')} {wd}  {empty_label}`")
+    history_text = "\n\n".join(blocks)
     pct = int(total_done / total_planned * 100) if total_planned else 0
     week_total = t("history_week_total", lang, done=total_done, planned=total_planned, pct=pct)
     return history_text + f"\n\n{week_total}"
