@@ -6,9 +6,9 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
-from ..config import LEVEL_NAMES, SECRET_CODE_NORM, logger
+from ..config import LEVEL_NAMES, logger
 from ..db import add_welcome_greeting, get_db, get_lang, get_user, is_permanently_banned
 from ..i18n import t, text_filter
 from ..keyboards import (LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
@@ -227,49 +227,15 @@ async def login_start(message: types.Message, state: FSMContext):
     else:
         data = await state.get_data()
         lang = data.get("lang", "ru")
-        await message.answer(t("enter_secret", lang), parse_mode="Markdown",
-                             reply_markup=ReplyKeyboardRemove())
-        await state.set_state(Login.enter_code)
-
-
-@router.message(Login.enter_code)
-async def login_check(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-
-    # Check lockout
-    locked_until = data.get("locked_until")
-    if locked_until:
-        if datetime.now() < datetime.fromisoformat(locked_until):
-            await message.answer(t("wrong_code_locked", lang))
+        if await is_permanently_banned(message.from_user.id):
+            await state.clear()
+            await message.answer("⛔ Ваш аккаунт был удалён. Регистрация невозможна."
+                                 if lang == "ru" else
+                                 "⛔ Your account was deleted. Registration is not possible.")
             return
-        else:
-            await state.update_data(attempts=0, locked_until=None)
-            data = await state.get_data()
-
-    if not message.text or message.text.strip().upper() != SECRET_CODE_NORM:
-        attempts = data.get("attempts", 0) + 1
-        if attempts >= 3:
-            locked_until = (datetime.now() + timedelta(hours=1)).isoformat()
-            await state.update_data(attempts=attempts, locked_until=locked_until)
-            await message.answer(t("wrong_code_locked", lang))
-            logger.warning(f"[security] user {message.from_user.id} locked out after 3 failed code attempts")
-        else:
-            await state.update_data(attempts=attempts)
-            await message.answer(t("wrong_code", lang, attempts=attempts))
-        return
-
-    # Check if this user was permanently banned (deleted account)
-    if await is_permanently_banned(message.from_user.id):
-        await state.clear()
-        await message.answer("⛔ Ваш аккаунт был удалён. Регистрация невозможна."
-                             if lang == "ru" else
-                             "⛔ Your account was deleted. Registration is not possible.")
-        return
-
-    await state.update_data(attempts=0, locked_until=None)
-    await message.answer(t("code_accepted", lang), parse_mode="Markdown")
-    await state.set_state(Reg.name)
+        await message.answer(t("code_accepted", lang), parse_mode="Markdown",
+                             reply_markup=ReplyKeyboardRemove())
+        await state.set_state(Reg.name)
 
 
 @router.message(Reg.name)

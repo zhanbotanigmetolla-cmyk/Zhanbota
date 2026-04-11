@@ -4,6 +4,14 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-11]
+
+### Changed
+- **Open registration**: removed secret code requirement — anyone can now register freely
+- **Friends list filter**: only users who logged at least one workout in the last 7 days appear in the friends list; leaderboard still shows everyone
+
+---
+
 ## [2026-04-10] (7)
 
 ### Fixed

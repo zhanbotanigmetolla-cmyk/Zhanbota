@@ -22,7 +22,13 @@ PAGE_SIZE = 8
 async def _show_friends_page(message: types.Message, state: FSMContext, user, page: int):
     lang = user["lang"] or "ru"
     conn = await get_db()
-    async with conn.execute("SELECT * FROM users ORDER BY id ASC") as cur:
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    async with conn.execute(
+        "SELECT * FROM users WHERE id=? OR id IN ("
+        "  SELECT DISTINCT user_id FROM workouts WHERE date>=?"
+        ") ORDER BY id ASC",
+        (user["id"], week_ago)
+    ) as cur:
         all_users = await cur.fetchall()
 
     if not all_users:

@@ -182,7 +182,7 @@ STRINGS = {
         "wrong_code": "❌ Неверный код. Попробуй ещё раз: ({attempts} из 3)",
         "wrong_code_locked": "🔒 Слишком много попыток. Попробуй снова через 1 час.",
         "poke_already_today": "⏳ Ты уже отправил мотивацию {name} сегодня. Можно снова завтра.",
-        "code_accepted": "✅ Код принят!\n\nКак тебя зовут?\n_(Введите минимум 3 символа)_",
+        "code_accepted": "Как тебя зовут?\n_(Введите минимум 3 символа)_",
         "hello_name": "👋 Привет, *{name}*!\n\nВведи свой вес в кг:\n_Можно изменить позже в настройках._",
         "enter_base": "Сколько подтягиваний твоя *дневная норма*?",
         "enter_start_day": (
@@ -586,7 +586,7 @@ STRINGS = {
         "wrong_code": "❌ Wrong code. Try again: ({attempts} of 3)",
         "wrong_code_locked": "🔒 Too many attempts. Try again in 1 hour.",
         "poke_already_today": "⏳ You already sent motivation to {name} today. Try again tomorrow.",
-        "code_accepted": "✅ Code accepted!\n\nWhat's your name?\n_(Enter at least 3 characters)_",
+        "code_accepted": "What's your name?\n_(Enter at least 3 characters)_",
         "hello_name": "👋 Hi, *{name}*!\n\nEnter your weight in kg:\n_You can change it later in settings._",
         "enter_base": "What's your *daily pullup target*?",
         "enter_start_day": (
