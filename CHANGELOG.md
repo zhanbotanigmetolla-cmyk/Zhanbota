@@ -4,6 +4,16 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-11] (2)
+
+### Fixed
+- **Display name fallback**: users with a name shorter than 2 characters (e.g. ".") now show their username instead — fixes `\.` rendering in friends list
+
+### Changed
+- **Friends list header**: now explains that only users active in the last 7 days are shown
+
+---
+
 ## [2026-04-11]
 
 ### Changed

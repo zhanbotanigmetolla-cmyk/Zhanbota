@@ -4,7 +4,10 @@ from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE
 def display(user) -> str:
     if not user:
         return "Участник"
-    return user["first_name"] or user["username"] or "Участник"
+    name = user["first_name"]
+    if name and len(name) >= 2:
+        return name
+    return user["username"] or "Участник"
 
 
 def md_escape(text: str) -> str:
