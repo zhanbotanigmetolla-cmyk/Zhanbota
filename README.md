@@ -102,3 +102,4 @@ python -m pullup_bot
 `deploy.bat` пушит в GitHub, затем по SSH запускает `~/deploy.sh` на сервере (git pull → cp → systemctl restart).
 
 Секреты хранятся только на сервере в `~/.env.pullup_bot` и не коммитятся в Git.
+
