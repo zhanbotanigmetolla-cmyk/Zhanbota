@@ -31,6 +31,8 @@ ADMIN_TG_ID = int(os.environ.get("ADMIN_TG_ID", "0"))
 ADMIN_USERNAMES = {"zhanbota102"}  # Always-admin usernames regardless of tg_id
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
+# UTC offset for notification time matching (default: UTC+5 = Kazakhstan/Almaty)
+TZ_OFFSET_HOURS = int(os.environ.get("TZ_OFFSET_HOURS", "5"))
 
 WAVE = {
     0: ("Средний",   1.0),

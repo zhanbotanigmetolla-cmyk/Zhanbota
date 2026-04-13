@@ -1,8 +1,8 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from aiogram.exceptions import TelegramForbiddenError
 
-from ..config import ADMIN_TG_ID, logger
+from ..config import ADMIN_TG_ID, TZ_OFFSET_HOURS, logger
 from ..db import get_db, get_today_workout
 from ..i18n import t, day_name
 from ..services.xp import display, md_escape, planned_for_day
@@ -23,8 +23,8 @@ async def _delete_user(conn, user_id: int):
 
 
 async def daily_reminder(bot):
-    from datetime import datetime
-    now = datetime.now().strftime("%H:%M")
+    tz = timezone(timedelta(hours=TZ_OFFSET_HOURS))
+    now = datetime.now(tz).strftime("%H:%M")
     conn = await get_db()
     async with conn.execute(
         "SELECT * FROM users WHERE notify_time=? AND is_logged_out=0 AND is_banned=0", (now,)

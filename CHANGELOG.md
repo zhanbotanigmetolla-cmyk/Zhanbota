@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-13] (3)
+
+### Fixed
+- **Notifications firing at wrong time**: scheduler was comparing stored `notify_time` against server UTC clock, but users enter their local time (UTC+5 Kazakhstan). Notifications always arrived 5 hours late. Scheduler now uses UTC+5 (configurable via `TZ_OFFSET_HOURS` env var).
+
 ## [2026-04-13] (2)
 
 ### Changed
