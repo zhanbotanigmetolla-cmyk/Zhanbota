@@ -12,13 +12,12 @@ from ..keyboards import (LANG_BACK_BILINGUAL, LANG_EN_BTN, LANG_RU_BTN, LANG_TOG
                          landing_kb, lang_kb, logout_confirm_kb, main_kb, parse_rpe,
                          rpe_menu_kb, settings_kb, skip_reason_kb)
 from aiogram.filters import StateFilter
-from ..states import (DeleteAccount, EditDay, Logout, SetBase, SetName, SetNotify, SetWeight,
+from ..states import (DeleteAccount, EditDay, Logout, SetBase, SetName, SetNotify,
                       Settings, SkipReason)
 
 _INPUT_STATES = (
     SetNotify.enter_time,
     SetBase.enter_base,
-    SetWeight.enter_weight,
     SetName.enter_name,
     SkipReason.pick_date, SkipReason.enter_reason,
 )
@@ -61,7 +60,7 @@ async def settings_menu(message: types.Message, state: FSMContext):
     await state.set_state(Settings.viewing)
     await message.answer(
         t("settings_title", lang,
-          base=user["base_pullups"], weight=user["weight_kg"],
+          base=user["base_pullups"],
           notify=user["notify_time"], freeze=user["freeze_tokens"]),
         parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message),
                                                          notify_workouts=bool(user["notify_workouts"])))
@@ -131,7 +130,7 @@ async def delete_account_cancel(message: types.Message, state: FSMContext):
         return
     await message.answer(
         t("settings_title", lang,
-          base=user["base_pullups"], weight=user["weight_kg"],
+          base=user["base_pullups"],
           notify=user["notify_time"], freeze=user["freeze_tokens"]),
         parse_mode="Markdown", reply_markup=settings_kb(lang,
                                                        notify_workouts=bool(user["notify_workouts"])))
@@ -156,18 +155,6 @@ async def set_base_start_msg(message: types.Message, state: FSMContext):
     await message.answer(t("set_base_prompt", lang, base=user["base_pullups"]),
                          parse_mode="Markdown")
     await state.set_state(SetBase.enter_base)
-
-
-@router.message(text_filter("btn_change_weight"))
-async def set_weight_start_msg(message: types.Message, state: FSMContext):
-    user = await get_user(message.from_user.id)
-    if not user:
-        await message.answer(t("register_first", "ru"))
-        return
-    lang = user["lang"] or "ru"
-    await message.answer(t("set_weight_prompt", lang, weight=user["weight_kg"]),
-                         parse_mode="Markdown")
-    await state.set_state(SetWeight.enter_weight)
 
 
 @router.message(text_filter("btn_change_name"))
@@ -205,7 +192,7 @@ async def edit_date_back(message: types.Message, state: FSMContext):
     await state.set_state(Settings.viewing)
     await message.answer(
         t("settings_title", lang,
-          base=user["base_pullups"], weight=user["weight_kg"],
+          base=user["base_pullups"],
           notify=user["notify_time"], freeze=user["freeze_tokens"]),
         parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message),
                                                          notify_workouts=bool(user["notify_workouts"])))
@@ -265,7 +252,7 @@ async def language_back(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
         t("settings_title", lang,
-          base=user["base_pullups"], weight=user["weight_kg"],
+          base=user["base_pullups"],
           notify=user["notify_time"], freeze=user["freeze_tokens"]),
         parse_mode="Markdown", reply_markup=settings_kb(lang,
                                                        notify_workouts=bool(user["notify_workouts"]) if user else False))
@@ -352,33 +339,6 @@ async def set_base_save(message: types.Message, state: FSMContext):
         await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
     except ValueError:
         await message.answer(t("set_base_range", lang))
-
-
-@router.message(SetWeight.enter_weight)
-async def set_weight_save(message: types.Message, state: FSMContext):
-    lang = await get_lang(message.from_user.id)
-    if not message.text:
-        await message.answer(t("set_weight_range", lang))
-        return
-    try:
-        import re
-        text = re.sub(r'(?i)\s*к?г\w*$|\s*kg\w*$', '', message.text.strip()).strip()
-        if len(text) > 8:
-            await message.answer(t("set_weight_range", lang))
-            return
-        weight = float(text.replace(",", "."))
-        if weight < 30 or weight > 300:
-            await message.answer(t("set_weight_range", lang))
-            return
-        conn = await get_db()
-        await conn.execute("UPDATE users SET weight_kg=? WHERE tg_id=?",
-                           (weight, message.from_user.id))
-        await conn.commit()
-        await message.answer(t("set_weight_ok", lang, weight=weight), parse_mode="Markdown")
-        await state.clear()
-        await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
-    except ValueError:
-        await message.answer(t("set_weight_range", lang))
 
 
 @router.message(Command("edit"))

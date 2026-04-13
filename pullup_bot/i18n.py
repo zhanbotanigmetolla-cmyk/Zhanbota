@@ -270,7 +270,7 @@ STRINGS = {
             "Дай конкретный совет с учётом всех данных — что делать завтра и почему."
         ),
         # Settings
-        "settings_title": "⚙️ *Настройки*\n\nБаза: {base} подтягиваний\nВес: {weight} кг\nУведомления: {notify}\nЗаморозок: {freeze}",
+        "settings_title": "⚙️ *Настройки*\n\nБаза: {base} подтягиваний\nУведомления: {notify}\nЗаморозок: {freeze}",
         "set_time_prompt": "Текущее время уведомлений: *{current}*\n\nВведи новое время в формате *ЧЧ:ММ* (например: 09:00):",
         "set_time_ok": "✅ Напоминания в *{time}*",
         "set_time_bad": "❌ Неверный формат. Введи как: 09:00",
@@ -674,7 +674,7 @@ STRINGS = {
             "Give specific advice considering all the data — what to do tomorrow and why."
         ),
         # Settings
-        "settings_title": "⚙️ *Settings*\n\nBase: {base} pullups\nWeight: {weight} kg\nNotifications: {notify}\nFreezes: {freeze}",
+        "settings_title": "⚙️ *Settings*\n\nBase: {base} pullups\nNotifications: {notify}\nFreezes: {freeze}",
         "set_time_prompt": "Current notification time: *{current}*\n\nEnter new time as *HH:MM* (e.g.: 09:00):",
         "set_time_ok": "✅ Reminders at *{time}*",
         "set_time_bad": "❌ Invalid format. Enter as: 09:00",

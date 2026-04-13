@@ -25,9 +25,10 @@ def test_t_kwargs():
 
 
 def test_t_kwargs_ru():
-    result = t("welcome_user", "ru", name="Alex", base=130, day=1, level="Новичок")
+    result = t("welcome_user", "ru", name="Alex", max_pullups=15, base=45, level="Silver I")
     assert "Alex" in result
-    assert "130" in result
+    assert "45" in result
+    assert "15" in result
 
 
 # --- day_name() ---

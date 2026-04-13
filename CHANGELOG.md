@@ -13,6 +13,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ### Changed
 - **New user onboarding**: instead of asking for weight + daily base, now asks only "max pullups in one set". Base is derived automatically as `max × 3`. Existing users are unaffected.
+- **Settings**: removed "Change Weight" button — weight is no longer collected or shown. Fixed broken `welcome_user` i18n test and stale `weight=` kwargs in settings display calls.
 
 ## [2026-04-13]
 
