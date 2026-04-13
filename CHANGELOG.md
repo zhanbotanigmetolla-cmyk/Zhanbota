@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-13] (2)
+
+### Changed
+- **New user onboarding**: instead of asking for weight + daily base, now asks only "max pullups in one set". Base is derived automatically as `max × 3`. Existing users are unaffected.
+
 ## [2026-04-13]
 
 ### Fixed

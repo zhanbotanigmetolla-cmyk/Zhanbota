@@ -16,8 +16,7 @@ class About(StatesGroup):
 
 class Reg(StatesGroup):
     name = State()
-    weight = State()
-    base = State()
+    max_pullups = State()
 
 
 class Training(StatesGroup):

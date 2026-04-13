@@ -1,5 +1,3 @@
-import re
-
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.filters import Command, StateFilter
@@ -249,60 +247,40 @@ async def reg_name(message: types.Message, state: FSMContext):
         return
     await state.update_data(first_name=name)
     await message.answer(t("hello_name", lang, name=md_escape(name)), parse_mode="Markdown")
-    await state.set_state(Reg.weight)
+    await state.set_state(Reg.max_pullups)
 
 
-@router.message(Reg.weight)
-async def reg_weight(message: types.Message, state: FSMContext):
+@router.message(Reg.max_pullups)
+async def reg_max_pullups(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
     if not message.text:
-        await message.answer(t("enter_number", lang, example="90"))
+        await message.answer(t("enter_number", lang, example="10"))
         return
     try:
-        text = re.sub(r'(?i)\s*к?г\w*$|\s*kg\w*$', '', message.text.strip()).strip()
-        if len(text) > 8:
-            await message.answer(t("enter_number", lang, example="90"))
+        max_reps = int(message.text.strip())
+        if not (1 <= max_reps <= 200):
+            await message.answer(t("enter_number", lang, example="10"))
             return
-        w = float(text.replace(",", "."))
-        await state.update_data(weight=w)
-        await message.answer(t("enter_base", lang), parse_mode="Markdown")
-        await state.set_state(Reg.base)
-    except ValueError:
-        await message.answer(t("enter_number", lang, example="90"))
-
-
-@router.message(Reg.base)
-async def reg_base(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    if not message.text:
-        await message.answer(t("enter_number", lang, example="130"))
-        return
-    try:
-        text = message.text.strip()
-        if len(text) > 5 or not (1 <= int(text) <= 500):
-            await message.answer(t("enter_number", lang, example="130"))
-            return
-        base = int(text)
+        base = max(5, max_reps * 3)
         conn = await get_db()
         await conn.execute(
-            "INSERT INTO users (tg_id, username, first_name, base_pullups, start_day, weight_kg, lang, program_day) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO users (tg_id, username, first_name, base_pullups, start_day, lang, program_day) "
+            "VALUES (?,?,?,?,?,?,?)",
             (message.from_user.id,
              message.from_user.username or data.get("first_name"),
              data.get("first_name", message.from_user.first_name),
-             base, 0, data["weight"], lang, 0))
+             base, 0, lang, 0))
         await conn.commit()
         await state.clear()
         new_name = data.get("first_name", "атлет")
         await message.answer(
             t("welcome_user", lang,
               name=md_escape(new_name),
+              max_pullups=max_reps,
               base=base,
               level=LEVEL_NAMES[0]),
             parse_mode="Markdown", reply_markup=main_kb(lang))
-        # Notify all existing users about the new member
         await _broadcast_new_user(message.from_user.id, new_name)
     except ValueError:
         await message.answer(t("enter_number", lang, example="10"))
