@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-13]
+
+### Fixed
+- **Double rest day bug**: if a user skipped a rest day without opening the bot, the next day still showed "Rest" because `program_day` never advanced. Now, if today is a scheduled rest day and the user hasn't trained since their last workout (days_off ≥ 2), the bot silently advances `program_day` to the next training day.
+
 ## [2026-04-11] (2)
 
 ### Fixed

@@ -83,17 +83,16 @@ async def start_training(message: types.Message, state: FSMContext):
         planned, day_type = planned_for_day(user)
     days_off = _days_since_last(user)
 
-    # If user has been off 3+ days and today is a rest day, skip the rest prompt
-    # and start a light session instead — they've already rested enough
-    if day_type == "Отдых" and days_off >= 3:
-        note = (f"ℹ️ _Ты не тренировался {days_off} дней, поэтому день отдыха пропускается. Начинаем лёгкую тренировку._\n\n"
-                if lang == "ru" else
-                f"ℹ️ _You haven't trained for {days_off} days, so the rest day is skipped. Starting a light session._\n\n")
-        day_type = "Лёгкий"
-        planned = int(user["base_pullups"] * 0.7)
-        await message.answer(note, parse_mode="Markdown")
-        await _begin_training(message, state, user, lang, today_str, planned, day_type)
-        return
+    # If today is a rest day but the user has already been off since their last workout,
+    # they've naturally rested — auto-advance program_day to the next training day.
+    if day_type == "Отдых" and days_off >= 2:
+        conn = await get_db()
+        new_pd = (user["program_day"] or 0) + 1
+        await conn.execute("UPDATE users SET program_day = ? WHERE id = ?", (new_pd, user["id"]))
+        await conn.commit()
+        user = dict(user)
+        user["program_day"] = new_pd
+        planned, day_type = planned_for_day(user)
 
     # Rest day override (normal case)
     if day_type == "Отдых":
