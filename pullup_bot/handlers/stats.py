@@ -102,9 +102,13 @@ async def show_stats(message: types.Message):
     xp_needed = nxt_threshold - cur_threshold
 
     # Upcoming 7-day schedule
+    # After today's session is recorded, program_day already points to *tomorrow's* slot,
+    # so offset is i-1. If today hasn't been logged yet, program_day still points to today,
+    # so offset is i (tomorrow = today+1 in cycle).
+    pd_offset = -1 if today_w else 0
     schedule_lines = []
     for i in range(1, 8):
-        future_pd = ((user["program_day"] or 0) + i) % 7
+        future_pd = ((user["program_day"] or 0) + i + pd_offset) % 7
         day_type_name, coeff = WAVE[future_pd]
         planned_label = t("stats_schedule_rest", lang) if coeff == 0 else str(int(user["base_pullups"] * coeff))
         dt_display = day_name(day_type_name, lang)
