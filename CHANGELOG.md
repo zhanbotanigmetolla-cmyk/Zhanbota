@@ -7,6 +7,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-14]
 
 ### Fixed
+- **Morning notification incorrectly saying "rest day" when it's actually a training day**: the scheduler now applies the same auto-advance logic as the training handler — if the cycle shows a rest day but the user hasn't trained for 2+ days already, it advances to the next training day before sending the notification.
 - **Stats history wrongly showing consecutive unrecorded days as "Отдых"**: when two or more days in a row had no workout record, the wave-inference logic kept reusing the same cycle slot (the one immediately after the last recorded workout). Each missing day now gets its correct cycle slot by advancing the index by the number of days since the last recorded workout.
 
 ## [2026-04-13] (3)

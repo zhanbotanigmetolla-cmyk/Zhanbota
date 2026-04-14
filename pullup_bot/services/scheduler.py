@@ -38,6 +38,23 @@ async def daily_reminder(bot):
             day_type = existing["day_type"] or planned_for_day(user)[1]
         else:
             planned, day_type = planned_for_day(user)
+            # Same auto-advance as training handler: if the cycle says rest but
+            # the user has already been off for 2+ days, today is actually a
+            # training day — advance the cycle and recalculate.
+            if day_type == "Отдых" and user["last_workout"]:
+                try:
+                    days_off = (date.today() - date.fromisoformat(user["last_workout"])).days
+                except Exception:
+                    days_off = 0
+                if days_off >= 2:
+                    new_pd = (user["program_day"] or 0) + 1
+                    await conn.execute(
+                        "UPDATE users SET program_day=? WHERE id=?", (new_pd, user["id"])
+                    )
+                    await conn.commit()
+                    user = dict(user)
+                    user["program_day"] = new_pd
+                    planned, day_type = planned_for_day(user)
         done = existing["completed"] if existing else 0
         if day_type == "Отдых":
             if done > 0:
