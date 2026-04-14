@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-14]
+
+### Fixed
+- **Stats history wrongly showing consecutive unrecorded days as "Отдых"**: when two or more days in a row had no workout record, the wave-inference logic kept reusing the same cycle slot (the one immediately after the last recorded workout). Each missing day now gets its correct cycle slot by advancing the index by the number of days since the last recorded workout.
+
 ## [2026-04-13] (3)
 
 ### Fixed

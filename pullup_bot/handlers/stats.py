@@ -76,10 +76,17 @@ async def show_stats(message: types.Message):
             e = "✅" if done_v >= p and p > 0 else ("😴" if p == 0 else "❌")
             history += f"{e} {date_label} {dtype}: {done_v}/{p}\n"
         else:
-            # Infer from the most recent previous record whether this was a rest day
+            # Infer from the most recent previous record whether this was a rest day.
+            # Advance the wave index by the gap in days so consecutive unrecorded
+            # days are each assigned the correct cycle slot (not all the same).
             prev_ds = max((d for d in wave_after if d < ds), default=None)
-            if prev_ds and WAVE[wave_after[prev_ds]][1] == 0:
-                history += f"😴 {date_label} {rest_label}: 0/0\n"
+            if prev_ds:
+                gap = (d_obj - date.fromisoformat(prev_ds)).days
+                inferred_idx = (wave_after[prev_ds] + (gap - 1)) % 7
+                if WAVE[inferred_idx][1] == 0:
+                    history += f"😴 {date_label} {rest_label}: 0/0\n"
+                else:
+                    history += f"—  {date_label} {no_data_label}\n"
             else:
                 history += f"—  {date_label} {no_data_label}\n"
 
