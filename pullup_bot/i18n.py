@@ -30,8 +30,8 @@ STRINGS = {
         "btn_skip_reason": "📅 Причина пропуска",
         "btn_logout": "🚪 Выйти из системы",
         "btn_language": "🌐 Язык / Language",
-        "btn_notify_workouts_on": "🔔 Уведомления о тренировках: ВКЛ",
-        "btn_notify_workouts_off": "🔕 Уведомления о тренировках: ВЫКЛ",
+        "btn_notify_workouts_on": "🔔 Уведомления от друзей: ВКЛ",
+        "btn_notify_workouts_off": "🔕 Уведомления от друзей: ВЫКЛ",
         "notify_workouts_enabled": "🔔 Уведомления о тренировках друзей *включены*. Ты будешь получать сообщение, когда кто-то завершит тренировку.",
         "notify_workouts_disabled": "🔕 Уведомления о тренировках друзей *выключены*.",
         # Start
@@ -435,8 +435,8 @@ STRINGS = {
         "btn_skip_reason": "📅 Skip Reason",
         "btn_logout": "🚪 Log Out",
         "btn_language": "🌐 Язык / Language",
-        "btn_notify_workouts_on": "🔔 Workout Notifications: ON",
-        "btn_notify_workouts_off": "🔕 Workout Notifications: OFF",
+        "btn_notify_workouts_on": "🔔 Friend Notifications: ON",
+        "btn_notify_workouts_off": "🔕 Friend Notifications: OFF",
         "notify_workouts_enabled": "🔔 Friend workout notifications *enabled*. You'll be notified when someone finishes a workout.",
         "notify_workouts_disabled": "🔕 Friend workout notifications *disabled*.",
         # Start
