@@ -6,6 +6,9 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-04-15]
 
+### Fixed
+- Training button numbers now start at a minimum of 4 (was 1) — users with smaller bases no longer see unrealistically low options like 1, 2, 3.
+
 ### Changed
 - Training menu quick-rep buttons now show 10 numbers in 2 rows of 5: first row is 5 consecutive numbers anchored to last session's reps, second row continues with gradually increasing gaps (e.g. 5 6 7 8 9 | 10 11 14 17 20).
 

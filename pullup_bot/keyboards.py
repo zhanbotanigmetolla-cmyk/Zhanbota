@@ -69,7 +69,7 @@ def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool 
 
 def smart_set_buttons(planned: int) -> list:
     base = 7 if planned <= 0 else max(3, planned // 10)
-    start = max(1, base - 2)
+    start = max(4, base - 2)
     row1 = list(range(start, start + 5))
     r2 = start + 5
     row2 = [r2, r2 + 1, r2 + 4, r2 + 7, r2 + 10]
