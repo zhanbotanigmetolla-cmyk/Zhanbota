@@ -68,20 +68,19 @@ def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool 
 
 
 def smart_set_buttons(planned: int) -> list:
-    if planned <= 0:
-        return [5, 8, 10, 12, 15, 20, 25, 30]
-    avg = max(3, planned // 10)
-    return sorted(set([
-        max(3, avg - 4), max(3, avg - 2), avg,
-        avg + 2, avg + 4, avg + 7, avg + 10, avg + 15,
-    ]))[:8]
+    base = 7 if planned <= 0 else max(3, planned // 10)
+    start = max(1, base - 2)
+    row1 = list(range(start, start + 5))
+    r2 = start + 5
+    row2 = [r2, r2 + 1, r2 + 4, r2 + 7, r2 + 10]
+    return row1 + row2
 
 
 def training_kb(sets: list, planned: int = 0, lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
     for n in smart_set_buttons(planned):
         b.button(text=str(n))
-    b.adjust(4)
+    b.adjust(5)
     b.row(KeyboardButton(text=t("btn_undo", lang)),
           KeyboardButton(text=t("btn_manual", lang)))
     b.row(KeyboardButton(text=t("btn_finish", lang)),

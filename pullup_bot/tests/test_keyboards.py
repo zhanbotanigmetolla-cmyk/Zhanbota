@@ -45,7 +45,7 @@ def test_parse_rpe_negative_extracts_digit():
 
 def test_smart_set_buttons_count():
     result = smart_set_buttons(100)
-    assert 1 <= len(result) <= 8
+    assert len(result) == 10
 
 
 def test_smart_set_buttons_sorted():
@@ -55,13 +55,25 @@ def test_smart_set_buttons_sorted():
 
 def test_smart_set_buttons_all_positive():
     result = smart_set_buttons(100)
-    assert all(n >= 3 for n in result)
+    assert all(n >= 1 for n in result)
 
 
 def test_smart_set_buttons_zero_planned():
     result = smart_set_buttons(0)
-    assert len(result) == 8
+    assert len(result) == 10
     assert 5 in result
+
+
+def test_smart_set_buttons_row1_consecutive():
+    result = smart_set_buttons(100)
+    for i in range(4):
+        assert result[i + 1] - result[i] == 1
+
+
+def test_smart_set_buttons_row2_increasing_gaps():
+    result = smart_set_buttons(100)
+    gaps = [result[i + 1] - result[i] for i in range(5, 9)]
+    assert gaps == sorted(gaps)
 
 
 def test_smart_set_buttons_small_planned():
