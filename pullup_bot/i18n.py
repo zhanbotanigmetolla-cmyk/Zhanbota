@@ -129,9 +129,8 @@ STRINGS = {
         "guide_step1": (
             "📋 *Шаг 1 — Регистрация*\n\n"
             "1. Нажми «💪 Войти в Турникмен»\n"
-            "2. Введи секретный код _(получи у организатора)_\n"
-            "3. Укажи имя и вес\n"
-            "4. Укажи дневную норму подтягиваний"
+            "2. Укажи своё имя\n"
+            "3. Укажи максимальное количество подтягиваний за один подход"
         ),
         "guide_step2": (
             "📅 *Шаг 2 — Ежедневный план*\n\n"
@@ -323,11 +322,11 @@ STRINGS = {
             "Это действие удалит *все твои данные*:\n"
             "тренировки, стрик, уровень, XP, заметки — всё.\n\n"
             "Отменить невозможно.\n\n"
-            "Вернуться можно в любой момент — просто введи секретный код снова."
+            "Вернуться можно в любой момент — нажми «Войти в Турникмен»."
         ),
         "delete_confirm_yes": "🗑 Да, удалить всё",
         "delete_confirm_no": "◀️ Отмена",
-        "delete_account_done": "✅ Аккаунт удалён. Все данные стёрты.\n\nЕсли захочешь вернуться — введи /start и секретный код. 💪",
+        "delete_account_done": "✅ Аккаунт удалён. Все данные стёрты.\n\nЕсли захочешь вернуться — нажми «Войти в Турникмен». 💪",
         # Help
         "help": (
             "📖 *Команды бота:*\n\n"
@@ -532,10 +531,9 @@ STRINGS = {
         ),
         "guide_step1": (
             "📋 *Step 1 — Registration*\n\n"
-            "1. Tap «💪 Join Pullup Pro»\n"
-            "2. Enter the secret code _(get it from your organizer)_\n"
-            "3. Enter your name and weight\n"
-            "4. Enter your daily pullup target"
+            "1. Tap «💪 Join Turnikmen»\n"
+            "2. Enter your name\n"
+            "3. Enter your max pullups in one set"
         ),
         "guide_step2": (
             "📅 *Step 2 — Your Daily Plan*\n\n"
@@ -727,11 +725,11 @@ STRINGS = {
             "This will permanently delete *all your data*:\n"
             "workouts, streak, level, XP, notes — everything.\n\n"
             "This cannot be undone.\n\n"
-            "You can come back anytime — just enter the secret code again."
+            "You can come back anytime — just tap «Join Turnikmen»."
         ),
         "delete_confirm_yes": "🗑 Yes, delete everything",
         "delete_confirm_no": "◀️ Cancel",
-        "delete_account_done": "✅ Account deleted. All data erased.\n\nIf you want to come back — type /start and enter the secret code. 💪",
+        "delete_account_done": "✅ Account deleted. All data erased.\n\nIf you want to come back — tap «Join Turnikmen». 💪",
         # Help
         "help": (
             "📖 *Bot commands:*\n\n"

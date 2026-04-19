@@ -394,13 +394,16 @@ async def watchdog_health_check(bot):
                 cleared += 1
                 user_tg_id = row["user_id"]
                 try:
-                    from ..db import get_lang
+                    from ..db import get_lang, get_user
+                    from ..keyboards import main_kb
                     lang = await get_lang(user_tg_id)
+                    user = await get_user(user_tg_id)
                     if lang == "ru":
-                        msg = "🔄 Бот перезапустил твою сессию — предыдущее действие было прервано. Нажми /start или любую кнопку меню."
+                        msg = "🔄 Бот перезапустил твою сессию — предыдущее действие было прервано."
                     else:
-                        msg = "🔄 Bot reset your session — the previous action was interrupted. Tap /start or any menu button."
-                    await bot.send_message(user_tg_id, msg)
+                        msg = "🔄 Bot reset your session — the previous action was interrupted."
+                    kb = main_kb(lang) if user else None
+                    await bot.send_message(user_tg_id, msg, reply_markup=kb)
                 except Exception as e:
                     logger.debug(f"[watchdog] notify stale user {user_tg_id}: {e}")
         if cleared:

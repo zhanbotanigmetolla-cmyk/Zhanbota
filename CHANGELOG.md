@@ -4,6 +4,12 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-19]
+
+### Fixed
+- Stale FSM state reset notification now includes the main menu keyboard so users can continue without needing to type /start (#64)
+- Removed all references to a "secret code" from the guide, delete account warning, and delete account confirmation — no secret code is required to register anymore (#65)
+
 ## [2026-04-15]
 
 ### Fixed
