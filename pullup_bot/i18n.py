@@ -42,8 +42,6 @@ STRINGS = {
             "Бот полностью бесплатный. Навсегда.\n\n"
             "🤖 Включает *Турникмен AI* — персональный ИИ-тренер на базе Google Gemini 3 Flash. "
             "Знает всю историю твоих тренировок, отвечает на любые вопросы.\n\n"
-            "⚠️ _Бот на стадии Бета-тестирования. Возможны баги и недоработки. "
-            "Если бот перестал работать, напишите в чате /start для перезапуска._⚠️\n\n"
             "🐛 Сообщить о баге"
         ),
         "welcome": (
@@ -53,8 +51,6 @@ STRINGS = {
             "Бот полностью бесплатный. Навсегда.\n\n"
             "🤖 Включает *Турникмен AI* — персональный ИИ-тренер на базе Google Gemini 3 Flash. "
             "Знает всю историю твоих тренировок, отвечает на любые вопросы.\n\n"
-            "⚠️ _Бот на стадии Бета-тестирования. Возможны баги и недоработки. "
-            "Если бот перестал работать, напишите в чате /start для перезапуска._⚠️\n\n"
             "Выбери действие:"
         ),
         "about": (
@@ -111,7 +107,9 @@ STRINGS = {
             "`The Global Elite    70 000 XP`\n\n"
             "🎯 *До Global Elite:* ~1.5 года и ~40 000 подтягиваний\n"
             "_(при средней норме 70 подтягиваний/день со стриком)_\n\n"
-            "⚠️ _Бот в стадии бета-тестирования._"
+            "🗑 *Удаление аккаунта:*\n"
+            "Если ты решишь уйти — можно полностью удалить аккаунт через _Настройки_. "
+            "Все данные будут стёрты навсегда."
         ),
         "btn_about_next": "Далее →",
         "btn_guide": "📖 Как начать",
@@ -446,8 +444,6 @@ STRINGS = {
             "The bot is completely free. Forever.\n\n"
             "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
             "It knows your full training history and answers any question.\n\n"
-            "⚠️ _Bot is in Beta. Bugs are possible. "
-            "If the bot stops working, type /start to restart._⚠️\n\n"
             "🐛 Report a Bug"
         ),
         "welcome": (
@@ -457,8 +453,6 @@ STRINGS = {
             "The bot is completely free. Forever.\n\n"
             "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
             "It knows your full training history and answers any question.\n\n"
-            "⚠️ _Bot is in Beta. Bugs are possible. "
-            "If the bot stops working, type /start to restart._⚠️\n\n"
             "Choose an action:"
         ),
         "about": (
@@ -514,7 +508,9 @@ STRINGS = {
             "`The Global Elite    70,000 XP`\n\n"
             "🎯 *Road to Global Elite:* ~1.5 years and ~40,000 pullups\n"
             "_(averaging 70 pullups/day with an active streak)_\n\n"
-            "⚠️ _Bot is in beta testing._"
+            "🗑 *Deleting your account:*\n"
+            "If you ever decide to leave — you can permanently delete your account via _Settings_. "
+            "All data will be erased forever."
         ),
         "btn_about_next": "Next →",
         "btn_guide": "📖 Getting Started",

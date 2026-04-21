@@ -6,6 +6,10 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-04-21]
 
+### Changed
+- Removed all "beta testing" labels from welcome screen and About page — bot is now considered GA
+- Added account deletion note to About page 3 (Settings → Delete account), both RU and EN
+
 ### Fixed
 - Leaderboard (rating tab) now filters out users inactive for 7+ days, matching the friends list behaviour. Users inactive for 30+ days are already deleted from the database by the auto-cleanup scheduler.
 
