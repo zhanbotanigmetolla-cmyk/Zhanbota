@@ -8,6 +8,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ### Changed
 - Removed all "beta testing" labels from welcome screen and About page — bot is now considered GA
+- Added contact info (@zhanbota102) to the welcome screen for both RU and EN
 - Added account deletion note to About page 3 (Settings → Delete account), both RU and EN
 
 ### Fixed

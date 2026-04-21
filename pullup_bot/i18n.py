@@ -51,7 +51,8 @@ STRINGS = {
             "Бот полностью бесплатный. Навсегда.\n\n"
             "🤖 Включает *Турникмен AI* — персональный ИИ-тренер на базе Google Gemini 3 Flash. "
             "Знает всю историю твоих тренировок, отвечает на любые вопросы.\n\n"
-            "Выбери действие:"
+            "Выбери действие:\n\n"
+            "📩 По вопросам о боте: @zhanbota102"
         ),
         "about": (
             "ℹ️ *О боте — 1/3*\n\n"
@@ -453,7 +454,8 @@ STRINGS = {
             "The bot is completely free. Forever.\n\n"
             "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
             "It knows your full training history and answers any question.\n\n"
-            "Choose an action:"
+            "Choose an action:\n\n"
+            "📩 For questions about the bot: @zhanbota102"
         ),
         "about": (
             "ℹ️ *About — 1/3*\n\n"
