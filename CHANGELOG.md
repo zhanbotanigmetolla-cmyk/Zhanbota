@@ -4,6 +4,13 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-21]
+
+### Fixed
+- Leaderboard (rating tab) now filters out users inactive for 7+ days, matching the friends list behaviour. Users inactive for 30+ days are already deleted from the database by the auto-cleanup scheduler.
+
+---
+
 ## [2026-04-19]
 
 ### Fixed

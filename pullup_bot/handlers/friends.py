@@ -149,7 +149,13 @@ async def leaderboard(message: types.Message):
         return
     lang = user["lang"] or "ru"
     conn = await get_db()
-    async with conn.execute("SELECT * FROM users", ()) as cur:
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    async with conn.execute(
+        "SELECT * FROM users WHERE id IN ("
+        "  SELECT DISTINCT user_id FROM workouts WHERE date>=?"
+        ")",
+        (week_ago,)
+    ) as cur:
         all_users = await cur.fetchall()
 
     if not all_users:
@@ -157,7 +163,6 @@ async def leaderboard(message: types.Message):
                              reply_markup=main_kb(lang))
         return
 
-    week_ago = (date.today() - timedelta(days=7)).isoformat()
     # Batch query: get weekly totals for all users in one go
     async with conn.execute(
         "SELECT user_id, COALESCE(SUM(completed), 0) as week_done "
