@@ -9,6 +9,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ### Changed
 - Removed all "beta testing" labels from welcome screen and About page — bot is now considered GA
 - Added contact info (@zhanbota102) to the welcome screen for both RU and EN
+- Added new funny waiting phrase about the uncertainty principle to Gemini loading messages
 - Added account deletion note to About page 3 (Settings → Delete account), both RU and EN
 
 ### Fixed
