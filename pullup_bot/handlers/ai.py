@@ -85,6 +85,7 @@ _WAITING_EN = [
     "🎯 Laser-targeting the perfect answer...",
     "🧊 Froze for a moment, thawing now...",
     "🌍 Consulting all continents for advice...",
+    "🔭 Figuring out the uncertainty principle. In the meantime, you'll have to wait an indeterminate amount of time...",
 ]
 
 
