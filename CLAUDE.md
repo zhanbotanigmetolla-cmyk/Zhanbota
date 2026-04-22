@@ -6,8 +6,32 @@ After completing each new feature or fix, always:
 1. Update `CHANGELOG.md` — add an entry under today's date (`## [YYYY-MM-DD]`) with a short human-readable note describing what was added, changed, or fixed and why. Use sections `### Added`, `### Changed`, `### Fixed` as needed.
 2. Stage only the relevant changed files (never `git add -A` blindly)
 3. Commit with a clear message describing *why* the change was made
-4. Push to `origin main`
-5. Restart the bot (see Bot Management below)
+4. Push to a **feature branch** and open a PR — never push directly to `main`
+5. Deploy the bot **from the branch** (not main) so changes are live while CodeRabbit reviews
+6. After the user approves, merge the PR to `main`
+
+### Branch & PR workflow
+
+```bash
+# 1. Create and switch to a new branch
+git checkout -b fix/short-description   # or feat/short-description
+
+# 2. Commit changes as usual, then push the branch
+git push -u origin fix/short-description
+
+# 3. Open a PR (gh CLI)
+gh pr create --title "..." --body "..." 
+
+# 4. Deploy from the branch
+ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99 "~/deploy.sh"
+
+# 5. After approval, merge on GitHub (user clicks Merge) or:
+gh pr merge --squash --delete-branch
+git checkout main && git pull
+```
+
+**Branch naming:** `feat/` for new features, `fix/` for bug fixes.
+**gh CLI path (Windows Git Bash):** `/c/Program Files/GitHub CLI/gh.exe`
 
 Remote: https://github.com/zhanbotanigmetolla-cmyk/Zhanbota.git (branch: main)
 Credentials are stored in `~/.git-credentials` — no additional login needed.
