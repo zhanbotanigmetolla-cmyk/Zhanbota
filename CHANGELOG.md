@@ -4,6 +4,14 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-23]
+
+### Added
+- Guide "More →" step now explains the full training logic in plain language: how the base increases/decreases, what the 7-day cycle means, whether you need 7 consecutive days, how extra activity reduces tomorrow's plan, and how RPE affects the base over time.
+
+### Fixed
+- Leaderboard and Friends list no longer show users who only acknowledged rest days — only users with at least 1 actual pullup in the last 7 days are included.
+
 ## [2026-04-22]
 
 ### Fixed

@@ -25,7 +25,7 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
     week_ago = (date.today() - timedelta(days=7)).isoformat()
     async with conn.execute(
         "SELECT * FROM users WHERE id=? OR id IN ("
-        "  SELECT DISTINCT user_id FROM workouts WHERE date>=?"
+        "  SELECT DISTINCT user_id FROM workouts WHERE date>=? AND completed > 0"
         ") ORDER BY id ASC",
         (user["id"], week_ago)
     ) as cur:
@@ -152,7 +152,7 @@ async def leaderboard(message: types.Message):
     week_ago = (date.today() - timedelta(days=7)).isoformat()
     async with conn.execute(
         "SELECT * FROM users WHERE id IN ("
-        "  SELECT DISTINCT user_id FROM workouts WHERE date>=?"
+        "  SELECT DISTINCT user_id FROM workouts WHERE date>=? AND completed > 0"
         ")",
         (week_ago,)
     ) as cur:
