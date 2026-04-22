@@ -240,8 +240,10 @@ def _user_data_block(user, workouts) -> str:
         today_plan, today_type = planned_for_day(user)
         today_summary = f"{today_type} — {today_plan} pullups planned"
 
-    # Tomorrow: always computed from program_day
-    next_user = {**dict(user), "program_day": ((user["program_day"] or 0) + 1) % 7}
+    # Tomorrow: mirror stats.py — if today's row already exists, program_day has already
+    # advanced to tomorrow's slot, so no extra +1 is needed (pd_offset cancels it).
+    pd_offset = -1 if today_row else 0
+    next_user = {**dict(user), "program_day": ((user["program_day"] or 0) + 1 + pd_offset) % 7}
     next_plan, next_type = planned_for_day(next_user)
 
     history_lines = []
