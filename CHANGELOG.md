@@ -7,7 +7,8 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-22]
 
 ### Fixed
-- Turnikmen AI now correctly reports tomorrow's day type. Previously, after today's workout was logged (advancing `program_day`), the AI computed "tomorrow" as one step too far in the wave cycle — showing the day after tomorrow instead. The fix mirrors the `pd_offset` logic already used by the Stats button.
+- Turnikmen AI now correctly reports tomorrow's day type.
+- Turnikmen AI now receives today's calendar date in its context, so it can detect gaps between the last logged workout and today and adjust its response accordingly. Previously, after today's workout was logged (advancing `program_day`), the AI computed "tomorrow" as one step too far in the wave cycle — showing the day after tomorrow instead. The fix mirrors the `pd_offset` logic already used by the Stats button.
 
 ## [2026-04-21]
 

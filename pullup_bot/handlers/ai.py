@@ -262,7 +262,7 @@ def _user_data_block(user, workouts) -> str:
         f"Rank: {lname}  ({user['xp'] or 0} XP — {to_nxt} XP to next rank)\n"
         f"Streak: {user['streak'] or 0} days  |  Freeze tokens: {user['freeze_tokens'] or 0}  |  Personal record: {user['personal_record'] or 0} pullups\n"
         f"Daily base: {user['base_pullups']} pullups/day  |  Weight: {user['weight_kg']} kg\n"
-        f"Today: {today_summary}\n"
+        f"Today ({today_str}): {today_summary}\n"
         f"Tomorrow: {next_type} — {next_plan} pullups planned\n\n"
         f"Last {len(workouts)} workouts (newest first):\n"
         + ("\n".join(history_lines) if history_lines else "  No workouts yet.") + "\n\n"
