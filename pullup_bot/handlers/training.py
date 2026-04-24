@@ -538,7 +538,7 @@ async def enter_notes(message: types.Message, state: FSMContext):
 
 
 async def _check_weekly_progression(tg_id: int, user_id: int, current_base: int):
-    """After completing a 7-day cycle, bump base +5% if last 5 training days averaged ≥90%."""
+    """After completing a 7-day cycle, bump base +5% if last 5 training days averaged ≥80%."""
     conn = await get_db()
     async with conn.execute(
         "SELECT completed, planned FROM workouts "
@@ -549,7 +549,7 @@ async def _check_weekly_progression(tg_id: int, user_id: int, current_base: int)
     if len(rows) < 5:
         return None
     avg = sum(r["completed"] / r["planned"] for r in rows if r["planned"] > 0) / len(rows)
-    if avg >= 0.9:
+    if avg >= 0.8:
         new_base = int(current_base * 1.05)
         await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
         await conn.commit()
@@ -575,7 +575,7 @@ async def _apply_rpe_adjustment(tg_id: int, user_id: int, current_base: int):
         await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
         await conn.commit()
         return new_base, avg_rpe
-    if avg_rpe <= 4.5 and all_hit:
+    if avg_rpe <= 6.5 and all_hit:
         new_base = int(current_base * 1.03)
         await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
         await conn.commit()
