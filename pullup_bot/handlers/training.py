@@ -90,7 +90,11 @@ async def start_training(message: types.Message, state: FSMContext):
         new_pd = (user["program_day"] or 0) + 1
         await conn.execute("UPDATE users SET program_day = ? WHERE id = ?", (new_pd, user["id"]))
         await conn.commit()
-        user = dict(user)
+        if new_pd % 7 == 0:
+            await _check_weekly_progression(message.from_user.id, user["id"], user["base_pullups"])
+            user = dict(await get_user(message.from_user.id))
+        else:
+            user = dict(user)
         user["program_day"] = new_pd
         planned, day_type = planned_for_day(user)
 
