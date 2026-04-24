@@ -9,6 +9,9 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ### Added
 - Added "🔑 Key Principle" tip to the guide's "More →" page (both RU and EN): even logging 10 pullups on a busy day matters — consistency over perfection, long-term results over short-term completion.
 
+### Added
+- Morning reminder now includes a "📈 Your base increased to X" line if the base was auto-raised since the last reminder. The flag is cleared after the notification is sent so it only appears once.
+
 ### Changed
 - Weekly cycle progression threshold lowered from ≥90% to ≥80% average completion across last 5 sessions — more achievable for real-world training.
 - RPE increase threshold raised from ≤4.5 to ≤6.5 (with 100% completion required) — aligned with sports science: progressive overload is appropriate at moderate effort, not just when workouts feel trivial.

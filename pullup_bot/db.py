@@ -61,6 +61,8 @@ MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_bug_reports_status ON bug_reports(status)",
     # index 19 — opt-in workout finish notifications (default OFF)
     "ALTER TABLE users ADD COLUMN notify_workouts INTEGER DEFAULT 0",
+    # index 20 — flag for morning reminder when base was auto-increased
+    "ALTER TABLE users ADD COLUMN base_increased_to INTEGER DEFAULT NULL",
 ]
 
 

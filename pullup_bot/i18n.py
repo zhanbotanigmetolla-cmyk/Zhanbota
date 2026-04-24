@@ -370,6 +370,7 @@ STRINGS = {
             "/fixbug — закрыть баг (admin)"
         ),
         # Reminders
+        "reminder_base_increased": "📈 Твоя база выросла до {base} — продолжай в том же духе!\n\n",
         "reminder_rest": "😴 Сегодня день отдыха. Восстанавливайся!",
         "reminder_train": "🔔 Не забудь про подтягивания!\n📋 {day_type} день: {planned} подтягиваний\n{status}",
         "reminder_done": "✅ Сделано: {done}",
@@ -804,6 +805,7 @@ STRINGS = {
             "/fixbug — close bug (admin)"
         ),
         # Reminders
+        "reminder_base_increased": "📈 Your base increased to {base} — keep it up!\n\n",
         "reminder_rest": "😴 Today is a rest day. Recover!",
         "reminder_train": "🔔 Don't forget pullups!\n📋 {day_type} day: {planned} pullups\n{status}",
         "reminder_done": "✅ Done: {done}",

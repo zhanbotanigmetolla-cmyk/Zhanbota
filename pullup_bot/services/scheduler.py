@@ -68,10 +68,18 @@ async def daily_reminder(bot):
             msg = t("reminder_train", lang,
                     day_type=day_name(day_type, lang),
                     planned=planned, status=status)
+        base_increased_to = user["base_increased_to"] if "base_increased_to" in user.keys() else None
+        if base_increased_to:
+            msg = t("reminder_base_increased", lang, base=base_increased_to) + msg
         notify_time = user["notify_time"] or "09:00"
         silent = notify_time >= "22:00"
         try:
             await bot.send_message(user["tg_id"], msg, disable_notification=silent)
+            if base_increased_to:
+                await conn.execute(
+                    "UPDATE users SET base_increased_to=NULL WHERE tg_id=?", (user["tg_id"],)
+                )
+                await conn.commit()
         except TelegramForbiddenError:
             last = user["last_workout"]
             inactive = (not last or

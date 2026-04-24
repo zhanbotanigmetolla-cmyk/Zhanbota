@@ -551,7 +551,10 @@ async def _check_weekly_progression(tg_id: int, user_id: int, current_base: int)
     avg = sum(r["completed"] / r["planned"] for r in rows if r["planned"] > 0) / len(rows)
     if avg >= 0.8:
         new_base = int(current_base * 1.05)
-        await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
+        await conn.execute(
+            "UPDATE users SET base_pullups=?, base_increased_to=? WHERE tg_id=?",
+            (new_base, new_base, tg_id)
+        )
         await conn.commit()
         return new_base
     return None
@@ -577,7 +580,10 @@ async def _apply_rpe_adjustment(tg_id: int, user_id: int, current_base: int):
         return new_base, avg_rpe
     if avg_rpe <= 6.5 and all_hit:
         new_base = int(current_base * 1.03)
-        await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
+        await conn.execute(
+            "UPDATE users SET base_pullups=?, base_increased_to=? WHERE tg_id=?",
+            (new_base, new_base, tg_id)
+        )
         await conn.commit()
         return new_base, avg_rpe
     return None, None
