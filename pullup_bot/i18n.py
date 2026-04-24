@@ -164,8 +164,8 @@ STRINGS = {
             "📈 *Как меняется твоя база*\n\n"
             "База — это твоя ежедневная норма подтягиваний. Она меняется автоматически.\n\n"
             "▲ *Повышается:*\n"
-            "• +5% после завершения 7-дневного цикла, если среднее выполнение последних 5 тренировок ≥90%\n"
-            "• +3% если средний RPE последних 3 сессий ≤4.5 и все цели выполнены\n\n"
+            "• +5% после завершения 7-дневного цикла, если среднее выполнение последних 5 тренировок ≥80%\n"
+            "• +3% если средний RPE последних 3 сессий ≤6.5 и все цели выполнены\n\n"
             "▼ *Понижается:*\n"
             "• −5% если средний RPE последних 3 сессий ≥8.5\n"
             "• Первая тренировка после перерыва 3–6 дней — план снижен на 25%\n"
@@ -184,8 +184,8 @@ STRINGS = {
             "_Снижение не больше 50%. Указывай активность честно — бот защитит от перегрузки._\n\n"
             "📊 *Как RPE влияет на план*\n\n"
             "RPE (1–10) влияет на базу долгосрочно через скользящее среднее за 3 сессии:\n"
-            "• RPE ≤4.5 (тренировки даются легко) → база постепенно растёт (+3%)\n"
-            "• RPE 5–8 (нормальная нагрузка) → без изменений\n"
+            "• RPE ≤6.5 (тренировки даются умеренно) → база постепенно растёт (+3%)\n"
+            "• RPE 6.5–8.5 (нормальная нагрузка) → без изменений\n"
             "• RPE ≥8.5 (постоянно на пределе) → база снижается (−5%)\n"
             "_Одна тяжёлая тренировка ничего не изменит — важна тенденция за 3 подряд._\n\n"
             "📈 *Статистика и история*\n\n"
@@ -195,7 +195,12 @@ STRINGS = {
             "Нажми «🤖 Турникмен AI» — задай любой вопрос про тренировки или бот. ИИ знает всю твою историю.\n\n"
             "💡 *Совет*\n\n"
             "Начни с консервативной нормы (50–80 подтягиваний в день). "
-            "Бот сам повысит её, когда ты будешь готов."
+            "Бот сам повысит её, когда ты будешь готов.\n\n"
+            "🔑 *Главный принцип*\n\n"
+            "Не успел сделать полную тренировку? Ничего страшного — залогируй хотя бы 10 подтягиваний. "
+            "Даже несколько подтягиваний, сделанных в свободную минуту, на длинной дистанции дают огромный эффект. "
+            "Мы здесь ради долгосрочного результата, а не идеального выполнения каждого дня. "
+            "Последовательность важнее совершенства."
         ),
         "bye": "👋 Ты вышел из аккаунта.\n\n⏸ Уведомления и стрик поставлены на паузу.\nДанные сохранены — нажми «Войти в Турникмен», чтобы вернуться 💪",
         "main_menu": "👋 Главное меню:",
@@ -365,6 +370,7 @@ STRINGS = {
             "/fixbug — закрыть баг (admin)"
         ),
         # Reminders
+        "reminder_base_increased": "📈 Твоя база выросла до {base} — продолжай в том же духе!\n\n",
         "reminder_rest": "😴 Сегодня день отдыха. Восстанавливайся!",
         "reminder_train": "🔔 Не забудь про подтягивания!\n📋 {day_type} день: {planned} подтягиваний\n{status}",
         "reminder_done": "✅ Сделано: {done}",
@@ -593,8 +599,8 @@ STRINGS = {
             "📈 *How your base changes*\n\n"
             "Your base is your daily pullup target. It adjusts automatically.\n\n"
             "▲ *Increases when:*\n"
-            "• +5% after completing a 7-day cycle if your last 5 training sessions averaged ≥90% completion\n"
-            "• +3% if your average RPE over the last 3 sessions is ≤4.5 and all targets were hit\n\n"
+            "• +5% after completing a 7-day cycle if your last 5 training sessions averaged ≥80% completion\n"
+            "• +3% if your average RPE over the last 3 sessions is ≤6.5 and all targets were hit\n\n"
             "▼ *Decreases when:*\n"
             "• −5% if your average RPE over the last 3 sessions is ≥8.5\n"
             "• First session after a 3–6 day break — plan reduced by 25%\n"
@@ -613,8 +619,8 @@ STRINGS = {
             "_Never below 50%. Log your activity honestly — the bot will protect you from overload._\n\n"
             "📊 *How RPE affects your plan*\n\n"
             "RPE (1–10) shapes your base over time via a rolling average of 3 sessions:\n"
-            "• RPE ≤4.5 (workouts feel easy) → base gradually increases (+3%)\n"
-            "• RPE 5–8 (normal load) → no change\n"
+            "• RPE ≤6.5 (workouts feel moderate or easier) → base gradually increases (+3%)\n"
+            "• RPE 6.5–8.5 (normal load) → no change\n"
             "• RPE ≥8.5 (constantly at the limit) → base decreases (−5%)\n"
             "_One hard session won't change anything — the trend over 3 in a row matters._\n\n"
             "📈 *Stats & History*\n\n"
@@ -624,7 +630,12 @@ STRINGS = {
             "Tap «🤖 Turnikmen AI» to chat — ask anything about your training or how the bot works. It knows your full history.\n\n"
             "💡 *Tip*\n\n"
             "Start with a conservative target (50–80 pullups per day). "
-            "The bot will raise it automatically when you're ready."
+            "The bot will raise it automatically when you're ready.\n\n"
+            "🔑 *The key principle*\n\n"
+            "Can't finish the full workout today? That's fine — log even 10 pullups. "
+            "A few reps squeezed into a spare moment add up to a huge impact over the long run. "
+            "We're here for long-term results, not short-term perfection. "
+            "Consistency beats perfect every time."
         ),
         "bye": "👋 You've logged out.\n\n⏸ Notifications and streak are paused.\nYour data is saved — tap «Join Turnikmen» to come back 💪",
         "main_menu": "👋 Main menu:",
@@ -794,6 +805,7 @@ STRINGS = {
             "/fixbug — close bug (admin)"
         ),
         # Reminders
+        "reminder_base_increased": "📈 Your base increased to {base} — keep it up!\n\n",
         "reminder_rest": "😴 Today is a rest day. Recover!",
         "reminder_train": "🔔 Don't forget pullups!\n📋 {day_type} day: {planned} pullups\n{status}",
         "reminder_done": "✅ Done: {done}",
