@@ -6,6 +6,9 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-04-25]
 
+### Added
+- Added "🔑 Key Principle" tip to the guide's "More →" page (both RU and EN): even logging 10 pullups on a busy day matters — consistency over perfection, long-term results over short-term completion.
+
 ### Fixed
 - Weekly progression was silently skipped when the "auto-advance" path triggered (rest day with days_off ≥ 2). The auto-advance increments `program_day` but had no `new_pd % 7 == 0` check, so any 7-day cycle that ended on an unacknowledged rest day never bumped the base. Added the missing progression check there. Applied 2 retroactive progression bumps for Жанбота (73 → 76 → 79).
 

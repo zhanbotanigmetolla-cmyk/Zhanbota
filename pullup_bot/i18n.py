@@ -195,7 +195,12 @@ STRINGS = {
             "Нажми «🤖 Турникмен AI» — задай любой вопрос про тренировки или бот. ИИ знает всю твою историю.\n\n"
             "💡 *Совет*\n\n"
             "Начни с консервативной нормы (50–80 подтягиваний в день). "
-            "Бот сам повысит её, когда ты будешь готов."
+            "Бот сам повысит её, когда ты будешь готов.\n\n"
+            "🔑 *Главный принцип*\n\n"
+            "Не успел сделать полную тренировку? Ничего страшного — залогируй хотя бы 10 подтягиваний. "
+            "Даже несколько подтягиваний, сделанных в свободную минуту, на длинной дистанции дают огромный эффект. "
+            "Мы здесь ради долгосрочного результата, а не идеального выполнения каждого дня. "
+            "Последовательность важнее совершенства."
         ),
         "bye": "👋 Ты вышел из аккаунта.\n\n⏸ Уведомления и стрик поставлены на паузу.\nДанные сохранены — нажми «Войти в Турникмен», чтобы вернуться 💪",
         "main_menu": "👋 Главное меню:",
@@ -624,7 +629,12 @@ STRINGS = {
             "Tap «🤖 Turnikmen AI» to chat — ask anything about your training or how the bot works. It knows your full history.\n\n"
             "💡 *Tip*\n\n"
             "Start with a conservative target (50–80 pullups per day). "
-            "The bot will raise it automatically when you're ready."
+            "The bot will raise it automatically when you're ready.\n\n"
+            "🔑 *The key principle*\n\n"
+            "Can't finish the full workout today? That's fine — log even 10 pullups. "
+            "A few reps squeezed into a spare moment add up to a huge impact over the long run. "
+            "We're here for long-term results, not short-term perfection. "
+            "Consistency beats perfect every time."
         ),
         "bye": "👋 You've logged out.\n\n⏸ Notifications and streak are paused.\nYour data is saved — tap «Join Turnikmen» to come back 💪",
         "main_menu": "👋 Main menu:",
