@@ -51,10 +51,10 @@ MIGRATIONS = [
         answer   TEXT,
         created  TEXT DEFAULT (datetime('now'))
     )""",
-    # index 15
-    "ALTER TABLE ai_usage_log ADD COLUMN question TEXT",
-    # index 16
-    "ALTER TABLE ai_usage_log ADD COLUMN answer TEXT",
+    # index 15 — no-op: question already included in CREATE TABLE at index 14
+    "SELECT 1",
+    # index 16 — no-op: answer already included in CREATE TABLE at index 14
+    "SELECT 1",
     # index 17 — missing indexes for frequently queried columns
     "CREATE INDEX IF NOT EXISTS idx_ai_usage_log_date ON ai_usage_log(date)",
     # index 18

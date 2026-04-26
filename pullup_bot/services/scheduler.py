@@ -53,7 +53,14 @@ async def daily_reminder(bot):
                         "UPDATE users SET program_day=? WHERE id=?", (new_pd, user["id"])
                     )
                     await conn.commit()
-                    user = dict(user)
+                    if new_pd % 7 == 0:
+                        from ..handlers.training import _check_weekly_progression
+                        await _check_weekly_progression(user["tg_id"], user["id"], user["base_pullups"])
+                        async with conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)) as cur:
+                            fresh = await cur.fetchone()
+                        user = dict(fresh)
+                    else:
+                        user = dict(user)
                     user["program_day"] = new_pd
                     planned, day_type = planned_for_day(user)
         done = existing["completed"] if existing else 0
@@ -73,7 +80,7 @@ async def daily_reminder(bot):
         if base_increased_to:
             msg = t("reminder_base_increased", lang, base=base_increased_to) + msg
         notify_time = user["notify_time"] or "09:00"
-        silent = notify_time >= "22:00"
+        silent = notify_time >= "22:00" or notify_time < "08:00"
         try:
             await bot.send_message(user["tg_id"], msg, disable_notification=silent)
             if base_increased_to:

@@ -226,7 +226,7 @@ STRINGS = {
         "welcome_back": "👋 С возвращением, *{name}*!\n\nУровень: {level} ⭐ XP: {xp}\n🔥 Стрик: {streak} дней",
         "enter_number": "❌ Введи число, например: {example}",
         # Training
-        "train_day": "{'🟢' if day_type != 'Отдых' else '😴'} *{day_type} день*",
+        "train_day": "{icon} *{day_type} день*",
         "train_goal": "🎯 Цель: *{planned}* подтягиваний",
         "train_done_today": "✅ Сделано за сегодня: *{done}*",
         "train_done_now": "🏋️ Сделано сейчас: *{done}*",
@@ -661,7 +661,7 @@ STRINGS = {
         "welcome_back": "👋 Welcome back, *{name}*!\n\nLevel: {level} ⭐ XP: {xp}\n🔥 Streak: {streak} days",
         "enter_number": "❌ Enter a number, e.g.: {example}",
         # Training
-        "train_day": "{'🟢' if day_type != 'Rest' else '😴'} *{day_type} day*",
+        "train_day": "{icon} *{day_type} day*",
         "train_goal": "🎯 Goal: *{planned}* pullups",
         "train_done_today": "✅ Done today: *{done}*",
         "train_done_now": "🏋️ Done now: *{done}*",
