@@ -11,6 +11,7 @@ from .i18n import t
 
 
 def main_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the persistent main menu keyboard for logged-in users."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_train", lang)))
     b.row(KeyboardButton(text=t("btn_stats", lang)), KeyboardButton(text=t("btn_history", lang)))
@@ -21,6 +22,7 @@ def main_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def landing_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the landing screen keyboard shown before login (Join / Guide / About)."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_login", lang)))
     b.row(KeyboardButton(text=t("btn_guide", lang)), KeyboardButton(text=t("btn_about", lang)))
@@ -28,6 +30,7 @@ def landing_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def guide_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the guide navigation keyboard for the given step, with Next and Back buttons."""
     b = ReplyKeyboardBuilder()
     next_btn = {
         "intro": t("btn_guide_step1", lang),
@@ -44,6 +47,7 @@ def guide_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def about_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the About pager keyboard; omits Next on the last page."""
     b = ReplyKeyboardBuilder()
     if step != "page3":
         b.button(text=t("btn_about_next", lang))
@@ -53,6 +57,7 @@ def about_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool = False) -> ReplyKeyboardMarkup:
+    """Return the settings menu keyboard, optionally showing the admin panel button."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_notify_time", lang)), KeyboardButton(text=t("btn_change_base", lang)))
     b.row(KeyboardButton(text=t("btn_change_name", lang)))
@@ -68,6 +73,7 @@ def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool 
 
 
 def smart_set_buttons(planned: int) -> list:
+    """Generate 10 sensible rep-count button values centered around 10% of the planned target."""
     base = 7 if planned <= 0 else max(3, planned // 10)
     start = max(4, base - 2)
     row1 = list(range(start, start + 5))
@@ -77,6 +83,7 @@ def smart_set_buttons(planned: int) -> list:
 
 
 def training_kb(sets: list, planned: int = 0, lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the active training keyboard with smart rep buttons plus Undo/Manual/Finish/Cancel."""
     b = ReplyKeyboardBuilder()
     for n in smart_set_buttons(planned):
         b.button(text=str(n))
@@ -89,6 +96,7 @@ def training_kb(sets: list, planned: int = 0, lang: str = "ru") -> ReplyKeyboard
 
 
 def rpe_menu_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the 1–10 RPE rating keyboard with emoji labels and a Skip/Back row."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text="😴 1"), KeyboardButton(text="😌 2"),
           KeyboardButton(text="🙂 3"), KeyboardButton(text="😐 4"),
@@ -109,6 +117,7 @@ LANG_BACK_BILINGUAL = "◀️ Назад | Back"
 
 
 def lang_kb(show_back: bool = False) -> ReplyKeyboardMarkup:
+    """Return the language selection keyboard (RU / EN) with an optional Back button."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=LANG_RU_BTN), KeyboardButton(text=LANG_EN_BTN))
     if show_back:
@@ -117,6 +126,7 @@ def lang_kb(show_back: bool = False) -> ReplyKeyboardMarkup:
 
 
 def rest_day_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the rest-day prompt keyboard: Train anyway / Keep resting."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("rest_day_train", lang)),
           KeyboardButton(text=t("rest_day_rest", lang)))
@@ -124,6 +134,7 @@ def rest_day_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def cancel_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the training cancel confirmation keyboard: Yes cancel / Continue."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("train_yes_cancel", lang)),
           KeyboardButton(text=t("train_continue", lang)))
@@ -131,6 +142,7 @@ def cancel_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def delete_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the account deletion confirmation keyboard: Yes / No."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("delete_confirm_yes", lang)),
           KeyboardButton(text=t("delete_confirm_no", lang)))
@@ -138,6 +150,7 @@ def delete_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def freeze_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the streak-freeze spend confirmation keyboard: Use token / Skip."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("freeze_yes_btn", lang)),
           KeyboardButton(text=t("freeze_no_btn", lang)))
@@ -145,6 +158,7 @@ def freeze_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def logout_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the logout confirmation keyboard: Yes / No."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("confirm_yes", lang)),
           KeyboardButton(text=t("confirm_no", lang)))
@@ -152,6 +166,7 @@ def logout_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def skip_reason_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the skip-reason selection keyboard with preset reason buttons."""
     b = ReplyKeyboardBuilder()
     for key in ["reason_study", "reason_sick", "reason_overtrain",
                 "reason_travel", "reason_weather", "reason_gym"]:
@@ -161,6 +176,7 @@ def skip_reason_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def activity_reply_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the extra-activity selection keyboard (run/gym/both/skip) after a workout."""
     b = ReplyKeyboardBuilder()
     if lang == "en":
         b.row(KeyboardButton(text="🏃 Running/Cardio"), KeyboardButton(text="🏋️ Gym"))
@@ -173,6 +189,7 @@ def activity_reply_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def edit_extras_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the edit-day extras prompt keyboard: Add extras / Save without."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_yes_add", lang)),
           KeyboardButton(text=t("btn_no_save", lang)))
@@ -180,6 +197,7 @@ def edit_extras_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def ai_chat_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the AI chat keyboard with Get Advice and Back buttons."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_ai_advice", lang)),
           KeyboardButton(text=t("btn_back", lang)))
@@ -187,12 +205,14 @@ def ai_chat_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def back_only_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return a single-button keyboard containing only the Back button."""
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_back", lang)))
     return b.as_markup(resize_keyboard=True)
 
 
 def history_nav_kb(offset: int, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Return the inline history navigation keyboard with Prev week and (if not current) Next week."""
     b = InlineKeyboardBuilder()
     prev_label = "← Пред. неделя" if lang == "ru" else "← Prev week"
     next_label = "Сл. неделя →" if lang == "ru" else "Next week →"
@@ -204,6 +224,7 @@ def history_nav_kb(offset: int, lang: str = "ru") -> InlineKeyboardMarkup:
 
 
 def _truncate_utf8(text: str, max_bytes: int) -> str:
+    """Truncate a string to fit within max_bytes in UTF-8, appending '…' if cut."""
     if max_bytes <= 0:
         return ""
     if len(text.encode("utf-8")) <= max_bytes:
@@ -218,6 +239,7 @@ def _truncate_utf8(text: str, max_bytes: int) -> str:
 
 
 def welcome_new_user_kb(name: str, new_tg_id: int, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Return an inline keyboard with a 'Welcome <name>' button that triggers a greeting callback."""
     b = InlineKeyboardBuilder()
     clean_name = " ".join((name or "").split())
     if not clean_name:
@@ -238,6 +260,7 @@ def welcome_new_user_kb(name: str, new_tg_id: int, lang: str = "ru") -> InlineKe
 
 
 def parse_rpe(text: str) -> Optional[int]:
+    """Parse an RPE value (0–10) from a button label or free text; return None if unparseable."""
     if not text:
         return None
     t = text.strip().lower()
@@ -253,6 +276,7 @@ def parse_rpe(text: str) -> Optional[int]:
 # ── Admin panel inline keyboards ────────────────────────────────────────────
 
 def admin_panel_main_kb(maintenance_on: bool) -> InlineKeyboardMarkup:
+    """Return the admin panel main dashboard inline keyboard."""
     b = InlineKeyboardBuilder()
     b.button(text="👥 Пользователи", callback_data="ap:users:0")
     b.button(text="📊 Статистика", callback_data="ap:stats")
@@ -268,6 +292,7 @@ def admin_panel_main_kb(maintenance_on: bool) -> InlineKeyboardMarkup:
 
 
 def admin_users_kb(users: list, page: int, total: int, per_page: int = 10) -> InlineKeyboardMarkup:
+    """Return a paginated inline keyboard listing user rows with status icons and pagination nav."""
     b = InlineKeyboardBuilder()
     for u in users:
         name = (u["first_name"] or u["username"] or "???")[:20]
@@ -296,6 +321,7 @@ def admin_users_kb(users: list, page: int, total: int, per_page: int = 10) -> In
 
 
 def admin_user_profile_kb(tg_id: int, is_banned: bool, muted: bool) -> InlineKeyboardMarkup:
+    """Return the admin user-profile action keyboard (ban/unban, mute/unmute, reset, delete)."""
     b = InlineKeyboardBuilder()
     if is_banned:
         b.button(text="✅ Разбанить", callback_data=f"ap:unban:{tg_id}")
@@ -316,6 +342,7 @@ def admin_user_profile_kb(tg_id: int, is_banned: bool, muted: bool) -> InlineKey
 
 
 def admin_confirm_kb(action: str, tg_id: int) -> InlineKeyboardMarkup:
+    """Return a generic admin confirmation keyboard: Confirm / Cancel."""
     b = InlineKeyboardBuilder()
     b.button(text="✅ Подтвердить", callback_data=f"ap:confirm:{action}:{tg_id}")
     b.button(text="❌ Отмена", callback_data="ap:cancel_confirm")
@@ -324,6 +351,7 @@ def admin_confirm_kb(action: str, tg_id: int) -> InlineKeyboardMarkup:
 
 
 def admin_confirm_restart_kb() -> InlineKeyboardMarkup:
+    """Return the bot-restart confirmation keyboard: Restart / Cancel."""
     b = InlineKeyboardBuilder()
     b.button(text="✅ Перезапустить", callback_data="ap:confirm_restart")
     b.button(text="❌ Отмена", callback_data="ap:main")
@@ -332,6 +360,7 @@ def admin_confirm_restart_kb() -> InlineKeyboardMarkup:
 
 
 def admin_bugs_kb(reports: list, page: int, has_more: bool) -> InlineKeyboardMarkup:
+    """Return a paginated inline keyboard listing bug reports with status icons."""
     b = InlineKeyboardBuilder()
     for r in reports:
         st = r["status"]

@@ -224,6 +224,7 @@ If the user describes something that sounds like a bug, unexpected behavior, mis
 
 
 def _user_data_block(user, workouts) -> str:
+    """Build the structured user-data section injected into the AI system prompt."""
     from datetime import date as _date
     lang = user["lang"] or "ru"
     lvl, lname, to_nxt, _ = level_info(user["xp"] or 0)
@@ -272,6 +273,7 @@ def _user_data_block(user, workouts) -> str:
 
 
 def _resolve_reply(raw: str, lang: str) -> str:
+    """Convert a raw Gemini response (or rate-limit sentinel) to a user-facing message string."""
     if raw == RATE_LIMIT_DAILY:
         return t("ai_limit_daily", lang)
     if raw == RATE_LIMIT_MINUTE:
@@ -317,6 +319,7 @@ async def _send_reply(message, thinking_msg, reply: str, lang: str, history: lis
 
 @router.message(text_filter("btn_ai"))
 async def ai_chat_start(message: aiogram_types.Message, state: FSMContext):
+    """Open the AI chat: build the personalised system prompt from the user's history and show the intro."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -361,6 +364,7 @@ async def ai_chat_start(message: aiogram_types.Message, state: FSMContext):
 
 @router.message(AIChat.chatting, text_filter("btn_back"))
 async def ai_chat_exit(message: aiogram_types.Message, state: FSMContext):
+    """Exit the AI chat and return to the main menu."""
     data = await state.get_data()
     lang = data.get("ai_lang", "ru")
     await state.clear()
@@ -369,6 +373,7 @@ async def ai_chat_exit(message: aiogram_types.Message, state: FSMContext):
 
 @router.message(AIChat.chatting, text_filter("btn_ai_advice"))
 async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
+    """Trigger an automatic personalised advice prompt based on the user's recent training data."""
     data = await state.get_data()
     lang = data.get("ai_lang", "ru")
     auto_prompt = (
@@ -395,6 +400,7 @@ async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
 
 @router.message(AIChat.chatting)
 async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
+    """Forward the user's free-form message to Gemini and stream back the reply."""
     if not message.text:
         return
     data = await state.get_data()

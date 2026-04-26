@@ -5,10 +5,12 @@ _counters: dict = defaultdict(int)
 
 
 def inc(key: str, amount: int = 1) -> None:
+    """Increment the named counter by amount (default 1)."""
     _counters[key] += amount
 
 
 def get(key: str) -> int:
+    """Return the current value of the named counter (0 if never incremented)."""
     return _counters[key]
 
 

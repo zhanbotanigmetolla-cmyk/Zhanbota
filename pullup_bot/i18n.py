@@ -884,6 +884,7 @@ DAY_NAMES = {
 
 
 def t(key: str, lang: str = "ru", **kwargs) -> str:
+    """Look up a localized string by key and lang, formatting it with any provided kwargs."""
     val = STRINGS.get(lang, STRINGS["ru"]).get(key)
     if val is None:
         val = STRINGS["ru"].get(key, key)
@@ -896,6 +897,7 @@ def t(key: str, lang: str = "ru", **kwargs) -> str:
 
 
 def day_name(name_ru: str, lang: str = "ru") -> str:
+    """Return the localized display name for a Russian day-type string."""
     return DAY_NAMES.get(lang, DAY_NAMES["ru"]).get(name_ru, name_ru)
 
 

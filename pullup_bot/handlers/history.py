@@ -14,6 +14,7 @@ WEEKDAYS_EN = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
 
 def _week_dates(offset: int):
+    """Return (monday, sunday) date objects for the week at the given offset from the current week."""
     today = date.today()
     monday = today - timedelta(days=today.weekday()) + timedelta(weeks=offset)
     sunday = monday + timedelta(days=6)
@@ -21,6 +22,7 @@ def _week_dates(offset: int):
 
 
 def _format_week(rows_by_date: dict, monday: date, sunday: date, lang: str) -> str:
+    """Format one week of workout data as a Markdown code-block table with a weekly total footer."""
     weekdays = WEEKDAYS_RU if lang == "ru" else WEEKDAYS_EN
     blocks = []
     total_done = 0
@@ -53,6 +55,7 @@ def _format_week(rows_by_date: dict, monday: date, sunday: date, lang: str) -> s
 
 
 async def _show_week(target, user, offset: int, edit: bool = False):
+    """Fetch and display the weekly history for the given offset; edit the message if edit=True."""
     lang = user["lang"] or "ru"
     monday, sunday = _week_dates(offset)
     conn = await get_db()
@@ -79,6 +82,7 @@ async def _show_week(target, user, offset: int, edit: bool = False):
 
 @router.message(text_filter("btn_history"))
 async def show_history(message: types.Message):
+    """Show the current week's workout history when the user taps the History button."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -88,6 +92,7 @@ async def show_history(message: types.Message):
 
 @router.callback_query(F.data.startswith("hist_"))
 async def history_nav(callback: types.CallbackQuery):
+    """Handle prev/next week navigation callbacks and update the history message in place."""
     offset = int(callback.data[5:])
     user = await get_user(callback.from_user.id)
     if not user:

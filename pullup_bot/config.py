@@ -71,6 +71,7 @@ START_MENU_LABEL = "/start"
 
 
 def is_admin_id(tg_id: int) -> bool:
+    """Return True if the given Telegram ID matches the configured admin."""
     return tg_id == ADMIN_TG_ID
 
 logging.basicConfig(

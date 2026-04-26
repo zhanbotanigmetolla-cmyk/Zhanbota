@@ -26,6 +26,7 @@ from .. import globals as g
 
 
 def _is_admin(message) -> bool:
+    """Return True if the message sender is the configured admin (by ID or username)."""
     if message.from_user.id == ADMIN_TG_ID:
         return True
     uname = (message.from_user.username or "").lower()
@@ -33,6 +34,7 @@ def _is_admin(message) -> bool:
 
 
 def _is_admin_cb(callback: types.CallbackQuery) -> bool:
+    """Return True if the callback sender is the configured admin (by ID or username)."""
     if callback.from_user.id == ADMIN_TG_ID:
         return True
     uname = (callback.from_user.username or "").lower()
@@ -43,6 +45,7 @@ router = Router()
 
 @router.message(Command("version"))
 async def show_version(message: types.Message):
+    """Reply with the bot's PID, Python version, and current timestamp (admin only)."""
     if not _is_admin(message):
         await message.answer("⛔ Нет доступа.")
         return
@@ -54,6 +57,7 @@ async def show_version(message: types.Message):
 
 @router.message(text_filter("btn_bug"))
 async def bug_report_start(message: types.Message, state: FSMContext):
+    """Prompt the user to type a bug report or feature request."""
     from aiogram.types import ReplyKeyboardRemove
     lang = await get_lang(message.from_user.id)
     await message.answer(t("bug_prompt", lang), parse_mode="Markdown",
@@ -63,6 +67,7 @@ async def bug_report_start(message: types.Message, state: FSMContext):
 
 @router.message(BugReport.enter_text)
 async def bug_report_send(message: types.Message, state: FSMContext):
+    """Save the bug report to the DB and forward it to the admin with approve/reject buttons."""
     user = await get_user(message.from_user.id)
     lang = user["lang"] or "ru" if user else "ru"
     if not user:
@@ -118,6 +123,7 @@ async def bug_report_send(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("br:"))
 async def bug_report_decision(callback: types.CallbackQuery):
+    """Handle admin approve/reject inline buttons on a bug report notification."""
     if not _is_admin_cb(callback):
         await callback.answer("⛔ Нет доступа.", show_alert=True)
         return
@@ -156,6 +162,7 @@ async def bug_report_decision(callback: types.CallbackQuery):
 
 @router.message(Command("bugs"))
 async def show_bugs(message: types.Message):
+    """List the 20 most recent bug reports (admin only)."""
     if not _is_admin(message):
         await message.answer("⛔ Нет доступа.")
         return
@@ -181,6 +188,7 @@ async def show_bugs(message: types.Message):
 
 @router.message(Command("fixbug"))
 async def fix_bug(message: types.Message):
+    """Mark a bug report as fixed by ID: /fixbug <id> (admin only)."""
     if not _is_admin(message):
         await message.answer("⛔ Нет доступа.")
         return
@@ -201,6 +209,7 @@ async def fix_bug(message: types.Message):
 # ── Admin Panel ──────────────────────────────────────────────────────────────
 
 async def _build_main_panel_view() -> tuple:
+    """Return (text, keyboard) for the admin panel main dashboard."""
     stats = await get_bot_stats()
     uptime_secs = int(time.monotonic() - g.BOT_START_TIME)
     h = uptime_secs // 3600
@@ -228,6 +237,7 @@ async def _build_main_panel_view() -> tuple:
 
 @router.message(F.text == "🛡 Панель администратора", Settings.viewing)
 async def open_admin_panel(message: types.Message, state: FSMContext):
+    """Open the admin panel dashboard (admin only, from the settings screen)."""
     if not _is_admin(message):
         return
     await state.set_state(AdminPanel.main)
@@ -246,6 +256,7 @@ async def open_admin_panel(message: types.Message, state: FSMContext):
 @router.message(text_filter("btn_back"), AdminPanel.bug_list)
 @router.message(text_filter("btn_back"), AdminPanel.change_name)
 async def admin_panel_back(message: types.Message, state: FSMContext):
+    """Exit the admin panel and return the admin to their main menu."""
     if not _is_admin(message):
         return
     await state.clear()
@@ -255,6 +266,7 @@ async def admin_panel_back(message: types.Message, state: FSMContext):
 
 
 async def _show_user_profile(callback: types.CallbackQuery, state: FSMContext, tg_id: int):
+    """Render and edit-in-place the detailed user profile view with action buttons."""
     user = await get_user(tg_id)
     if not user:
         await callback.message.edit_text("❌ Пользователь не найден.", reply_markup=admin_confirm_restart_kb())
@@ -287,6 +299,7 @@ async def _show_user_profile(callback: types.CallbackQuery, state: FSMContext, t
 
 @router.callback_query(F.data.startswith("ap:"))
 async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Central dispatcher for all admin-panel inline callback actions."""
     if not _is_admin_cb(callback):
         await callback.answer("⛔ Нет доступа.", show_alert=True)
         return
@@ -790,6 +803,7 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
 
 @router.message(AdminPanel.user_search)
 async def admin_search_input(message: types.Message, state: FSMContext):
+    """Run a user search by name/username/ID and display paginated results."""
     query = (message.text or "").strip()
     if not query:
         await message.answer("Введи имя или ID.")
@@ -807,6 +821,7 @@ async def admin_search_input(message: types.Message, state: FSMContext):
 
 @router.message(AdminPanel.broadcast)
 async def admin_broadcast_input(message: types.Message, state: FSMContext):
+    """Send the broadcast message to all active, non-banned users and report delivery stats."""
     text = message.text or ""
     if not text.strip():
         await message.answer("Текст не может быть пустым.")
@@ -838,6 +853,7 @@ async def admin_broadcast_input(message: types.Message, state: FSMContext):
 
 @router.message(AdminPanel.mute_duration)
 async def admin_mute_duration_input(message: types.Message, state: FSMContext):
+    """Parse a mute duration string (e.g. '30m', '24h', '7d') and apply it to the target user."""
     text = (message.text or "").strip().lower()
     m = re.match(r'^(\d+)(h|d|m)$', text)
     if not m:
@@ -867,6 +883,7 @@ async def admin_mute_duration_input(message: types.Message, state: FSMContext):
 
 @router.message(AdminPanel.give_tokens)
 async def admin_give_tokens_input(message: types.Message, state: FSMContext):
+    """Parse a signed integer and add/remove that many freeze tokens from the target user."""
     text = (message.text or "").strip()
     try:
         delta = int(text)
@@ -886,6 +903,7 @@ async def admin_give_tokens_input(message: types.Message, state: FSMContext):
 
 @router.message(AdminPanel.change_name)
 async def admin_change_name_input(message: types.Message, state: FSMContext):
+    """Update the target user's display name to the text provided by the admin."""
     new_name = (message.text or "").strip()
     if not new_name:
         await message.answer("❌ Имя не может быть пустым.")

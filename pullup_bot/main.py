@@ -25,6 +25,7 @@ scheduler = AsyncIOScheduler()
 
 @dp.errors()
 async def errors_handler(event: types.ErrorEvent) -> bool:
+    """Log all unhandled exceptions, alert the admin, and return True to suppress re-raise."""
     update = event.update
     exc = event.exception
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
@@ -70,6 +71,7 @@ async def _check_ban_and_mute(uid: int) -> str | None:
 
 @dp.message.middleware()
 async def ban_check_middleware(handler, event: types.Message, data):
+    """Drop messages from banned users; silently ignore messages from muted users."""
     uid = event.from_user.id if event.from_user else None
     if uid and not is_admin_id(uid):
         try:
@@ -86,6 +88,7 @@ async def ban_check_middleware(handler, event: types.Message, data):
 
 @dp.callback_query.middleware()
 async def ban_check_cb_middleware(handler, event: types.CallbackQuery, data):
+    """Alert banned/muted users on callback queries and suppress the event."""
     uid = event.from_user.id if event.from_user else None
     if uid and not is_admin_id(uid):
         try:
@@ -103,6 +106,7 @@ async def ban_check_cb_middleware(handler, event: types.CallbackQuery, data):
 
 @dp.message.middleware()
 async def maintenance_middleware(handler, event: types.Message, data):
+    """Block non-admin messages while maintenance mode is active."""
     if g.maintenance_mode:
         uid = event.from_user.id if event.from_user else None
         if uid and not is_admin_id(uid):
@@ -113,6 +117,7 @@ async def maintenance_middleware(handler, event: types.Message, data):
 
 @dp.message.middleware()
 async def logging_middleware(handler, event: types.Message, data):
+    """Log every incoming message with user ID, FSM state, and text; increment action counter."""
     uid = event.from_user.id if event.from_user else "-"
     state_obj = data.get("state")
     current_state = await state_obj.get_state() if state_obj else None
@@ -124,6 +129,7 @@ async def logging_middleware(handler, event: types.Message, data):
 
 @dp.callback_query.middleware()
 async def callback_logging_middleware(handler, event: types.CallbackQuery, data):
+    """Log every callback query with user ID, FSM state, and callback data; increment action counter."""
     uid = event.from_user.id if event.from_user else "-"
     state_obj = data.get("state")
     current_state = await state_obj.get_state() if state_obj else None
@@ -136,6 +142,7 @@ register_all(dp)
 
 
 async def main():
+    """Initialize the DB, register scheduled jobs, and start polling or webhook mode."""
     await init_db()
     await bot.delete_webhook(drop_pending_updates=True)
 

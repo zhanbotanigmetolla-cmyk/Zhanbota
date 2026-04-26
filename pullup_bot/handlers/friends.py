@@ -20,6 +20,7 @@ PAGE_SIZE = 8
 
 
 async def _show_friends_page(message: types.Message, state: FSMContext, user, page: int):
+    """Render the friends-list page with today's progress, streak, and poke buttons."""
     lang = user["lang"] or "ru"
     conn = await get_db()
     week_ago = (date.today() - timedelta(days=7)).isoformat()
@@ -106,6 +107,7 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
 
 @router.message(Friends.viewing, text_filter("btn_friends_prev"))
 async def friends_prev(message: types.Message, state: FSMContext):
+    """Navigate to the previous friends-list page."""
     data = await state.get_data()
     page = data.get("friends_page", 0)
     user = await get_user(message.from_user.id)
@@ -116,6 +118,7 @@ async def friends_prev(message: types.Message, state: FSMContext):
 
 @router.message(Friends.viewing, text_filter("btn_friends_next"))
 async def friends_next(message: types.Message, state: FSMContext):
+    """Navigate to the next friends-list page."""
     data = await state.get_data()
     page = data.get("friends_page", 0)
     user = await get_user(message.from_user.id)
@@ -126,6 +129,7 @@ async def friends_next(message: types.Message, state: FSMContext):
 
 @router.message(Friends.viewing, text_filter("btn_back"))
 async def friends_back(message: types.Message, state: FSMContext):
+    """Exit the friends view and return to the main menu."""
     await state.clear()
     from ..db import get_lang
     lang = await get_lang(message.from_user.id)
@@ -134,6 +138,7 @@ async def friends_back(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_friends"))
 async def friends_menu(message: types.Message, state: FSMContext):
+    """Open the friends list starting at page 0."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -143,6 +148,7 @@ async def friends_menu(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_leaderboard"))
 async def leaderboard(message: types.Message):
+    """Show the weekly pullup leaderboard ranked by total reps over the last 7 days."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -193,6 +199,7 @@ async def leaderboard(message: types.Message):
 
 @router.message(Friends.viewing, lambda m: m.text and (m.text.startswith("💪 Пнуть ") or m.text.startswith("💪 Poke ")))
 async def poke_friend(message: types.Message, state: FSMContext):
+    """Send a poke notification to a friend (once per day per pair)."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))

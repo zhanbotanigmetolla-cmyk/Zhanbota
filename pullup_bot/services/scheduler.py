@@ -23,6 +23,7 @@ async def _delete_user(conn, user_id: int):
 
 
 async def daily_reminder(bot):
+    """Send personalized morning reminders to all users whose notify_time matches the current minute."""
     tz = timezone(timedelta(hours=TZ_OFFSET_HOURS))
     now = datetime.now(tz).strftime("%H:%M")
     conn = await get_db()
