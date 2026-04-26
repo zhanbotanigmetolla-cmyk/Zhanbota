@@ -146,9 +146,9 @@ Every user follows a repeating weekly pattern based on their personal daily base
 - Day 7 Rest: 0 pullups — mandatory recovery
 
 ### Automatic progression rules
-- Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥90% across the last 5 real training sessions
+- Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥80% across the last 5 real training sessions
 - RPE too high (−5% base): triggers when the 3-session rolling avg RPE ≥8.5
-- RPE too low (+3% base): triggers when 3-session rolling avg RPE ≤4.5 AND all sessions fully completed
+- RPE trending easy (+3% base): triggers when 3-session rolling avg RPE ≤6.5 AND all sessions fully completed
 - Extra activity reduction: logging running/cardio/gym after training reduces tomorrow's load proportionally
 
 ### RPE — Rate of Perceived Exertion

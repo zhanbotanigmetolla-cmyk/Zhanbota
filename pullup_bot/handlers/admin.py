@@ -723,24 +723,8 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         await callback.answer("Перезапуск...")
         from ..db import close_db
         await close_db()
-        import signal
-        current_pid = os.getpid()
-        # Kill any sibling bot processes to avoid TelegramConflictError after exec
-        try:
-            import subprocess
-            result = subprocess.run(
-                ["pgrep", "-f", "python.*pullup_bot"],
-                capture_output=True, text=True
-            )
-            for pid_str in result.stdout.strip().split("\n"):
-                try:
-                    pid = int(pid_str)
-                    if pid != current_pid:
-                        os.kill(pid, signal.SIGTERM)
-                except (ValueError, ProcessLookupError):
-                    pass
-        except Exception as e:
-            logger.warning(f"[restart] sibling cleanup failed: {e}")
+        # os.execv replaces the current process in-place — no siblings to kill;
+        # systemd will detect the restart and manage the process lifecycle.
         os.execv(sys.executable, [sys.executable, "-m", "pullup_bot"])
 
     # ── Maintenance toggle ──────────────────────────────────────────────────

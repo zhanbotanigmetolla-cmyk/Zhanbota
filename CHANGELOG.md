@@ -7,6 +7,8 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-04-27]
 
 ### Fixed
+- AI system prompt (`_SYSTEM_TEMPLATE`) had stale thresholds — ≥90% completion and RPE ≤4.5. Updated to match live code: ≥80% completion and RPE ≤6.5 for the +3% RPE-easy bump.
+- Admin restart no longer runs `pgrep -f "python.*pullup_bot"` which could kill unrelated Python processes; `os.execv` replaces the current process in-place, so the sibling-kill block was unnecessary.
 - `scheduler.py` auto-advance path now calls `_check_weekly_progression` when `new_pd % 7 == 0`, matching the `training.py` logic. Previously a cycle boundary crossed via morning-reminder auto-advance would silently skip the +5% base bump.
 - Removed duplicate migrations 15 & 16 (redundant `ALTER TABLE ai_usage_log ADD COLUMN` that migration 14 already covers); replaced with no-ops to preserve migration version numbering.
 - Fixed `train_day` i18n keys — they contained a raw Python ternary that `str.format()` would never evaluate; changed to `{icon}` placeholder so future callers can pass the icon explicitly.
