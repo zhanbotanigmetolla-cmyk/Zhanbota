@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-27]
+
+### Changed
+- Added docstrings to all functions across the codebase (handlers, services, core modules) to bring docstring coverage from ~50% to >80% and satisfy the CodeRabbit pre-merge quality check.
+
 ## [2026-04-25]
 
 ### Added
