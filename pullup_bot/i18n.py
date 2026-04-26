@@ -185,7 +185,7 @@ STRINGS = {
             "📊 *Как RPE влияет на план*\n\n"
             "RPE (1–10) влияет на базу долгосрочно через скользящее среднее за 3 сессии:\n"
             "• RPE ≤6.5 (тренировки даются умеренно) → база постепенно растёт (+3%)\n"
-            "• RPE 6.5–8.5 (нормальная нагрузка) → без изменений\n"
+            "• RPE >6.5 и <8.5 (нормальная нагрузка) → без изменений\n"
             "• RPE ≥8.5 (постоянно на пределе) → база снижается (−5%)\n"
             "_Одна тяжёлая тренировка ничего не изменит — важна тенденция за 3 подряд._\n\n"
             "📈 *Статистика и история*\n\n"
@@ -620,7 +620,7 @@ STRINGS = {
             "📊 *How RPE affects your plan*\n\n"
             "RPE (1–10) shapes your base over time via a rolling average of 3 sessions:\n"
             "• RPE ≤6.5 (workouts feel moderate or easier) → base gradually increases (+3%)\n"
-            "• RPE 6.5–8.5 (normal load) → no change\n"
+            "• RPE >6.5 and <8.5 (normal load) → no change\n"
             "• RPE ≥8.5 (constantly at the limit) → base decreases (−5%)\n"
             "_One hard session won't change anything — the trend over 3 in a row matters._\n\n"
             "📈 *Stats & History*\n\n"
@@ -635,7 +635,7 @@ STRINGS = {
             "Can't finish the full workout today? That's fine — log even 10 pullups. "
             "A few reps squeezed into a spare moment add up to a huge impact over the long run. "
             "We're here for long-term results, not short-term perfection. "
-            "Consistency beats perfect every time."
+            "Consistency beats perfection every time."
         ),
         "bye": "👋 You've logged out.\n\n⏸ Notifications and streak are paused.\nYour data is saved — tap «Join Turnikmen» to come back 💪",
         "main_menu": "👋 Main menu:",
