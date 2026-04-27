@@ -24,6 +24,7 @@ _user_locks: dict[int, asyncio.Lock] = {}
 
 
 def _get_lock(uid: int) -> asyncio.Lock:
+    """Return the per-user asyncio lock, evicting the oldest entry when the cap is reached."""
     if uid not in _user_locks:
         if len(_user_locks) >= _MAX_LOCKS:
             # Evict the oldest entry
@@ -60,6 +61,7 @@ async def _mark_rest_day_if_missing(user_id: int, today_str: str):
 
 @router.message(text_filter("btn_train"))
 async def start_training(message: types.Message, state: FSMContext):
+    """Handle the Train button: compute today's plan, auto-advance rest days, and begin the session."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -90,7 +92,11 @@ async def start_training(message: types.Message, state: FSMContext):
         new_pd = (user["program_day"] or 0) + 1
         await conn.execute("UPDATE users SET program_day = ? WHERE id = ?", (new_pd, user["id"]))
         await conn.commit()
-        user = dict(user)
+        if new_pd % 7 == 0:
+            await _check_weekly_progression(message.from_user.id, user["id"], user["base_pullups"])
+            user = dict(await get_user(message.from_user.id))
+        else:
+            user = dict(user)
         user["program_day"] = new_pd
         planned, day_type = planned_for_day(user)
 
@@ -117,6 +123,7 @@ async def start_training(message: types.Message, state: FSMContext):
 
 @router.message(Training.rest_day, text_filter("rest_day_train"))
 async def rest_override_train(message: types.Message, state: FSMContext):
+    """Handle 'Train anyway' on a rest day: start a Medium session at full base."""
     user = await get_user(message.from_user.id)
     if not user:
         await state.clear()
@@ -133,6 +140,7 @@ async def rest_override_train(message: types.Message, state: FSMContext):
 
 @router.message(Training.rest_day, text_filter("rest_day_rest"))
 async def rest_override_rest(message: types.Message, state: FSMContext):
+    """Handle 'Keep resting' on a rest day: advance program_day, offer freeze token if streak breaks."""
     data = await state.get_data()
     lang = data.get("rest_day_lang", "ru")
     user = await get_user(message.from_user.id)
@@ -171,6 +179,7 @@ async def rest_override_rest(message: types.Message, state: FSMContext):
 
 @router.message(Training.freeze_confirm, text_filter("freeze_yes_btn"))
 async def freeze_yes(message: types.Message, state: FSMContext):
+    """Spend a freeze token to protect the streak on a missed/rest day."""
     data = await state.get_data()
     lang = data.get("rest_day_lang", "ru")
     user = await get_user(message.from_user.id)
@@ -208,6 +217,7 @@ async def freeze_yes(message: types.Message, state: FSMContext):
 
 @router.message(Training.freeze_confirm, text_filter("freeze_no_btn"))
 async def freeze_no(message: types.Message, state: FSMContext):
+    """Decline to use a freeze token: advance program_day, reset streak, and close the rest day."""
     data = await state.get_data()
     lang = data.get("rest_day_lang", "ru")
     user = await get_user(message.from_user.id)
@@ -232,6 +242,7 @@ async def freeze_no(message: types.Message, state: FSMContext):
 
 
 async def _begin_training(message, state, user, lang, today_str, planned, day_type, tg_id=None, was_rest_override=False):
+    """Initialise FSM state and send the training prompt with today's target and quick-rep keyboard."""
     if tg_id is None:
         tg_id = user["tg_id"]
     today = date.fromisoformat(today_str)
@@ -279,6 +290,7 @@ async def _begin_training(message, state, user, lang, today_str, planned, day_ty
 
 
 async def _training_status(message: types.Message, state: FSMContext):
+    """Send an updated progress summary (sets, total reps, progress bar) during an active session."""
     data = await state.get_data()
     sets = data.get("sets", [])
     lang = data.get("lang", "ru")
@@ -305,6 +317,7 @@ async def _training_status(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_undo"), Training.active)
 async def undo_set(message: types.Message, state: FSMContext):
+    """Remove the last recorded set from the current training session."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     sets = data.get("sets", [])
@@ -318,6 +331,7 @@ async def undo_set(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_manual"), Training.active)
 async def prompt_custom_set(message: types.Message, state: FSMContext):
+    """Prompt the user to type a custom rep count manually."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     await message.answer(t("train_enter_reps", lang))
@@ -325,6 +339,7 @@ async def prompt_custom_set(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_finish"), Training.active)
 async def finish_training_btn(message: types.Message, state: FSMContext):
+    """Transition from active training to the RPE rating step."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     await message.answer(t("train_rate_rpe", lang), reply_markup=rpe_menu_kb(lang))
@@ -333,6 +348,7 @@ async def finish_training_btn(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_back"), Training.rpe)
 async def rpe_back(message: types.Message, state: FSMContext):
+    """Go back from the RPE rating step to the active training session."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     sets = data.get("sets", [])
@@ -367,6 +383,7 @@ async def _cleanup_cancelled_workout(tg_id: int, state_data: dict):
 
 @router.message(text_filter("btn_cancel_train"), Training.active)
 async def cancel_training_btn(message: types.Message, state: FSMContext):
+    """Handle the Cancel button during training: confirm if reps were already logged, else cancel silently."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     sets = data.get("sets", [])
@@ -384,6 +401,7 @@ async def cancel_training_btn(message: types.Message, state: FSMContext):
 
 @router.message(Training.cancel_confirm, text_filter("train_yes_cancel"))
 async def cancel_confirm(message: types.Message, state: FSMContext):
+    """Confirm cancellation of the current training session and clean up any unsaved workout record."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     await _cleanup_cancelled_workout(message.from_user.id, data)
@@ -393,6 +411,7 @@ async def cancel_confirm(message: types.Message, state: FSMContext):
 
 @router.message(Training.cancel_confirm, text_filter("train_continue"))
 async def cancel_back_msg(message: types.Message, state: FSMContext):
+    """Return to the active training session after the user chose not to cancel."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     sets = data.get("sets", [])
@@ -403,6 +422,7 @@ async def cancel_back_msg(message: types.Message, state: FSMContext):
 
 @router.message(Training.active, F.text.regexp(r"^\s*\d+\s*$"))
 async def custom_set_input(message: types.Message, state: FSMContext):
+    """Accept a numeric rep count from the user and append it to the current session's set list."""
     uid = message.from_user.id
     lock = _get_lock(uid)
     if lock.locked():
@@ -426,6 +446,7 @@ async def custom_set_input(message: types.Message, state: FSMContext):
 
 @router.message(Training.rpe)
 async def set_rpe_msg(message: types.Message, state: FSMContext):
+    """Parse the user's RPE selection and advance to the extra-activity step."""
     uid = message.from_user.id
     lock = _get_lock(uid)
     if lock.locked():
@@ -456,6 +477,7 @@ _ACTIVITY_MAP = {
 
 
 async def _prompt_notes(message, state, lang):
+    """Send the notes prompt with a Skip button and advance FSM to the notes state."""
     from aiogram.types import KeyboardButton
     from aiogram.utils.keyboard import ReplyKeyboardBuilder
     b = ReplyKeyboardBuilder()
@@ -468,6 +490,7 @@ async def _prompt_notes(message, state, lang):
 
 @router.message(text_filter("btn_back"), Training.activity)
 async def activity_back(message: types.Message, state: FSMContext):
+    """Go back from extra-activity selection to the RPE rating step."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     await state.set_state(Training.rpe)
@@ -476,6 +499,7 @@ async def activity_back(message: types.Message, state: FSMContext):
 
 @router.message(Training.activity)
 async def set_activity(message: types.Message, state: FSMContext):
+    """Record the selected extra activity type; if not skipped, prompt for duration."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     act_val = _ACTIVITY_MAP.get(message.text or "", "skip")
@@ -491,6 +515,7 @@ async def set_activity(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_back"), Training.act_mins)
 async def act_mins_back(message: types.Message, state: FSMContext):
+    """Go back from the activity-duration input to the activity-type selection."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     await state.set_state(Training.activity)
@@ -500,6 +525,7 @@ async def act_mins_back(message: types.Message, state: FSMContext):
 
 @router.message(Training.act_mins)
 async def set_act_mins(message: types.Message, state: FSMContext):
+    """Parse the activity duration in minutes and advance to the notes step."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     if not message.text:
@@ -515,6 +541,7 @@ async def set_act_mins(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_back"), Training.notes)
 async def notes_back(message: types.Message, state: FSMContext):
+    """Go back from the notes step to the extra-activity selection."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     await state.set_state(Training.activity)
@@ -524,6 +551,7 @@ async def notes_back(message: types.Message, state: FSMContext):
 
 @router.message(Training.notes)
 async def enter_notes(message: types.Message, state: FSMContext):
+    """Accept (or skip) the optional workout note and trigger the final workout save."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     skip_text = t("train_skip_notes", lang)
@@ -534,7 +562,7 @@ async def enter_notes(message: types.Message, state: FSMContext):
 
 
 async def _check_weekly_progression(tg_id: int, user_id: int, current_base: int):
-    """After completing a 7-day cycle, bump base +5% if last 5 training days averaged ≥90%."""
+    """After completing a 7-day cycle, bump base +5% if last 5 training days averaged ≥80%."""
     conn = await get_db()
     async with conn.execute(
         "SELECT completed, planned FROM workouts "
@@ -545,9 +573,12 @@ async def _check_weekly_progression(tg_id: int, user_id: int, current_base: int)
     if len(rows) < 5:
         return None
     avg = sum(r["completed"] / r["planned"] for r in rows if r["planned"] > 0) / len(rows)
-    if avg >= 0.9:
+    if avg >= 0.8:
         new_base = int(current_base * 1.05)
-        await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
+        await conn.execute(
+            "UPDATE users SET base_pullups=?, base_increased_to=? WHERE tg_id=?",
+            (new_base, new_base, tg_id)
+        )
         await conn.commit()
         return new_base
     return None
@@ -571,15 +602,19 @@ async def _apply_rpe_adjustment(tg_id: int, user_id: int, current_base: int):
         await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
         await conn.commit()
         return new_base, avg_rpe
-    if avg_rpe <= 4.5 and all_hit:
+    if avg_rpe <= 6.5 and all_hit:
         new_base = int(current_base * 1.03)
-        await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
+        await conn.execute(
+            "UPDATE users SET base_pullups=?, base_increased_to=? WHERE tg_id=?",
+            (new_base, new_base, tg_id)
+        )
         await conn.commit()
         return new_base, avg_rpe
     return None, None
 
 
 async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None):
+    """Persist the completed workout, update XP/streak/program_day, apply progressions, and send summary."""
     if processing_msg:
         try:
             await processing_msg.delete()
@@ -723,6 +758,7 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
 
 
 async def _notify_friends(tg_id: int, done: int, planned: int, sets_count: int, lang: str = "ru"):
+    """Send a workout completion notification to all users who opted in to workout alerts."""
     from ..main import bot
     user = await get_user(tg_id)
     if not user:

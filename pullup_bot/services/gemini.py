@@ -44,6 +44,7 @@ _STATE_FILE = os.path.expanduser("~/pullup_gemini_state.json")
 
 
 def _load_state() -> dict:
+    """Load today's exhaustion state from the sidecar JSON file, or return a fresh state dict."""
     try:
         with open(_STATE_FILE) as f:
             data = json.load(f)
@@ -55,6 +56,7 @@ def _load_state() -> dict:
 
 
 def _save_state(exhausted: set, daily_count: int):
+    """Persist the exhausted key/tier set and daily request count to the sidecar JSON file."""
     try:
         with open(_STATE_FILE, "w") as f:
             json.dump({
@@ -67,7 +69,10 @@ def _save_state(exhausted: set, daily_count: int):
 
 
 class APIKeyManager:
+    """Manages a pool of Gemini API keys across multiple model tiers with daily-limit tracking."""
+
     def __init__(self, keys: list):
+        """Initialize the key pool, restore today's exhaustion state from disk."""
         self._keys = keys if keys else [GEMINI_KEYS[0] if GEMINI_KEYS else ""]
         self._clients = [genai.Client(api_key=k) for k in self._keys]
 
@@ -78,6 +83,7 @@ class APIKeyManager:
         self._all_exhausted = self._check_all_exhausted()
 
     def _check_all_exhausted(self) -> bool:
+        """Return True if every (key, tier) combination is in the exhausted set."""
         for t in range(len(TIERS)):
             for k in range(len(self._keys)):
                 if (k, t) not in self._exhausted:
@@ -85,6 +91,7 @@ class APIKeyManager:
         return True
 
     def _reset_if_new_day(self):
+        """Clear exhaustion state and counters if the calendar date has rolled over."""
         today = date.today()
         if today != self._count_date:
             self._exhausted.clear()
@@ -94,10 +101,12 @@ class APIKeyManager:
             _save_state(self._exhausted, self._daily_count)
 
     def daily_count(self) -> int:
+        """Return the number of successful API calls made today."""
         self._reset_if_new_day()
         return self._daily_count
 
     def is_daily_exhausted(self) -> bool:
+        """Return True if all keys across all tiers have hit their daily quota."""
         self._reset_if_new_day()
         return self._all_exhausted
 
@@ -172,6 +181,7 @@ _manager: "APIKeyManager | None" = None
 
 
 def get_manager() -> APIKeyManager:
+    """Return the global singleton APIKeyManager, creating it on first call."""
     global _manager
     if _manager is None:
         _manager = APIKeyManager(GEMINI_KEYS)

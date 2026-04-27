@@ -23,7 +23,6 @@ GEMINI_KEYS = [k for k in [
     os.environ.get("GEMINI_API_KEY_3", ""),
     os.environ.get("GEMINI_API_KEY_4", ""),
 ] if k]
-GEMINI_MODEL = "gemini-3-flash-preview"
 DB_PATH = os.environ.get("PULLUP_DB", os.path.expanduser("~/pullups.db"))
 FSM_DB_PATH = os.environ.get("PULLUP_FSM_DB", os.path.expanduser("~/pullups_fsm.db"))
 SECRET_CODE_NORM = SECRET_CODE.strip().upper()
@@ -71,6 +70,7 @@ START_MENU_LABEL = "/start"
 
 
 def is_admin_id(tg_id: int) -> bool:
+    """Return True if the given Telegram ID matches the configured admin."""
     return tg_id == ADMIN_TG_ID
 
 logging.basicConfig(

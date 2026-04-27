@@ -146,9 +146,9 @@ Every user follows a repeating weekly pattern based on their personal daily base
 - Day 7 Rest: 0 pullups — mandatory recovery
 
 ### Automatic progression rules
-- Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥90% across the last 5 real training sessions
+- Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥80% across the last 5 real training sessions
 - RPE too high (−5% base): triggers when the 3-session rolling avg RPE ≥8.5
-- RPE too low (+3% base): triggers when 3-session rolling avg RPE ≤4.5 AND all sessions fully completed
+- RPE trending easy (+3% base): triggers when 3-session rolling avg RPE ≤6.5 AND all sessions fully completed
 - Extra activity reduction: logging running/cardio/gym after training reduces tomorrow's load proportionally
 
 ### RPE — Rate of Perceived Exertion
@@ -224,6 +224,7 @@ If the user describes something that sounds like a bug, unexpected behavior, mis
 
 
 def _user_data_block(user, workouts) -> str:
+    """Build the structured user-data section injected into the AI system prompt."""
     from datetime import date as _date
     lang = user["lang"] or "ru"
     lvl, lname, to_nxt, _ = level_info(user["xp"] or 0)
@@ -272,6 +273,7 @@ def _user_data_block(user, workouts) -> str:
 
 
 def _resolve_reply(raw: str, lang: str) -> str:
+    """Convert a raw Gemini response (or rate-limit sentinel) to a user-facing message string."""
     if raw == RATE_LIMIT_DAILY:
         return t("ai_limit_daily", lang)
     if raw == RATE_LIMIT_MINUTE:
@@ -317,6 +319,7 @@ async def _send_reply(message, thinking_msg, reply: str, lang: str, history: lis
 
 @router.message(text_filter("btn_ai"))
 async def ai_chat_start(message: aiogram_types.Message, state: FSMContext):
+    """Open the AI chat: build the personalised system prompt from the user's history and show the intro."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -361,6 +364,7 @@ async def ai_chat_start(message: aiogram_types.Message, state: FSMContext):
 
 @router.message(AIChat.chatting, text_filter("btn_back"))
 async def ai_chat_exit(message: aiogram_types.Message, state: FSMContext):
+    """Exit the AI chat and return to the main menu."""
     data = await state.get_data()
     lang = data.get("ai_lang", "ru")
     await state.clear()
@@ -369,6 +373,7 @@ async def ai_chat_exit(message: aiogram_types.Message, state: FSMContext):
 
 @router.message(AIChat.chatting, text_filter("btn_ai_advice"))
 async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
+    """Trigger an automatic personalised advice prompt based on the user's recent training data."""
     data = await state.get_data()
     lang = data.get("ai_lang", "ru")
     auto_prompt = (
@@ -395,6 +400,7 @@ async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
 
 @router.message(AIChat.chatting)
 async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
+    """Forward the user's free-form message to Gemini and stream back the reply."""
     if not message.text:
         return
     data = await state.get_data()

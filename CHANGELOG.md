@@ -4,6 +4,36 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-04-27]
+
+### Fixed
+- Rest days no longer break the streak when the user doesn't open the bot. A nightly job (`auto_acknowledge_rest_days`, runs at 23:55) now automatically advances `program_day` and sets `last_workout` for any user whose scheduled rest day passed while they were offline — mirroring the "Keep resting" button press.
+- Manually restored Zhanbota102's streak to 25 (consecutive active days since Apr 2, counting skipped rest days).
+- AI system prompt (`_SYSTEM_TEMPLATE`) had stale thresholds — ≥90% completion and RPE ≤4.5. Updated to match live code: ≥80% completion and RPE ≤6.5 for the +3% RPE-easy bump.
+- Admin restart no longer runs `pgrep -f "python.*pullup_bot"` which could kill unrelated Python processes; `os.execv` replaces the current process in-place, so the sibling-kill block was unnecessary.
+- `scheduler.py` auto-advance path now calls `_check_weekly_progression` when `new_pd % 7 == 0`, matching the `training.py` logic. Previously a cycle boundary crossed via morning-reminder auto-advance would silently skip the +5% base bump.
+- Removed duplicate migrations 15 & 16 (redundant `ALTER TABLE ai_usage_log ADD COLUMN` that migration 14 already covers); replaced with no-ops to preserve migration version numbering.
+- Fixed `train_day` i18n keys — they contained a raw Python ternary that `str.format()` would never evaluate; changed to `{icon}` placeholder so future callers can pass the icon explicitly.
+
+### Changed
+- Morning reminders sent before 08:00 are now also silent (disable_notification=True), matching the existing 22:00+ quiet-hours rule.
+- README: replaced obsolete Groq/Llama stack reference with Google Gemini API.
+- Removed unused `GEMINI_MODEL` constant from `config.py`.
+- Added docstrings to all functions across the codebase (handlers, services, core modules) to bring docstring coverage from ~50% to >80% and satisfy the CodeRabbit pre-merge quality check.
+
+## [2026-04-25]
+
+### Added
+- Added "🔑 Key Principle" tip to the guide's "More →" page (both RU and EN): even logging 10 pullups on a busy day matters — consistency over perfection, long-term results over short-term completion.
+- Morning reminder now includes a "📈 Your base increased to X" line if the base was auto-raised since the last reminder. The flag is cleared after the notification is sent so it only appears once.
+
+### Changed
+- Weekly cycle progression threshold lowered from ≥90% to ≥80% average completion across last 5 sessions — more achievable for real-world training.
+- RPE increase threshold raised from ≤4.5 to ≤6.5 (with 100% completion required) — aligned with sports science: progressive overload is appropriate at moderate effort, not just when workouts feel trivial.
+
+### Fixed
+- Weekly progression was silently skipped when the "auto-advance" path triggered (rest day with days_off ≥ 2). The auto-advance increments `program_day` but had no `new_pd % 7 == 0` check, so any 7-day cycle that ended on an unacknowledged rest day never bumped the base. Added the missing progression check there. Applied retroactive progression corrections for impacted accounts.
+
 ## [2026-04-23]
 
 ### Added

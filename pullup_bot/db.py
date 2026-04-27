@@ -51,20 +51,23 @@ MIGRATIONS = [
         answer   TEXT,
         created  TEXT DEFAULT (datetime('now'))
     )""",
-    # index 15
-    "ALTER TABLE ai_usage_log ADD COLUMN question TEXT",
-    # index 16
-    "ALTER TABLE ai_usage_log ADD COLUMN answer TEXT",
+    # index 15 — no-op: question already included in CREATE TABLE at index 14
+    "SELECT 1",
+    # index 16 — no-op: answer already included in CREATE TABLE at index 14
+    "SELECT 1",
     # index 17 — missing indexes for frequently queried columns
     "CREATE INDEX IF NOT EXISTS idx_ai_usage_log_date ON ai_usage_log(date)",
     # index 18
     "CREATE INDEX IF NOT EXISTS idx_bug_reports_status ON bug_reports(status)",
     # index 19 — opt-in workout finish notifications (default OFF)
     "ALTER TABLE users ADD COLUMN notify_workouts INTEGER DEFAULT 0",
+    # index 20 — flag for morning reminder when base was auto-increased
+    "ALTER TABLE users ADD COLUMN base_increased_to INTEGER DEFAULT NULL",
 ]
 
 
 async def get_db() -> aiosqlite.Connection:
+    """Return the shared singleton DB connection, opening it on first call."""
     global _conn
     if _conn is None:
         _conn = await aiosqlite.connect(DB_PATH)
@@ -75,6 +78,7 @@ async def get_db() -> aiosqlite.Connection:
 
 
 async def close_db():
+    """Close the shared DB connection and reset the singleton to None."""
     global _conn
     if _conn:
         await _conn.close()
@@ -82,6 +86,7 @@ async def close_db():
 
 
 async def init_db():
+    """Create all tables, run pending migrations, and seed program_day for legacy users."""
     conn = await get_db()
     await conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (
@@ -173,17 +178,20 @@ async def init_db():
 
 
 async def get_user(tg_id: int) -> Optional[aiosqlite.Row]:
+    """Fetch a user row by Telegram ID, or None if not registered."""
     conn = await get_db()
     async with conn.execute("SELECT * FROM users WHERE tg_id=?", (tg_id,)) as cur:
         return await cur.fetchone()
 
 
 async def get_lang(tg_id: int) -> str:
+    """Return the user's preferred language code ('ru' or 'en'), defaulting to 'ru'."""
     user = await get_user(tg_id)
     return user["lang"] if user and user["lang"] else "ru"
 
 
 async def get_today_workout(user_id: int, d: str = None) -> Optional[aiosqlite.Row]:
+    """Return the workout row for the given user and date (defaults to today), or None."""
     if d is None:
         d = date.today().isoformat()
     conn = await get_db()
@@ -198,6 +206,7 @@ _WORKOUT_COLS = {"planned", "completed", "sets_json", "rpe", "day_type",
 
 
 async def upsert_workout(user_id: int, d: str, **kwargs):
+    """Insert or update a workout row for the given user and date with the supplied column values."""
     for k in kwargs:
         if k not in _WORKOUT_COLS:
             raise ValueError(f"Invalid workout column: {k}")
@@ -223,6 +232,7 @@ async def upsert_workout(user_id: int, d: str, **kwargs):
 
 
 def _level_from_xp(xp: int) -> int:
+    """Compute the level index from a raw XP value using the global thresholds table."""
     lvl = 0
     for i, t in enumerate(LEVEL_THRESHOLDS[:-1]):
         if xp >= t:
@@ -231,6 +241,7 @@ def _level_from_xp(xp: int) -> int:
 
 
 async def add_xp(tg_id: int, amount: int):
+    """Add (or subtract) XP for a user and recalculate their level."""
     conn = await get_db()
     await conn.execute("UPDATE users SET xp = xp + ? WHERE tg_id = ?", (amount, tg_id))
     async with conn.execute("SELECT xp FROM users WHERE tg_id = ?", (tg_id,)) as cur:
@@ -243,6 +254,7 @@ async def add_xp(tg_id: int, amount: int):
 
 
 async def update_streak(tg_id: int, today: str = None):
+    """Extend or reset the streak based on whether the user trained yesterday, and award streak XP."""
     user = await get_user(tg_id)
     if not user:
         return
@@ -275,6 +287,7 @@ async def update_streak(tg_id: int, today: str = None):
 
 
 async def get_all_users_paginated(page: int, per_page: int = 10):
+    """Return (users, total_count) for the given page, ordered by join date descending."""
     conn = await get_db()
     offset = page * per_page
     async with conn.execute("SELECT COUNT(*) FROM users") as cur:
@@ -288,6 +301,7 @@ async def get_all_users_paginated(page: int, per_page: int = 10):
 
 
 async def search_users(query: str) -> list:
+    """Search users by Telegram ID (if numeric) or by username/first_name substring."""
     conn = await get_db()
     if query.isdigit():
         async with conn.execute(
@@ -302,6 +316,7 @@ async def search_users(query: str) -> list:
 
 
 async def ban_user(tg_id: int, reason: str = "") -> None:
+    """Set is_banned=1 and add the user to the permanent banned_ids table."""
     conn = await get_db()
     await conn.execute("UPDATE users SET is_banned=1 WHERE tg_id=?", (tg_id,))
     try:
@@ -315,24 +330,28 @@ async def ban_user(tg_id: int, reason: str = "") -> None:
 
 
 async def unban_user(tg_id: int) -> None:
+    """Clear the is_banned flag for the given user."""
     conn = await get_db()
     await conn.execute("UPDATE users SET is_banned=0 WHERE tg_id=?", (tg_id,))
     await conn.commit()
 
 
 async def mute_user(tg_id: int, until_iso: str) -> None:
+    """Set muted_until to an ISO datetime string, silencing the user until that time."""
     conn = await get_db()
     await conn.execute("UPDATE users SET muted_until=? WHERE tg_id=?", (until_iso, tg_id))
     await conn.commit()
 
 
 async def unmute_user(tg_id: int) -> None:
+    """Clear the muted_until field, restoring full access for the user."""
     conn = await get_db()
     await conn.execute("UPDATE users SET muted_until=NULL WHERE tg_id=?", (tg_id,))
     await conn.commit()
 
 
 async def is_muted(tg_id: int) -> bool:
+    """Return True if the user's muted_until timestamp is in the future."""
     from datetime import datetime
     conn = await get_db()
     async with conn.execute("SELECT muted_until FROM users WHERE tg_id=?", (tg_id,)) as cur:
@@ -346,18 +365,21 @@ async def is_muted(tg_id: int) -> bool:
 
 
 async def reset_streak(tg_id: int) -> None:
+    """Zero out the streak and clear last_workout for the given user."""
     conn = await get_db()
     await conn.execute("UPDATE users SET streak=0, last_workout=NULL WHERE tg_id=?", (tg_id,))
     await conn.commit()
 
 
 async def reset_xp(tg_id: int) -> None:
+    """Reset XP and level to zero for the given user."""
     conn = await get_db()
     await conn.execute("UPDATE users SET xp=0, level=0 WHERE tg_id=?", (tg_id,))
     await conn.commit()
 
 
 async def give_freeze_tokens(tg_id: int, delta: int, max_tokens: int = 5) -> None:
+    """Add or remove freeze tokens, clamping the result between 0 and max_tokens."""
     conn = await get_db()
     await conn.execute(
         "UPDATE users SET freeze_tokens = MIN(?, MAX(0, freeze_tokens + ?)) WHERE tg_id=?",
@@ -367,6 +389,7 @@ async def give_freeze_tokens(tg_id: int, delta: int, max_tokens: int = 5) -> Non
 
 
 async def get_bot_stats() -> dict:
+    """Return aggregate bot statistics: total users, banned count, active today, and total workouts."""
     from datetime import date as _date
     conn = await get_db()
     async with conn.execute("SELECT COUNT(*) FROM users") as cur:
@@ -389,6 +412,7 @@ async def get_bot_stats() -> dict:
 
 
 async def is_permanently_banned(tg_id: int) -> bool:
+    """Return True if the Telegram ID appears in the banned_ids table."""
     conn = await get_db()
     async with conn.execute("SELECT tg_id FROM banned_ids WHERE tg_id=?", (tg_id,)) as cur:
         row = await cur.fetchone()
@@ -396,6 +420,7 @@ async def is_permanently_banned(tg_id: int) -> bool:
 
 
 async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
+    """Delete all data for a user and optionally add them to the permanent ban list."""
     conn = await get_db()
     async with conn.execute("SELECT id FROM users WHERE tg_id=?", (tg_id,)) as cur:
         row = await cur.fetchone()
@@ -425,6 +450,7 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
 
 
 async def log_ai_usage(user_id: int, model: str, question: str = "", answer: str = "") -> None:
+    """Insert an AI usage record with the question and answer for analytics."""
     from datetime import date as _date
     conn = await get_db()
     await conn.execute(
@@ -435,6 +461,7 @@ async def log_ai_usage(user_id: int, model: str, question: str = "", answer: str
 
 
 async def get_ai_usage_stats() -> dict:
+    """Return today's and all-time AI request counts, plus per-user and per-model breakdowns."""
     from datetime import date as _date
     conn = await get_db()
     today = str(_date.today())
@@ -472,6 +499,7 @@ async def get_ai_usage_stats() -> dict:
 
 
 async def get_ai_conversations(page: int = 0, per_page: int = 5) -> tuple:
+    """Return (rows, has_more) for paginated AI conversation log entries, newest first."""
     conn = await get_db()
     offset = page * per_page
     async with conn.execute(

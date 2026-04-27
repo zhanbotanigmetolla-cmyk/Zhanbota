@@ -10,6 +10,7 @@ router = Router()
 
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
+    """Handle /help command: send the localized help text."""
     lang = await get_lang(message.from_user.id)
     await message.answer(t("help", lang), parse_mode="Markdown",
                          reply_markup=main_kb(lang))

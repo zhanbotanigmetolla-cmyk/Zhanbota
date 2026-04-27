@@ -13,6 +13,7 @@ router = Router()
 
 @router.message(text_filter("btn_stats"))
 async def show_stats(message: types.Message):
+    """Show the user's full stats: rank, XP bar, streak, weekly summary, last/next 7-day schedule."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
