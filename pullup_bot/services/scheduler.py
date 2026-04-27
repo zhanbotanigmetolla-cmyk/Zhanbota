@@ -2,8 +2,8 @@ from datetime import date, datetime, timedelta, timezone
 
 from aiogram.exceptions import TelegramForbiddenError
 
-from ..config import ADMIN_TG_ID, TZ_OFFSET_HOURS, logger
-from ..db import get_db, get_today_workout
+from ..config import ADMIN_TG_ID, TZ_OFFSET_HOURS, WAVE, logger
+from ..db import get_db, get_today_workout, upsert_workout
 from ..i18n import t, day_name
 from ..services.xp import display, md_escape, planned_for_day
 from . import monitoring
@@ -336,6 +336,41 @@ async def auto_cleanup_inactive(bot):
             )
         except Exception as e:
             logger.warning(f"[cleanup] admin notify failed: {e}")
+
+
+async def auto_acknowledge_rest_days(bot):
+    """Silently acknowledge rest days for users who trained yesterday but didn't open the bot today."""
+    import json
+    tz = timezone(timedelta(hours=TZ_OFFSET_HOURS))
+    today_str = datetime.now(tz).date().isoformat()
+    yesterday_str = (datetime.now(tz).date() - timedelta(days=1)).isoformat()
+
+    conn = await get_db()
+    async with conn.execute(
+        "SELECT * FROM users WHERE last_workout=? AND is_logged_out=0 AND is_banned=0",
+        (yesterday_str,)
+    ) as cur:
+        users = await cur.fetchall()
+
+    acknowledged = 0
+    for user in users:
+        program_day = user["program_day"] or 0
+        name, coeff = WAVE[program_day % 7]
+        if name != "Отдых":
+            continue
+        # Advance program_day and mark last_workout=today so the streak stays intact
+        new_pd = program_day + 1
+        await conn.execute(
+            "UPDATE users SET program_day=?, last_workout=? WHERE id=?",
+            (new_pd, today_str, user["id"])
+        )
+        await upsert_workout(user["id"], today_str, planned=0, day_type="Отдых",
+                             sets_json=json.dumps([]), completed=0)
+        acknowledged += 1
+
+    if acknowledged:
+        await conn.commit()
+    logger.info(f"[auto_rest] auto-acknowledged {acknowledged} rest day(s)")
 
 
 # ── Self-diagnosis watchdog ─────────────────────────────────────────────────
