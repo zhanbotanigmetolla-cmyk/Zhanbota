@@ -271,7 +271,7 @@ async def reg_name(message: types.Message, state: FSMContext):
 
 @router.message(Reg.max_pullups)
 async def reg_max_pullups(message: types.Message, state: FSMContext):
-    """Validate max pullups (1–200), create the user row, and broadcast the new arrival."""
+    """Validate max pullups (1-200), create the user row, and broadcast the new arrival."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     if not message.text:

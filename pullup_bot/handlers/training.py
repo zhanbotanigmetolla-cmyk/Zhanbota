@@ -17,6 +17,17 @@ from ..services.xp import (activity_reduction, display, level_info, md_escape,
 
 router = Router()
 
+
+async def sync_max_streak(tg_id: int) -> None:
+    """Update max_streak if the user's current streak exceeds their recorded best."""
+    user = await get_user(tg_id)
+    if user and (user["streak"] or 0) > (user["max_streak"] or 0):
+        conn = await get_db()
+        await conn.execute("UPDATE users SET max_streak=? WHERE tg_id=?",
+                           (user["streak"], tg_id))
+        await conn.commit()
+
+
 # Per-user locks to prevent duplicate processing when messages arrive in rapid succession.
 # Capped to prevent unbounded memory growth — evicts oldest entries when full.
 _MAX_LOCKS = 200
@@ -203,6 +214,7 @@ async def freeze_yes(message: types.Message, state: FSMContext):
     await conn.execute("UPDATE users SET program_day=? WHERE tg_id=?",
                        (new_pd, message.from_user.id))
     await conn.commit()
+    await sync_max_streak(message.from_user.id)
     if new_pd % 7 == 0:
         progression_base = await _check_weekly_progression(
             message.from_user.id, user["id"], user["base_pullups"])
@@ -679,13 +691,7 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
                 progression_base = await _check_weekly_progression(
                     tg_id, user_before["id"], user_before["base_pullups"])
         await update_streak(tg_id, d)
-        # Track all-time max streak
-        refreshed_for_streak = await get_user(tg_id)
-        if refreshed_for_streak and (refreshed_for_streak["streak"] or 0) > (refreshed_for_streak["max_streak"] or 0):
-            conn = await get_db()
-            await conn.execute("UPDATE users SET max_streak=? WHERE tg_id=?",
-                               (refreshed_for_streak["streak"], tg_id))
-            await conn.commit()
+        await sync_max_streak(tg_id)
 
     # Refresh after streak/program_day update
     user = await get_user(tg_id)

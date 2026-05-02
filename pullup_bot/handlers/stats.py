@@ -5,7 +5,7 @@ from aiogram import F, Router, types
 from ..db import get_db, get_today_workout, get_user
 from ..i18n import t, text_filter, day_name
 from ..keyboards import main_kb, stats_analytics_kb, stats_back_kb
-from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE, PROGRAMS
+from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, PROGRAMS
 from ..services.xp import display, level_info, md_escape, planned_for_day, progress_bar
 
 router = Router()
@@ -43,13 +43,17 @@ async def show_stats(message: types.Message):
 
     rows_by_date = {r["date"]: r for r in rows}
 
+    # Resolve the user's active program wave once — used for both history
+    # inference and the upcoming 7-day schedule below.
+    user_wave = PROGRAMS.get(user["program_type"] or "standard", PROGRAMS["standard"])
+
     # Build a wave-index timeline from available records so we can infer
     # whether missing days were scheduled rest days.
     # For each record we know day_type → WAVE index before that training.
     # After training the index advances by 1. For unrecorded days the index
     # stays the same (no advancement without interaction).
     def _wave_idx(day_type: str, expected: int | None) -> int:
-        matches = [k for k, (n, _) in WAVE.items() if n == day_type]
+        matches = [k for k, (n, _) in user_wave.items() if n == day_type]
         if not matches:
             return 0
         if expected is not None and expected in matches:
@@ -84,7 +88,7 @@ async def show_stats(message: types.Message):
             if prev_ds:
                 gap = (d_obj - date.fromisoformat(prev_ds)).days
                 inferred_idx = (wave_after[prev_ds] + (gap - 1)) % 7
-                if WAVE[inferred_idx][1] == 0:
+                if user_wave[inferred_idx][1] == 0:
                     history += f"😴 {date_label} {rest_label}: 0/0\n"
                 else:
                     history += f"—  {date_label} {no_data_label}\n"
@@ -114,7 +118,6 @@ async def show_stats(message: types.Message):
     # so offset is i-1. If today hasn't been logged yet, program_day still points to today,
     # so offset is i (tomorrow = today+1 in cycle).
     pd_offset = -1 if today_w else 0
-    user_wave = PROGRAMS.get(user.get("program_type") or "standard", PROGRAMS["standard"])
     schedule_lines = []
     for i in range(1, 8):
         future_pd = ((user["program_day"] or 0) + i + pd_offset) % 7

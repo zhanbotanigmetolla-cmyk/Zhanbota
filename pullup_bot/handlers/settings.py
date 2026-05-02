@@ -35,6 +35,7 @@ _EDIT_ACTIVITY_MAP = {
     "⏭️ Пропустить": "skip", "⏭️ Skip": "skip",
 }
 from .admin import _is_admin
+from .training import sync_max_streak
 
 router = Router()
 
@@ -647,6 +648,7 @@ async def skip_reason_save(message: types.Message, state: FSMContext):
                            (user["id"], d, reason))
         await conn.execute("UPDATE users SET streak = streak + 1 WHERE id=?", (user["id"],))
     await conn.commit()
+    await sync_max_streak(message.from_user.id)
     await message.answer(
         t("skip_ok", lang, date=date.fromisoformat(d).strftime("%d.%m.%Y"), reason=reason),
         parse_mode="Markdown")
@@ -675,7 +677,7 @@ async def program_select_start(message: types.Message, state: FSMContext):
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
-    current_type = user.get("program_type") or "standard"
+    current_type = user["program_type"] or "standard"
     current_label = t(f"program_{current_type}", lang)
     await message.answer(
         t("program_title", lang, current=current_label),
@@ -709,7 +711,7 @@ async def program_select_save(message: types.Message, state: FSMContext):
     lang = (user["lang"] or "ru") if user else "ru"
     program_type = _PROGRAM_BTN_MAP.get(message.text or "")
     if not program_type:
-        current_type = user.get("program_type") or "standard" if user else "standard"
+        current_type = (user["program_type"] or "standard") if user else "standard"
         current_label = t(f"program_{current_type}", lang)
         await message.answer(
             t("program_title", lang, current=current_label),

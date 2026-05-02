@@ -42,7 +42,7 @@ def planned_for_day(user):
     """Return (planned_count, day_type_name) for the user's current position in their program cycle."""
     base = user["base_pullups"]
     program_day = user["program_day"] or 0
-    wave = PROGRAMS.get(user.get("program_type") or "standard", PROGRAMS["standard"])
+    wave = PROGRAMS.get(user["program_type"] or "standard", PROGRAMS["standard"])
     name, coeff = wave[program_day % 7]
     return int(base * coeff), name
 

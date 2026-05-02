@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from aiogram.exceptions import TelegramForbiddenError
 
-from ..config import ADMIN_TG_ID, TZ_OFFSET_HOURS, WAVE, logger
+from ..config import ADMIN_TG_ID, TZ_OFFSET_HOURS, logger
 from ..db import get_db, get_today_workout, upsert_workout
 from ..i18n import t, day_name
 from ..services.xp import display, md_escape, planned_for_day
@@ -354,10 +354,10 @@ async def auto_acknowledge_rest_days(bot):
 
     acknowledged = 0
     for user in users:
-        program_day = user["program_day"] or 0
-        name, coeff = WAVE[program_day % 7]
+        _, name = planned_for_day(user)
         if name != "Отдых":
             continue
+        program_day = user["program_day"] or 0
         # Advance program_day and mark last_workout=today so the streak stays intact
         new_pd = program_day + 1
         await conn.execute(
