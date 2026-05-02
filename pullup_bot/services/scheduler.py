@@ -366,6 +366,9 @@ async def auto_acknowledge_rest_days(bot):
         )
         await upsert_workout(user["id"], today_str, planned=0, day_type="Отдых",
                              sets_json=json.dumps([]), completed=0)
+        if new_pd % 7 == 0:
+            from ..handlers.training import _check_weekly_progression
+            await _check_weekly_progression(user["tg_id"], user["id"], user["base_pullups"])
         acknowledged += 1
 
     if acknowledged:
