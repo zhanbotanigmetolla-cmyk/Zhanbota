@@ -180,6 +180,29 @@ async def init_db():
     await conn.execute(
         "UPDATE users SET program_day = start_day WHERE program_day IS NULL"
     )
+    # Backfill max_streak: at minimum it equals the current streak
+    await conn.execute(
+        "UPDATE users SET max_streak = streak WHERE max_streak < streak"
+    )
+    # Backfill set_record: scan all sets_json and find each user's best single set
+    async with conn.execute(
+        "SELECT user_id, sets_json FROM workouts WHERE sets_json IS NOT NULL AND sets_json != '[]'"
+    ) as cur:
+        best: dict[int, int] = {}
+        async for row in cur:
+            try:
+                sets = json.loads(row[0])
+                if sets:
+                    m = max(sets)
+                    if m > best.get(row[1], 0):
+                        best[row[1]] = m
+            except Exception:
+                pass
+    for uid, top_set in best.items():
+        await conn.execute(
+            "UPDATE users SET set_record = ? WHERE id = ? AND set_record < ?",
+            (top_set, uid, top_set)
+        )
     await conn.commit()
 
 
