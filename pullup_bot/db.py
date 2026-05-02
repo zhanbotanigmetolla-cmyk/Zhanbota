@@ -191,11 +191,11 @@ async def init_db():
         best: dict[int, int] = {}
         async for row in cur:
             try:
-                sets = json.loads(row[0])
+                sets = json.loads(row[1])
                 if sets:
                     m = max(sets)
-                    if m > best.get(row[1], 0):
-                        best[row[1]] = m
+                    if m > best.get(row[0], 0):
+                        best[row[0]] = m
             except Exception:
                 pass
     for uid, top_set in best.items():
