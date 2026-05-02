@@ -217,7 +217,7 @@ async def stats_analytics_view(callback: types.CallbackQuery):
     # 3. Records from user row
     pr = user["personal_record"] or 0
     set_pr = user["set_record"] or 0
-    max_streak_val = user.get("max_streak") or 0
+    max_streak_val = user["max_streak"] or 0
 
     # 4. Most trained weekday
     async with conn.execute(
