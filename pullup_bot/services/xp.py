@@ -1,4 +1,4 @@
-from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE
+from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE, PROGRAMS
 
 
 def display(user) -> str:
@@ -39,10 +39,11 @@ def progress_bar(pct: int, length: int = 10) -> str:
 
 
 def planned_for_day(user):
-    """Return (planned_count, day_type_name) for the user's current position in the 7-day wave cycle."""
+    """Return (planned_count, day_type_name) for the user's current position in their program cycle."""
     base = user["base_pullups"]
     program_day = user["program_day"] or 0
-    name, coeff = WAVE[program_day % 7]
+    wave = PROGRAMS.get(user.get("program_type") or "standard", PROGRAMS["standard"])
+    name, coeff = wave[program_day % 7]
     return int(base * coeff), name
 
 

@@ -62,6 +62,7 @@ def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool 
     b.row(KeyboardButton(text=t("btn_notify_time", lang)), KeyboardButton(text=t("btn_change_base", lang)))
     b.row(KeyboardButton(text=t("btn_change_name", lang)))
     b.row(KeyboardButton(text=t("btn_edit_day", lang)), KeyboardButton(text=t("btn_skip_reason", lang)))
+    b.row(KeyboardButton(text=t("btn_program", lang)), KeyboardButton(text=t("btn_export", lang)))
     nw_key = "btn_notify_workouts_on" if notify_workouts else "btn_notify_workouts_off"
     b.row(KeyboardButton(text=t(nw_key, lang)))
     b.row(KeyboardButton(text=t("btn_logout", lang)), KeyboardButton(text=t("btn_language", lang)))
@@ -70,6 +71,16 @@ def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool 
         b.row(KeyboardButton(text="🛡 Панель администратора"))
     b.row(KeyboardButton(text=t("btn_back", lang)))
     return b.as_markup(resize_keyboard=True)
+
+
+def program_select_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the training-program selection keyboard (Standard / Beginner / Advanced + Back)."""
+    b = ReplyKeyboardBuilder()
+    b.row(KeyboardButton(text=t("program_standard", lang)))
+    b.row(KeyboardButton(text=t("program_beginner", lang)))
+    b.row(KeyboardButton(text=t("program_advanced", lang)))
+    b.row(KeyboardButton(text=t("btn_back", lang)))
+    return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
 def smart_set_buttons(planned: int) -> list:
@@ -211,15 +222,35 @@ def back_only_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     return b.as_markup(resize_keyboard=True)
 
 
-def history_nav_kb(offset: int, lang: str = "ru") -> InlineKeyboardMarkup:
-    """Return the inline history navigation keyboard with Prev week and (if not current) Next week."""
+def history_nav_kb(offset: int, lang: str = "ru", monthly: bool = False) -> InlineKeyboardMarkup:
+    """Return the inline history nav keyboard with week nav buttons and a monthly/weekly toggle."""
     b = InlineKeyboardBuilder()
-    prev_label = "← Пред. неделя" if lang == "ru" else "← Prev week"
-    next_label = "Сл. неделя →" if lang == "ru" else "Next week →"
-    b.button(text=prev_label, callback_data=f"hist_{offset - 1}")
-    if offset < 0:
-        b.button(text=next_label, callback_data=f"hist_{offset + 1}")
-    b.adjust(2)
+    if not monthly:
+        prev_label = "← Пред. неделя" if lang == "ru" else "← Prev week"
+        next_label = "Сл. неделя →" if lang == "ru" else "Next week →"
+        b.button(text=prev_label, callback_data=f"hist_{offset - 1}")
+        if offset < 0:
+            b.button(text=next_label, callback_data=f"hist_{offset + 1}")
+        b.adjust(2)
+        b.button(text=t("btn_history_monthly", lang), callback_data="hist_mode_monthly")
+        b.adjust(2, 1)
+    else:
+        b.button(text=t("btn_history_weekly", lang), callback_data="hist_mode_weekly")
+        b.adjust(1)
+    return b.as_markup()
+
+
+def stats_analytics_kb(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Return the inline button that opens advanced analytics from the stats message."""
+    b = InlineKeyboardBuilder()
+    b.button(text=t("btn_analytics", lang), callback_data="stats_analytics")
+    return b.as_markup()
+
+
+def stats_back_kb(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Return the inline back button from analytics back to the stats message."""
+    b = InlineKeyboardBuilder()
+    b.button(text=t("btn_back_stats", lang), callback_data="stats_back")
     return b.as_markup()
 
 

@@ -65,6 +65,10 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN base_increased_to INTEGER DEFAULT NULL",
     # index 21 — per-set personal record (best single-set rep count ever)
     "ALTER TABLE users ADD COLUMN set_record INTEGER DEFAULT 0",
+    # index 22 — selected training program ('standard', 'beginner', 'advanced')
+    "ALTER TABLE users ADD COLUMN program_type TEXT DEFAULT 'standard'",
+    # index 23 — all-time maximum streak reached
+    "ALTER TABLE users ADD COLUMN max_streak INTEGER DEFAULT 0",
 ]
 
 

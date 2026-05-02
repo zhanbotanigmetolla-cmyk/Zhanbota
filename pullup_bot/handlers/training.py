@@ -679,6 +679,13 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
                 progression_base = await _check_weekly_progression(
                     tg_id, user_before["id"], user_before["base_pullups"])
         await update_streak(tg_id, d)
+        # Track all-time max streak
+        refreshed_for_streak = await get_user(tg_id)
+        if refreshed_for_streak and (refreshed_for_streak["streak"] or 0) > (refreshed_for_streak["max_streak"] or 0):
+            conn = await get_db()
+            await conn.execute("UPDATE users SET max_streak=? WHERE tg_id=?",
+                               (refreshed_for_streak["streak"], tg_id))
+            await conn.commit()
 
     # Refresh after streak/program_day update
     user = await get_user(tg_id)

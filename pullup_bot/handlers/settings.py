@@ -1,8 +1,11 @@
+import csv
+import io
 from datetime import date
 
 from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.types import BufferedInputFile
 
 from ..db import (add_xp, get_db, get_lang, get_today_workout, get_user,
                   upsert_workout)
@@ -10,9 +13,9 @@ from ..i18n import t, text_filter
 from ..keyboards import (LANG_BACK_BILINGUAL, LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
                          activity_reply_kb, back_only_kb, delete_confirm_kb, edit_extras_kb,
                          landing_kb, lang_kb, logout_confirm_kb, main_kb, parse_rpe,
-                         rpe_menu_kb, settings_kb, skip_reason_kb)
+                         program_select_kb, rpe_menu_kb, settings_kb, skip_reason_kb)
 from aiogram.filters import StateFilter
-from ..states import (DeleteAccount, EditDay, Logout, SetBase, SetName, SetNotify,
+from ..states import (DeleteAccount, EditDay, Logout, SelectProgram, SetBase, SetName, SetNotify,
                       Settings, SkipReason)
 
 _INPUT_STATES = (
@@ -651,3 +654,115 @@ async def skip_reason_save(message: types.Message, state: FSMContext):
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
 
 
+# ── Program selection ────────────────────────────────────────────────────────
+
+# Maps localised button texts → internal program_type key (built at import time)
+_PROGRAM_BTN_MAP = {
+    t("program_standard", "ru"): "standard",
+    t("program_standard", "en"): "standard",
+    t("program_beginner", "ru"): "beginner",
+    t("program_beginner", "en"): "beginner",
+    t("program_advanced", "ru"): "advanced",
+    t("program_advanced", "en"): "advanced",
+}
+
+
+@router.message(text_filter("btn_program"))
+async def program_select_start(message: types.Message, state: FSMContext):
+    """Show the training-program selection menu."""
+    user = await get_user(message.from_user.id)
+    if not user:
+        await message.answer(t("register_first", "ru"))
+        return
+    lang = user["lang"] or "ru"
+    current_type = user.get("program_type") or "standard"
+    current_label = t(f"program_{current_type}", lang)
+    await message.answer(
+        t("program_title", lang, current=current_label),
+        parse_mode="Markdown",
+        reply_markup=program_select_kb(lang),
+    )
+    await state.set_state(SelectProgram.pick)
+
+
+@router.message(SelectProgram.pick, text_filter("btn_back"))
+async def program_select_back(message: types.Message, state: FSMContext):
+    """Cancel program selection and return to the settings screen."""
+    user = await get_user(message.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    await state.set_state(Settings.viewing)
+    await message.answer(
+        t("settings_title", lang,
+          base=user["base_pullups"],
+          notify=user["notify_time"],
+          freeze=user["freeze_tokens"]),
+        parse_mode="Markdown",
+        reply_markup=settings_kb(lang, is_admin=_is_admin(message),
+                                 notify_workouts=bool(user["notify_workouts"])),
+    )
+
+
+@router.message(SelectProgram.pick)
+async def program_select_save(message: types.Message, state: FSMContext):
+    """Persist the chosen training program and return to the main menu."""
+    user = await get_user(message.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    program_type = _PROGRAM_BTN_MAP.get(message.text or "")
+    if not program_type:
+        current_type = user.get("program_type") or "standard" if user else "standard"
+        current_label = t(f"program_{current_type}", lang)
+        await message.answer(
+            t("program_title", lang, current=current_label),
+            parse_mode="Markdown",
+            reply_markup=program_select_kb(lang),
+        )
+        return
+    conn = await get_db()
+    await conn.execute("UPDATE users SET program_type=? WHERE tg_id=?",
+                       (program_type, message.from_user.id))
+    await conn.commit()
+    label = t(f"program_{program_type}", lang)
+    await message.answer(t("program_set_ok", lang, program=label), parse_mode="Markdown")
+    await state.clear()
+    await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+
+
+# ── Data export ──────────────────────────────────────────────────────────────
+
+@router.message(text_filter("btn_export"))
+async def export_data(message: types.Message):
+    """Generate and send a CSV file of all the user's workout history."""
+    user = await get_user(message.from_user.id)
+    if not user:
+        await message.answer(t("register_first", "ru"))
+        return
+    lang = user["lang"] or "ru"
+    conn = await get_db()
+    async with conn.execute(
+        """SELECT date, day_type, planned, completed, sets_json,
+                  rpe, extra_activity, extra_minutes, notes
+           FROM workouts WHERE user_id=? ORDER BY date ASC""",
+        (user["id"],)
+    ) as cur:
+        rows = await cur.fetchall()
+
+    if not rows:
+        await message.answer(t("export_empty", lang))
+        return
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Date", "Day Type", "Planned", "Completed", "Sets",
+                     "RPE", "Extra Activity", "Extra Minutes", "Notes", "Completion%"])
+    for r in rows:
+        pct = int(r["completed"] / r["planned"] * 100) if r["planned"] else 0
+        writer.writerow([
+            r["date"], r["day_type"], r["planned"], r["completed"],
+            r["sets_json"], r["rpe"],
+            r["extra_activity"], r["extra_minutes"], r["notes"], pct,
+        ])
+
+    # utf-8-sig adds BOM so Excel opens Cyrillic correctly
+    csv_bytes = buf.getvalue().encode("utf-8-sig")
+    file = BufferedInputFile(csv_bytes, filename=f"workouts_{message.from_user.id}.csv")
+    await message.answer_document(file, caption=t("export_caption", lang))

@@ -33,15 +33,37 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
 # UTC offset for notification time matching (default: UTC+5 = Kazakhstan/Almaty)
 TZ_OFFSET_HOURS = int(os.environ.get("TZ_OFFSET_HOURS", "5"))
 
-WAVE = {
-    0: ("Средний",   1.0),
-    1: ("Лёгкий",    0.5),
-    2: ("Тяжёлый",   1.15),
-    3: ("Отдых",     0.0),
-    4: ("Плотность", 1.0),
-    5: ("Лёгкий",    0.5),
-    6: ("Отдых",     0.0),
+PROGRAMS = {
+    "standard": {   # 5x/week — original wave cycle
+        0: ("Средний",   1.0),
+        1: ("Лёгкий",    0.5),
+        2: ("Тяжёлый",   1.15),
+        3: ("Отдых",     0.0),
+        4: ("Плотность", 1.0),
+        5: ("Лёгкий",    0.5),
+        6: ("Отдых",     0.0),
+    },
+    "beginner": {   # 3x/week — more rest, lighter loads
+        0: ("Лёгкий",    0.6),
+        1: ("Отдых",     0.0),
+        2: ("Средний",   1.0),
+        3: ("Отдых",     0.0),
+        4: ("Лёгкий",    0.6),
+        5: ("Отдых",     0.0),
+        6: ("Отдых",     0.0),
+    },
+    "advanced": {   # 6x/week — extra training day
+        0: ("Средний",   1.0),
+        1: ("Лёгкий",    0.5),
+        2: ("Тяжёлый",   1.15),
+        3: ("Средний",   1.0),
+        4: ("Плотность", 1.0),
+        5: ("Лёгкий",    0.5),
+        6: ("Отдых",     0.0),
+    },
 }
+# Backward-compat alias — code that imports WAVE directly still works
+WAVE = PROGRAMS["standard"]
 
 XP_PER_PULLUP = 1
 XP_PER_STREAK_DAY = 50

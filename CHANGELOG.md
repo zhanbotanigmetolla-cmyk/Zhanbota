@@ -7,6 +7,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-05-02]
 
 ### Added
+- **Extended History (monthly view):** History screen now has a "📅 By Month" toggle button. Tapping it switches from the weekly drill-down view to a 12-month summary showing total reps, completion %, and training days per month. A "By Week" button switches back.
+- **Custom Training Program:** Users can now choose between three preset programs from Settings → 🔧 Program: Standard (5x/week, the original wave), Beginner (3x/week with more rest), and Advanced (6x/week with an extra training day). The choice is persisted and affects both the daily training target and the 7-day forward schedule in Stats.
+- **Data Export (CSV):** Settings → 📤 Export sends a CSV file of all workout history (date, day type, planned, completed, sets, RPE, extra activity, notes, completion %). UTF-8 BOM encoding for Excel compatibility.
+- **Advanced Analytics:** Stats screen now shows a "📈 Подробно / Analytics" inline button. Tapping it reveals: monthly volume bar chart (last 6 months), completion % by day type, personal records (best day, best set, max streak ever), and most trained day of the week.
+- `max_streak` column added to users table — tracks the all-time highest streak ever reached. Updated automatically after each workout.
 - Per-set personal record (PR) tracking. A new `set_record` column stores the user's all-time best single-set rep count. When a user enters a set that beats their record, they immediately receive a "New personal record! Congrats! 🎉" message mid-session. If a session PR was set, the workout completion notification sent to other users also includes a trophy line showing the record count.
 
 ---

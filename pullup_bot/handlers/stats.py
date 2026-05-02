@@ -1,11 +1,11 @@
 from datetime import date, timedelta
 
-from aiogram import Router, types
+from aiogram import F, Router, types
 
 from ..db import get_db, get_today_workout, get_user
 from ..i18n import t, text_filter, day_name
-from ..keyboards import main_kb
-from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE
+from ..keyboards import main_kb, stats_analytics_kb, stats_back_kb
+from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE, PROGRAMS
 from ..services.xp import display, level_info, md_escape, planned_for_day, progress_bar
 
 router = Router()
@@ -114,10 +114,11 @@ async def show_stats(message: types.Message):
     # so offset is i-1. If today hasn't been logged yet, program_day still points to today,
     # so offset is i (tomorrow = today+1 in cycle).
     pd_offset = -1 if today_w else 0
+    user_wave = PROGRAMS.get(user.get("program_type") or "standard", PROGRAMS["standard"])
     schedule_lines = []
     for i in range(1, 8):
         future_pd = ((user["program_day"] or 0) + i + pd_offset) % 7
-        day_type_name, coeff = WAVE[future_pd]
+        day_type_name, coeff = user_wave[future_pd]
         planned_label = t("stats_schedule_rest", lang) if coeff == 0 else str(int(user["base_pullups"] * coeff))
         dt_display = day_name(day_type_name, lang)
         future_date = (today + timedelta(days=i)).strftime("%d.%m")
@@ -155,3 +156,100 @@ async def show_stats(message: types.Message):
         f"{schedule_header}\n{schedule}",
         parse_mode="Markdown",
         reply_markup=main_kb(lang))
+    await message.answer("📈", reply_markup=stats_analytics_kb(lang))
+
+
+WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
+WEEKDAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+
+@router.callback_query(F.data == "stats_analytics")
+async def stats_analytics_view(callback: types.CallbackQuery):
+    """Show the advanced analytics screen with monthly volume, day-type breakdown, and records."""
+    user = await get_user(callback.from_user.id)
+    if not user:
+        await callback.answer()
+        return
+    lang = user["lang"] or "ru"
+    conn = await get_db()
+
+    # 1. Monthly volume — last 6 months, ASCII bar chart
+    async with conn.execute(
+        """SELECT strftime('%Y-%m', date) AS month, SUM(completed) AS vol
+           FROM workouts WHERE user_id=? GROUP BY month ORDER BY month DESC LIMIT 6""",
+        (user["id"],)
+    ) as cur:
+        monthly_rows = list(reversed(await cur.fetchall()))
+
+    max_vol = max((r["vol"] or 0 for r in monthly_rows), default=1) or 1
+    BAR = 8
+    chart_lines = []
+    for r in monthly_rows:
+        vol = r["vol"] or 0
+        filled = round(vol / max_vol * BAR)
+        bar = "█" * filled + "░" * (BAR - filled)
+        chart_lines.append(f"`{r['month']}  [{bar}]  {vol}`")
+    monthly_chart = "\n".join(chart_lines) if chart_lines else "—"
+
+    # 2. Completion % by day type
+    async with conn.execute(
+        """SELECT day_type,
+                  AVG(CASE WHEN planned > 0 THEN CAST(completed AS REAL) / planned * 100 ELSE NULL END) AS avg_pct,
+                  COUNT(*) AS cnt
+           FROM workouts
+           WHERE user_id=? AND day_type != '' AND day_type IS NOT NULL
+           GROUP BY day_type ORDER BY cnt DESC""",
+        (user["id"],)
+    ) as cur:
+        day_type_rows = await cur.fetchall()
+
+    dtype_lines = []
+    for r in day_type_rows:
+        dtype_display = day_name(r["day_type"], lang)
+        pct_str = f"{r['avg_pct']:.0f}%" if r["avg_pct"] is not None else "—"
+        count_label = "тр." if lang == "ru" else "sess."
+        dtype_lines.append(f"  {dtype_display}: {pct_str} ({r['cnt']} {count_label})")
+    dtype_text = "\n".join(dtype_lines) if dtype_lines else "—"
+
+    # 3. Records from user row
+    pr = user["personal_record"] or 0
+    set_pr = user["set_record"] or 0
+    max_streak_val = user.get("max_streak") or 0
+
+    # 4. Most trained weekday
+    async with conn.execute(
+        """SELECT strftime('%w', date) AS wd, COUNT(*) AS cnt
+           FROM workouts WHERE user_id=? AND completed > 0
+           GROUP BY wd ORDER BY cnt DESC LIMIT 1""",
+        (user["id"],)
+    ) as cur:
+        wd_row = await cur.fetchone()
+
+    if wd_row:
+        wd_idx = int(wd_row["wd"])
+        wd_name = WEEKDAYS_RU[wd_idx] if lang == "ru" else WEEKDAYS_EN[wd_idx]
+        weekday_text = t("analytics_weekday", lang, day=wd_name, count=wd_row["cnt"])
+    else:
+        weekday_text = "—"
+
+    records_text = t("analytics_records", lang, pr=pr, set_pr=set_pr, max_streak=max_streak_val)
+
+    text = (
+        f"{t('analytics_title', lang)}\n\n"
+        f"{t('analytics_monthly_vol', lang)}\n{monthly_chart}\n\n"
+        f"{t('analytics_day_type', lang)}\n{dtype_text}\n\n"
+        f"{records_text}\n\n"
+        f"{weekday_text}"
+    )
+
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=stats_back_kb(lang))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "stats_back")
+async def stats_analytics_back(callback: types.CallbackQuery):
+    """Restore the analytics placeholder message to its button form."""
+    user = await get_user(callback.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    await callback.message.edit_text("📈", reply_markup=stats_analytics_kb(lang))
+    await callback.answer()

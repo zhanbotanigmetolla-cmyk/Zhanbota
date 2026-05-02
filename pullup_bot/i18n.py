@@ -438,6 +438,30 @@ STRINGS = {
         "leaderboard_title": "🏆 *Рейтинг — неделя*",
         "leaderboard_empty": "🏆 *Рейтинг*\n\nПока никого нет — ты первый! 💪",
         "leaderboard_you_marker": " ← ты",
+        # Program selection
+        "btn_program": "🔧 Программа",
+        "program_title": "🔧 *Программа тренировок*\n\nТекущая: *{current}*\n\nВыбери программу:",
+        "program_standard": "📋 Стандарт (5х/нед)",
+        "program_beginner": "🌱 Новичок (3х/нед)",
+        "program_advanced": "🔥 Продвинутый (6х/нед)",
+        "program_set_ok": "✅ Программа изменена на *{program}*",
+        # Data export
+        "btn_export": "📤 Экспорт",
+        "export_caption": "📤 Твои тренировки (CSV)",
+        "export_empty": "📋 Нет данных для экспорта.",
+        # History monthly view
+        "history_monthly_title": "📅 *История по месяцам*",
+        "history_monthly_row": "`{month}  {done}/{planned}  {pct}%  {days}д`",
+        "btn_history_monthly": "📅 По месяцам",
+        "btn_history_weekly": "📅 По неделям",
+        # Advanced analytics
+        "btn_analytics": "📈 Подробно",
+        "analytics_title": "📈 *Аналитика*",
+        "analytics_monthly_vol": "📊 *Объём по месяцам (посл. 6):*",
+        "analytics_day_type": "📋 *Выполнение по типу дня:*",
+        "analytics_records": "🏆 *Рекорды:*\nЛучший день: {pr} подтяг\nЛучший подход: {set_pr} подтяг\nМакс. стрик: {max_streak} дней",
+        "analytics_weekday": "📅 *Самый активный день недели:* {day} ({count} тренировок)",
+        "btn_back_stats": "◀️ К статистике",
     },
     "en": {
         # Buttons - main
@@ -875,6 +899,30 @@ STRINGS = {
         "leaderboard_title": "🏆 *Leaderboard — this week*",
         "leaderboard_empty": "🏆 *Leaderboard*\n\nNo one yet — you're first! 💪",
         "leaderboard_you_marker": " ← you",
+        # Program selection
+        "btn_program": "🔧 Program",
+        "program_title": "🔧 *Training Program*\n\nCurrent: *{current}*\n\nChoose a program:",
+        "program_standard": "📋 Standard (5x/week)",
+        "program_beginner": "🌱 Beginner (3x/week)",
+        "program_advanced": "🔥 Advanced (6x/week)",
+        "program_set_ok": "✅ Program changed to *{program}*",
+        # Data export
+        "btn_export": "📤 Export",
+        "export_caption": "📤 Your workouts (CSV)",
+        "export_empty": "📋 No data to export.",
+        # History monthly view
+        "history_monthly_title": "📅 *History by Month*",
+        "history_monthly_row": "`{month}  {done}/{planned}  {pct}%  {days}d`",
+        "btn_history_monthly": "📅 By Month",
+        "btn_history_weekly": "📅 By Week",
+        # Advanced analytics
+        "btn_analytics": "📈 Analytics",
+        "analytics_title": "📈 *Analytics*",
+        "analytics_monthly_vol": "📊 *Volume by Month (last 6):*",
+        "analytics_day_type": "📋 *Completion by Day Type:*",
+        "analytics_records": "🏆 *Records:*\nBest day: {pr} pullups\nBest set: {set_pr} pullups\nMax streak: {max_streak} days",
+        "analytics_weekday": "📅 *Most trained day:* {day} ({count} sessions)",
+        "btn_back_stats": "◀️ Back to Stats",
     },
 }
 
