@@ -91,6 +91,10 @@ class Friends(StatesGroup):
     viewing = State()
 
 
+class SelectProgram(StatesGroup):
+    pick = State()
+
+
 class AdminPanel(StatesGroup):
     main           = State()
     user_list      = State()

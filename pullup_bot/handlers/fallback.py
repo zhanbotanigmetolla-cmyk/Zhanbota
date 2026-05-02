@@ -28,6 +28,7 @@ _FALLBACK_SYSTEM = (
 
 @router.message()
 async def unhandled_message(message: types.Message, state: FSMContext):
+    """Catch-all for messages that no other handler claimed; logs the event and may send a Gemini fallback reply."""
     current_state = await state.get_state()
     text = message.text or f"[{message.content_type}]"
     if current_state:
@@ -72,6 +73,7 @@ async def unhandled_message(message: types.Message, state: FSMContext):
 
 @router.callback_query()
 async def unhandled_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Catch-all for callback queries that no other handler claimed; logs and acks the event."""
     current_state = await state.get_state()
     logger.warning(
         f"[UNHANDLED CALLBACK] user={callback.from_user.id} "

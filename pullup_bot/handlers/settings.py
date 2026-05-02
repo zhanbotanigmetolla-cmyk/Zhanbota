@@ -1,8 +1,11 @@
+import csv
+import io
 from datetime import date
 
 from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.types import BufferedInputFile
 
 from ..db import (add_xp, get_db, get_lang, get_today_workout, get_user,
                   upsert_workout)
@@ -10,9 +13,9 @@ from ..i18n import t, text_filter
 from ..keyboards import (LANG_BACK_BILINGUAL, LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
                          activity_reply_kb, back_only_kb, delete_confirm_kb, edit_extras_kb,
                          landing_kb, lang_kb, logout_confirm_kb, main_kb, parse_rpe,
-                         rpe_menu_kb, settings_kb, skip_reason_kb)
+                         program_select_kb, rpe_menu_kb, settings_kb, skip_reason_kb)
 from aiogram.filters import StateFilter
-from ..states import (DeleteAccount, EditDay, Logout, SetBase, SetName, SetNotify,
+from ..states import (DeleteAccount, EditDay, Logout, SelectProgram, SetBase, SetName, SetNotify,
                       Settings, SkipReason)
 
 _INPUT_STATES = (
@@ -32,12 +35,14 @@ _EDIT_ACTIVITY_MAP = {
     "⏭️ Пропустить": "skip", "⏭️ Skip": "skip",
 }
 from .admin import _is_admin
+from .training import sync_max_streak
 
 router = Router()
 
 
 @router.message(StateFilter(*_INPUT_STATES), text_filter("btn_back"))
 async def settings_input_cancel(message: types.Message, state: FSMContext):
+    """Cancel an in-progress settings input step and return to the main menu."""
     await state.clear()
     lang = await get_lang(message.from_user.id)
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
@@ -45,6 +50,7 @@ async def settings_input_cancel(message: types.Message, state: FSMContext):
 
 @router.message(Settings.viewing, text_filter("btn_back"))
 async def settings_back(message: types.Message, state: FSMContext):
+    """Close the settings screen and return to the main menu."""
     await state.clear()
     lang = await get_lang(message.from_user.id)
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
@@ -52,6 +58,7 @@ async def settings_back(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_settings"))
 async def settings_menu(message: types.Message, state: FSMContext):
+    """Show the settings panel with the user's current base, notify time, and freeze tokens."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -68,6 +75,7 @@ async def settings_menu(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_logout"))
 async def account_logout_msg(message: types.Message, state: FSMContext):
+    """Prompt the user to confirm logging out."""
     lang = await get_lang(message.from_user.id)
     await message.answer(t("confirm_logout", lang), reply_markup=logout_confirm_kb(lang))
     await state.set_state(Logout.confirm)
@@ -75,6 +83,7 @@ async def account_logout_msg(message: types.Message, state: FSMContext):
 
 @router.message(Logout.confirm, text_filter("confirm_yes"))
 async def logout_confirm(message: types.Message, state: FSMContext):
+    """Set is_logged_out=1 and return the user to the landing screen."""
     lang = await get_lang(message.from_user.id)
     conn = await get_db()
     await conn.execute("UPDATE users SET is_logged_out=1 WHERE tg_id=?", (message.from_user.id,))
@@ -85,6 +94,7 @@ async def logout_confirm(message: types.Message, state: FSMContext):
 
 @router.message(Logout.confirm, text_filter("confirm_no"))
 async def logout_cancel(message: types.Message, state: FSMContext):
+    """Cancel the logout and return to the main menu."""
     lang = await get_lang(message.from_user.id)
     await state.clear()
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
@@ -92,6 +102,7 @@ async def logout_cancel(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_delete_account"))
 async def delete_account_start(message: types.Message, state: FSMContext):
+    """Show the irreversible account-deletion warning and ask for confirmation."""
     lang = await get_lang(message.from_user.id)
     await message.answer(t("delete_account_warning", lang),
                          parse_mode="Markdown", reply_markup=delete_confirm_kb(lang))
@@ -100,6 +111,7 @@ async def delete_account_start(message: types.Message, state: FSMContext):
 
 @router.message(DeleteAccount.confirm, text_filter("delete_confirm_yes"))
 async def delete_account_confirm(message: types.Message, state: FSMContext):
+    """Delete all the user's data from the database and send a farewell message."""
     from ..keyboards import lang_kb
     lang = await get_lang(message.from_user.id)
     user = await get_user(message.from_user.id)
@@ -122,6 +134,7 @@ async def delete_account_confirm(message: types.Message, state: FSMContext):
 
 @router.message(DeleteAccount.confirm, text_filter("delete_confirm_no"))
 async def delete_account_cancel(message: types.Message, state: FSMContext):
+    """Cancel account deletion and return the user to the settings screen."""
     lang = await get_lang(message.from_user.id)
     user = await get_user(message.from_user.id)
     await state.clear()
@@ -138,6 +151,7 @@ async def delete_account_cancel(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_notify_time"))
 async def set_notify_msg(message: types.Message, state: FSMContext):
+    """Prompt the user to enter a new notification time (HH:MM format)."""
     user = await get_user(message.from_user.id)
     lang = (user["lang"] or "ru") if user else "ru"
     current = (user["notify_time"] or "—") if user else "—"
@@ -147,6 +161,7 @@ async def set_notify_msg(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_change_base"))
 async def set_base_start_msg(message: types.Message, state: FSMContext):
+    """Prompt the user to enter a new daily pullup base value."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -159,6 +174,7 @@ async def set_base_start_msg(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_change_name"))
 async def set_name_start_msg(message: types.Message, state: FSMContext):
+    """Prompt the user to enter a new display name."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -171,6 +187,7 @@ async def set_name_start_msg(message: types.Message, state: FSMContext):
 
 @router.message(SetName.enter_name)
 async def set_name_save(message: types.Message, state: FSMContext):
+    """Validate and persist the new display name."""
     lang = await get_lang(message.from_user.id)
     new_name = (message.text or "").strip()
     if not new_name:
@@ -187,6 +204,7 @@ async def set_name_save(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.pick_date, text_filter("btn_back"))
 async def edit_date_back(message: types.Message, state: FSMContext):
+    """Cancel the edit-day date input and return to the settings screen."""
     user = await get_user(message.from_user.id)
     lang = (user["lang"] or "ru") if user else "ru"
     await state.set_state(Settings.viewing)
@@ -200,6 +218,7 @@ async def edit_date_back(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.pick_done, text_filter("btn_back"))
 async def edit_done_back(message: types.Message, state: FSMContext):
+    """Go back to the date-input step of the edit-day flow."""
     lang = await get_lang(message.from_user.id)
     await state.set_state(EditDay.pick_date)
     await message.answer(t("edit_date_prompt", lang), parse_mode="Markdown")
@@ -207,6 +226,7 @@ async def edit_done_back(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.pick_rpe, text_filter("btn_back"))
 async def edit_rpe_back(message: types.Message, state: FSMContext):
+    """Go back to the rep-count input step of the edit-day flow."""
     lang = await get_lang(message.from_user.id)
     data = await state.get_data()
     d = data.get("edit_date", "")
@@ -223,6 +243,7 @@ async def edit_rpe_back(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_edit_day"))
 async def edit_day_btn_msg(message: types.Message, state: FSMContext):
+    """Start the edit-day flow by prompting for the date to edit (DD.MM format)."""
     lang = await get_lang(message.from_user.id)
     await message.answer(t("edit_date_prompt", lang),
                          parse_mode="Markdown")
@@ -231,6 +252,7 @@ async def edit_day_btn_msg(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_skip_reason"))
 async def skip_reason_start_msg(message: types.Message, state: FSMContext):
+    """Start the skip-reason flow by prompting for the missed date."""
     lang = await get_lang(message.from_user.id)
     await message.answer(t("skip_date_prompt", lang),
                          parse_mode="Markdown")
@@ -239,6 +261,7 @@ async def skip_reason_start_msg(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_language"))
 async def language_menu(message: types.Message, state: FSMContext):
+    """Show the language selection keyboard."""
     lang = await get_lang(message.from_user.id)
     await message.answer(t("lang_prompt", lang), reply_markup=lang_kb(show_back=True))
     await state.set_state(Settings.pick_lang)
@@ -247,6 +270,7 @@ async def language_menu(message: types.Message, state: FSMContext):
 @router.message(Settings.pick_lang, F.text == LANG_BACK_BILINGUAL)
 @router.message(Settings.pick_lang, text_filter("btn_back"))
 async def language_back(message: types.Message, state: FSMContext):
+    """Cancel language selection and return to the settings screen."""
     lang = await get_lang(message.from_user.id)
     user = await get_user(message.from_user.id)
     await state.clear()
@@ -260,6 +284,7 @@ async def language_back(message: types.Message, state: FSMContext):
 
 @router.message(Settings.pick_lang, F.text.in_({LANG_RU_BTN, LANG_EN_BTN, LANG_TOGGLE_BTN}))
 async def set_lang_toggle(message: types.Message, state: FSMContext):
+    """Persist the chosen interface language and return to the main menu."""
     if message.text == LANG_RU_BTN:
         new_lang = "ru"
     elif message.text == LANG_EN_BTN:
@@ -277,6 +302,7 @@ async def set_lang_toggle(message: types.Message, state: FSMContext):
 @router.message(text_filter("btn_notify_workouts_on"))
 @router.message(text_filter("btn_notify_workouts_off"))
 async def toggle_notify_workouts(message: types.Message, state: FSMContext):
+    """Toggle the friend workout-notification opt-in flag."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -295,6 +321,7 @@ async def toggle_notify_workouts(message: types.Message, state: FSMContext):
 
 @router.message(SetNotify.enter_time)
 async def save_notify_time(message: types.Message, state: FSMContext):
+    """Validate and persist the new notification time (HH:MM)."""
     lang = await get_lang(message.from_user.id)
     if not message.text:
         await message.answer(t("set_time_bad", lang))
@@ -317,6 +344,7 @@ async def save_notify_time(message: types.Message, state: FSMContext):
 
 @router.message(SetBase.enter_base)
 async def set_base_save(message: types.Message, state: FSMContext):
+    """Validate (1–500) and persist the new daily pullup base."""
     lang = await get_lang(message.from_user.id)
     if not message.text:
         await message.answer(t("set_base_range", lang))
@@ -343,6 +371,7 @@ async def set_base_save(message: types.Message, state: FSMContext):
 
 @router.message(Command("edit"))
 async def edit_day_start(message: types.Message, state: FSMContext):
+    """Handle /edit command: enter the edit-day flow."""
     lang = await get_lang(message.from_user.id)
     await message.answer(t("edit_date_prompt", lang), parse_mode="Markdown")
     await state.set_state(EditDay.pick_date)
@@ -350,6 +379,7 @@ async def edit_day_start(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.pick_date)
 async def edit_pick_date(message: types.Message, state: FSMContext):
+    """Parse and store the target date (DD.MM), then prompt for the new rep count."""
     lang = await get_lang(message.from_user.id)
     if not message.text:
         await message.answer(t("edit_date_bad", lang))
@@ -370,6 +400,7 @@ async def edit_pick_date(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.pick_done)
 async def edit_pick_done(message: types.Message, state: FSMContext):
+    """Accept the corrected rep count (0 = delete record) and advance to RPE selection."""
     lang = await get_lang(message.from_user.id)
     if not message.text:
         await message.answer(t("enter_number", lang, example="50"))
@@ -423,6 +454,7 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.pick_rpe)
 async def edit_pick_rpe(message: types.Message, state: FSMContext):
+    """Parse the RPE selection and advance to the extras-prompt step."""
     rpe = parse_rpe(message.text or "")
     lang = await get_lang(message.from_user.id)
     if rpe is None:
@@ -435,6 +467,7 @@ async def edit_pick_rpe(message: types.Message, state: FSMContext):
 
 async def _save_edit(message: types.Message, state: FSMContext,
                      activity: str = "", act_mins: int = 0, notes: str = ""):
+    """Persist the edited workout row, adjust XP for the diff, and confirm to the user."""
     data = await state.get_data()
     user = await get_user(message.from_user.id)
     lang = user["lang"] or "ru" if user else "ru"
@@ -467,11 +500,13 @@ async def _save_edit(message: types.Message, state: FSMContext,
 
 @router.message(EditDay.confirm_extras, text_filter("btn_no_save"))
 async def edit_extras_no(message: types.Message, state: FSMContext):
+    """Save the edited workout without adding extra-activity data."""
     await _save_edit(message, state)
 
 
 @router.message(EditDay.confirm_extras, text_filter("btn_yes_add"))
 async def edit_extras_yes(message: types.Message, state: FSMContext):
+    """Enter the extra-activity sub-flow when editing a workout."""
     lang = await get_lang(message.from_user.id)
     await state.set_state(EditDay.activity)
     await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
@@ -480,6 +515,7 @@ async def edit_extras_yes(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_back"), EditDay.confirm_extras)
 async def edit_confirm_extras_back(message: types.Message, state: FSMContext):
+    """Go back to RPE selection from the extras-prompt step."""
     lang = await get_lang(message.from_user.id)
     await state.set_state(EditDay.pick_rpe)
     await message.answer(t("edit_rpe_prompt", lang), reply_markup=rpe_menu_kb(lang))
@@ -487,6 +523,7 @@ async def edit_confirm_extras_back(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_back"), EditDay.activity)
 async def edit_activity_back(message: types.Message, state: FSMContext):
+    """Go back to the extras-prompt step from activity-type selection."""
     lang = await get_lang(message.from_user.id)
     await state.set_state(EditDay.confirm_extras)
     await message.answer(t("edit_ask_extras", lang), reply_markup=edit_extras_kb(lang))
@@ -494,6 +531,7 @@ async def edit_activity_back(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.activity)
 async def edit_set_activity(message: types.Message, state: FSMContext):
+    """Record the extra-activity type for the edited workout."""
     lang = await get_lang(message.from_user.id)
     act_val = _EDIT_ACTIVITY_MAP.get(message.text or "", "skip")
     if act_val == "skip":
@@ -507,6 +545,7 @@ async def edit_set_activity(message: types.Message, state: FSMContext):
 
 
 async def _prompt_edit_notes(message, state, lang):
+    """Send the notes prompt with a Skip button and advance to the notes step of the edit flow."""
     from aiogram.types import KeyboardButton
     from aiogram.utils.keyboard import ReplyKeyboardBuilder
     b = ReplyKeyboardBuilder()
@@ -519,6 +558,7 @@ async def _prompt_edit_notes(message, state, lang):
 
 @router.message(text_filter("btn_back"), EditDay.act_mins)
 async def edit_act_mins_back(message: types.Message, state: FSMContext):
+    """Go back from activity-duration input to activity-type selection."""
     lang = await get_lang(message.from_user.id)
     await state.set_state(EditDay.activity)
     await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
@@ -527,6 +567,7 @@ async def edit_act_mins_back(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.act_mins)
 async def edit_set_act_mins(message: types.Message, state: FSMContext):
+    """Parse and store the extra-activity duration in minutes, then advance to notes."""
     lang = await get_lang(message.from_user.id)
     if not message.text:
         await message.answer(t("train_enter_mins", lang))
@@ -541,6 +582,7 @@ async def edit_set_act_mins(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_back"), EditDay.notes)
 async def edit_notes_back(message: types.Message, state: FSMContext):
+    """Go back from the notes step to activity-type selection."""
     lang = await get_lang(message.from_user.id)
     await state.set_state(EditDay.activity)
     await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
@@ -549,6 +591,7 @@ async def edit_notes_back(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.notes)
 async def edit_enter_notes(message: types.Message, state: FSMContext):
+    """Accept or skip the optional note and save the edited workout."""
     lang = await get_lang(message.from_user.id)
     skip_text = t("train_skip_notes", lang)
     notes = "" if (message.text or "").strip() == skip_text else (message.text or "").strip()
@@ -561,6 +604,7 @@ async def edit_enter_notes(message: types.Message, state: FSMContext):
 
 @router.message(SkipReason.pick_date)
 async def skip_reason_date(message: types.Message, state: FSMContext):
+    """Parse the missed date (DD.MM, max 3 days ago) and ask the user to pick a skip reason."""
     lang = await get_lang(message.from_user.id)
     if not message.text:
         await message.answer(t("edit_date_bad", lang))
@@ -582,6 +626,7 @@ async def skip_reason_date(message: types.Message, state: FSMContext):
 
 @router.message(SkipReason.enter_reason)
 async def skip_reason_save(message: types.Message, state: FSMContext):
+    """Persist the skip reason and bump the streak by one to compensate for the missed day."""
     reason = message.text or ""
     data = await state.get_data()
     user = await get_user(message.from_user.id)
@@ -603,6 +648,7 @@ async def skip_reason_save(message: types.Message, state: FSMContext):
                            (user["id"], d, reason))
         await conn.execute("UPDATE users SET streak = streak + 1 WHERE id=?", (user["id"],))
     await conn.commit()
+    await sync_max_streak(message.from_user.id)
     await message.answer(
         t("skip_ok", lang, date=date.fromisoformat(d).strftime("%d.%m.%Y"), reason=reason),
         parse_mode="Markdown")
@@ -610,3 +656,115 @@ async def skip_reason_save(message: types.Message, state: FSMContext):
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
 
 
+# ── Program selection ────────────────────────────────────────────────────────
+
+# Maps localised button texts → internal program_type key (built at import time)
+_PROGRAM_BTN_MAP = {
+    t("program_standard", "ru"): "standard",
+    t("program_standard", "en"): "standard",
+    t("program_beginner", "ru"): "beginner",
+    t("program_beginner", "en"): "beginner",
+    t("program_advanced", "ru"): "advanced",
+    t("program_advanced", "en"): "advanced",
+}
+
+
+@router.message(text_filter("btn_program"))
+async def program_select_start(message: types.Message, state: FSMContext):
+    """Show the training-program selection menu."""
+    user = await get_user(message.from_user.id)
+    if not user:
+        await message.answer(t("register_first", "ru"))
+        return
+    lang = user["lang"] or "ru"
+    current_type = user["program_type"] or "standard"
+    current_label = t(f"program_{current_type}", lang)
+    await message.answer(
+        t("program_title", lang, current=current_label),
+        parse_mode="Markdown",
+        reply_markup=program_select_kb(lang),
+    )
+    await state.set_state(SelectProgram.pick)
+
+
+@router.message(SelectProgram.pick, text_filter("btn_back"))
+async def program_select_back(message: types.Message, state: FSMContext):
+    """Cancel program selection and return to the settings screen."""
+    user = await get_user(message.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    await state.set_state(Settings.viewing)
+    await message.answer(
+        t("settings_title", lang,
+          base=user["base_pullups"],
+          notify=user["notify_time"],
+          freeze=user["freeze_tokens"]),
+        parse_mode="Markdown",
+        reply_markup=settings_kb(lang, is_admin=_is_admin(message),
+                                 notify_workouts=bool(user["notify_workouts"])),
+    )
+
+
+@router.message(SelectProgram.pick)
+async def program_select_save(message: types.Message, state: FSMContext):
+    """Persist the chosen training program and return to the main menu."""
+    user = await get_user(message.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    program_type = _PROGRAM_BTN_MAP.get(message.text or "")
+    if not program_type:
+        current_type = (user["program_type"] or "standard") if user else "standard"
+        current_label = t(f"program_{current_type}", lang)
+        await message.answer(
+            t("program_title", lang, current=current_label),
+            parse_mode="Markdown",
+            reply_markup=program_select_kb(lang),
+        )
+        return
+    conn = await get_db()
+    await conn.execute("UPDATE users SET program_type=? WHERE tg_id=?",
+                       (program_type, message.from_user.id))
+    await conn.commit()
+    label = t(f"program_{program_type}", lang)
+    await message.answer(t("program_set_ok", lang, program=label), parse_mode="Markdown")
+    await state.clear()
+    await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+
+
+# ── Data export ──────────────────────────────────────────────────────────────
+
+@router.message(text_filter("btn_export"))
+async def export_data(message: types.Message):
+    """Generate and send a CSV file of all the user's workout history."""
+    user = await get_user(message.from_user.id)
+    if not user:
+        await message.answer(t("register_first", "ru"))
+        return
+    lang = user["lang"] or "ru"
+    conn = await get_db()
+    async with conn.execute(
+        """SELECT date, day_type, planned, completed, sets_json,
+                  rpe, extra_activity, extra_minutes, notes
+           FROM workouts WHERE user_id=? ORDER BY date ASC""",
+        (user["id"],)
+    ) as cur:
+        rows = await cur.fetchall()
+
+    if not rows:
+        await message.answer(t("export_empty", lang))
+        return
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Date", "Day Type", "Planned", "Completed", "Sets",
+                     "RPE", "Extra Activity", "Extra Minutes", "Notes", "Completion%"])
+    for r in rows:
+        pct = int(r["completed"] / r["planned"] * 100) if r["planned"] else 0
+        writer.writerow([
+            r["date"], r["day_type"], r["planned"], r["completed"],
+            r["sets_json"], r["rpe"],
+            r["extra_activity"], r["extra_minutes"], r["notes"], pct,
+        ])
+
+    # utf-8-sig adds BOM so Excel opens Cyrillic correctly
+    csv_bytes = buf.getvalue().encode("utf-8-sig")
+    file = BufferedInputFile(csv_bytes, filename=f"workouts_{message.from_user.id}.csv")
+    await message.answer_document(file, caption=t("export_caption", lang))

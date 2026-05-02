@@ -164,8 +164,8 @@ STRINGS = {
             "📈 *Как меняется твоя база*\n\n"
             "База — это твоя ежедневная норма подтягиваний. Она меняется автоматически.\n\n"
             "▲ *Повышается:*\n"
-            "• +5% после завершения 7-дневного цикла, если среднее выполнение последних 5 тренировок ≥90%\n"
-            "• +3% если средний RPE последних 3 сессий ≤4.5 и все цели выполнены\n\n"
+            "• +5% после завершения 7-дневного цикла, если среднее выполнение последних 5 тренировок ≥80%\n"
+            "• +3% если средний RPE последних 3 сессий ≤6.5 и все цели выполнены\n\n"
             "▼ *Понижается:*\n"
             "• −5% если средний RPE последних 3 сессий ≥8.5\n"
             "• Первая тренировка после перерыва 3–6 дней — план снижен на 25%\n"
@@ -184,8 +184,8 @@ STRINGS = {
             "_Снижение не больше 50%. Указывай активность честно — бот защитит от перегрузки._\n\n"
             "📊 *Как RPE влияет на план*\n\n"
             "RPE (1–10) влияет на базу долгосрочно через скользящее среднее за 3 сессии:\n"
-            "• RPE ≤4.5 (тренировки даются легко) → база постепенно растёт (+3%)\n"
-            "• RPE 5–8 (нормальная нагрузка) → без изменений\n"
+            "• RPE ≤6.5 (тренировки даются умеренно) → база постепенно растёт (+3%)\n"
+            "• RPE >6.5 и <8.5 (нормальная нагрузка) → без изменений\n"
             "• RPE ≥8.5 (постоянно на пределе) → база снижается (−5%)\n"
             "_Одна тяжёлая тренировка ничего не изменит — важна тенденция за 3 подряд._\n\n"
             "📈 *Статистика и история*\n\n"
@@ -195,7 +195,12 @@ STRINGS = {
             "Нажми «🤖 Турникмен AI» — задай любой вопрос про тренировки или бот. ИИ знает всю твою историю.\n\n"
             "💡 *Совет*\n\n"
             "Начни с консервативной нормы (50–80 подтягиваний в день). "
-            "Бот сам повысит её, когда ты будешь готов."
+            "Бот сам повысит её, когда ты будешь готов.\n\n"
+            "🔑 *Главный принцип*\n\n"
+            "Не успел сделать полную тренировку? Ничего страшного — залогируй хотя бы 10 подтягиваний. "
+            "Даже несколько подтягиваний, сделанных в свободную минуту, на длинной дистанции дают огромный эффект. "
+            "Мы здесь ради долгосрочного результата, а не идеального выполнения каждого дня. "
+            "Последовательность важнее совершенства."
         ),
         "bye": "👋 Ты вышел из аккаунта.\n\n⏸ Уведомления и стрик поставлены на паузу.\nДанные сохранены — нажми «Войти в Турникмен», чтобы вернуться 💪",
         "main_menu": "👋 Главное меню:",
@@ -221,7 +226,7 @@ STRINGS = {
         "welcome_back": "👋 С возвращением, *{name}*!\n\nУровень: {level} ⭐ XP: {xp}\n🔥 Стрик: {streak} дней",
         "enter_number": "❌ Введи число, например: {example}",
         # Training
-        "train_day": "{'🟢' if day_type != 'Отдых' else '😴'} *{day_type} день*",
+        "train_day": "{icon} *{day_type} день*",
         "train_goal": "🎯 Цель: *{planned}* подтягиваний",
         "train_done_today": "✅ Сделано за сегодня: *{done}*",
         "train_done_now": "🏋️ Сделано сейчас: *{done}*",
@@ -255,6 +260,8 @@ STRINGS = {
         "train_progression": "\n🎯 Цикл завершён! Стабильный прогресс — база повышена до {base} (+5%).",
         "density_hint": "💡 _День плотности: много коротких подходов, минимум отдыха между ними. Цель — набрать объём равномерно в течение дня._",
         "train_friend_notify": "📣 *{name}* завершил тренировку!\n🎯 Цель: {planned} | Выполнено: {done} | Подходов: {sets}",
+        "set_pr_congrats": "🏆 *Новый личный рекорд: {reps} подтягиваний за подход!* Congrats! 🎉",
+        "set_pr_friend_line": "\n🏆 Личный рекорд за подход: *{reps}*",
         # Rest day override
         "rest_day_prompt": "😴 Сегодня день отдыха. Что хочешь сделать?",
         "rest_day_train": "💪 Тренироваться",
@@ -365,6 +372,7 @@ STRINGS = {
             "/fixbug — закрыть баг (admin)"
         ),
         # Reminders
+        "reminder_base_increased": "📈 Твоя база выросла до {base} — продолжай в том же духе!\n\n",
         "reminder_rest": "😴 Сегодня день отдыха. Восстанавливайся!",
         "reminder_train": "🔔 Не забудь про подтягивания!\n📋 {day_type} день: {planned} подтягиваний\n{status}",
         "reminder_done": "✅ Сделано: {done}",
@@ -430,6 +438,30 @@ STRINGS = {
         "leaderboard_title": "🏆 *Рейтинг — неделя*",
         "leaderboard_empty": "🏆 *Рейтинг*\n\nПока никого нет — ты первый! 💪",
         "leaderboard_you_marker": " ← ты",
+        # Program selection
+        "btn_program": "🔧 Программа",
+        "program_title": "🔧 *Программа тренировок*\n\nТекущая: *{current}*\n\nВыбери программу:",
+        "program_standard": "📋 Стандарт (5х/нед)",
+        "program_beginner": "🌱 Новичок (3х/нед)",
+        "program_advanced": "🔥 Продвинутый (6х/нед)",
+        "program_set_ok": "✅ Программа изменена на *{program}*",
+        # Data export
+        "btn_export": "📤 Экспорт",
+        "export_caption": "📤 Твои тренировки (CSV)",
+        "export_empty": "📋 Нет данных для экспорта.",
+        # History monthly view
+        "history_monthly_title": "📅 *История по месяцам*",
+        "history_monthly_row": "`{month}  {done}/{planned}  {pct}%  {days}д`",
+        "btn_history_monthly": "📅 По месяцам",
+        "btn_history_weekly": "📅 По неделям",
+        # Advanced analytics
+        "btn_analytics": "📈 Подробно",
+        "analytics_title": "📈 *Аналитика*",
+        "analytics_monthly_vol": "📊 *Объём по месяцам (посл. 6):*",
+        "analytics_day_type": "📋 *Выполнение по типу дня:*",
+        "analytics_records": "🏆 *Рекорды:*\nЛучший день: {pr} подтяг\nЛучший подход: {set_pr} подтяг\nМакс. стрик: {max_streak} дней",
+        "analytics_weekday": "📅 *Самый активный день недели:* {day} ({count} тренировок)",
+        "btn_back_stats": "◀️ К статистике",
     },
     "en": {
         # Buttons - main
@@ -593,8 +625,8 @@ STRINGS = {
             "📈 *How your base changes*\n\n"
             "Your base is your daily pullup target. It adjusts automatically.\n\n"
             "▲ *Increases when:*\n"
-            "• +5% after completing a 7-day cycle if your last 5 training sessions averaged ≥90% completion\n"
-            "• +3% if your average RPE over the last 3 sessions is ≤4.5 and all targets were hit\n\n"
+            "• +5% after completing a 7-day cycle if your last 5 training sessions averaged ≥80% completion\n"
+            "• +3% if your average RPE over the last 3 sessions is ≤6.5 and all targets were hit\n\n"
             "▼ *Decreases when:*\n"
             "• −5% if your average RPE over the last 3 sessions is ≥8.5\n"
             "• First session after a 3–6 day break — plan reduced by 25%\n"
@@ -613,8 +645,8 @@ STRINGS = {
             "_Never below 50%. Log your activity honestly — the bot will protect you from overload._\n\n"
             "📊 *How RPE affects your plan*\n\n"
             "RPE (1–10) shapes your base over time via a rolling average of 3 sessions:\n"
-            "• RPE ≤4.5 (workouts feel easy) → base gradually increases (+3%)\n"
-            "• RPE 5–8 (normal load) → no change\n"
+            "• RPE ≤6.5 (workouts feel moderate or easier) → base gradually increases (+3%)\n"
+            "• RPE >6.5 and <8.5 (normal load) → no change\n"
             "• RPE ≥8.5 (constantly at the limit) → base decreases (−5%)\n"
             "_One hard session won't change anything — the trend over 3 in a row matters._\n\n"
             "📈 *Stats & History*\n\n"
@@ -624,7 +656,12 @@ STRINGS = {
             "Tap «🤖 Turnikmen AI» to chat — ask anything about your training or how the bot works. It knows your full history.\n\n"
             "💡 *Tip*\n\n"
             "Start with a conservative target (50–80 pullups per day). "
-            "The bot will raise it automatically when you're ready."
+            "The bot will raise it automatically when you're ready.\n\n"
+            "🔑 *The key principle*\n\n"
+            "Can't finish the full workout today? That's fine — log even 10 pullups. "
+            "A few reps squeezed into a spare moment add up to a huge impact over the long run. "
+            "We're here for long-term results, not short-term perfection. "
+            "Consistency beats perfection every time."
         ),
         "bye": "👋 You've logged out.\n\n⏸ Notifications and streak are paused.\nYour data is saved — tap «Join Turnikmen» to come back 💪",
         "main_menu": "👋 Main menu:",
@@ -650,7 +687,7 @@ STRINGS = {
         "welcome_back": "👋 Welcome back, *{name}*!\n\nLevel: {level} ⭐ XP: {xp}\n🔥 Streak: {streak} days",
         "enter_number": "❌ Enter a number, e.g.: {example}",
         # Training
-        "train_day": "{'🟢' if day_type != 'Rest' else '😴'} *{day_type} day*",
+        "train_day": "{icon} *{day_type} day*",
         "train_goal": "🎯 Goal: *{planned}* pullups",
         "train_done_today": "✅ Done today: *{done}*",
         "train_done_now": "🏋️ Done now: *{done}*",
@@ -684,6 +721,8 @@ STRINGS = {
         "train_progression": "\n🎯 Cycle complete! Consistent progress — base raised to {base} (+5%).",
         "density_hint": "💡 _Density day: many short sets, minimal rest between them. Goal — accumulate volume spread throughout the day._",
         "train_friend_notify": "📣 *{name}* finished training!\n🎯 Goal: {planned} | Done: {done} | Sets: {sets}",
+        "set_pr_congrats": "🏆 *New personal record: {reps} pullups in one set!* Congrats! 🎉",
+        "set_pr_friend_line": "\n🏆 All-time set PR: *{reps}*",
         # Rest day override
         "rest_day_prompt": "😴 Today is a rest day. What do you want to do?",
         "rest_day_train": "💪 Train anyway",
@@ -794,6 +833,7 @@ STRINGS = {
             "/fixbug — close bug (admin)"
         ),
         # Reminders
+        "reminder_base_increased": "📈 Your base increased to {base} — keep it up!\n\n",
         "reminder_rest": "😴 Today is a rest day. Recover!",
         "reminder_train": "🔔 Don't forget pullups!\n📋 {day_type} day: {planned} pullups\n{status}",
         "reminder_done": "✅ Done: {done}",
@@ -859,6 +899,30 @@ STRINGS = {
         "leaderboard_title": "🏆 *Leaderboard — this week*",
         "leaderboard_empty": "🏆 *Leaderboard*\n\nNo one yet — you're first! 💪",
         "leaderboard_you_marker": " ← you",
+        # Program selection
+        "btn_program": "🔧 Program",
+        "program_title": "🔧 *Training Program*\n\nCurrent: *{current}*\n\nChoose a program:",
+        "program_standard": "📋 Standard (5x/week)",
+        "program_beginner": "🌱 Beginner (3x/week)",
+        "program_advanced": "🔥 Advanced (6x/week)",
+        "program_set_ok": "✅ Program changed to *{program}*",
+        # Data export
+        "btn_export": "📤 Export",
+        "export_caption": "📤 Your workouts (CSV)",
+        "export_empty": "📋 No data to export.",
+        # History monthly view
+        "history_monthly_title": "📅 *History by Month*",
+        "history_monthly_row": "`{month}  {done}/{planned}  {pct}%  {days}d`",
+        "btn_history_monthly": "📅 By Month",
+        "btn_history_weekly": "📅 By Week",
+        # Advanced analytics
+        "btn_analytics": "📈 Analytics",
+        "analytics_title": "📈 *Analytics*",
+        "analytics_monthly_vol": "📊 *Volume by Month (last 6):*",
+        "analytics_day_type": "📋 *Completion by Day Type:*",
+        "analytics_records": "🏆 *Records:*\nBest day: {pr} pullups\nBest set: {set_pr} pullups\nMax streak: {max_streak} days",
+        "analytics_weekday": "📅 *Most trained day:* {day} ({count} sessions)",
+        "btn_back_stats": "◀️ Back to Stats",
     },
 }
 
@@ -872,6 +936,7 @@ DAY_NAMES = {
 
 
 def t(key: str, lang: str = "ru", **kwargs) -> str:
+    """Look up a localized string by key and lang, formatting it with any provided kwargs."""
     val = STRINGS.get(lang, STRINGS["ru"]).get(key)
     if val is None:
         val = STRINGS["ru"].get(key, key)
@@ -884,6 +949,7 @@ def t(key: str, lang: str = "ru", **kwargs) -> str:
 
 
 def day_name(name_ru: str, lang: str = "ru") -> str:
+    """Return the localized display name for a Russian day-type string."""
     return DAY_NAMES.get(lang, DAY_NAMES["ru"]).get(name_ru, name_ru)
 
 

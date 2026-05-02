@@ -1,7 +1,8 @@
-from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE
+from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE, PROGRAMS
 
 
 def display(user) -> str:
+    """Return the best available display name for a user row (first_name > username > fallback)."""
     if not user:
         return "Участник"
     name = user["first_name"]
@@ -11,12 +12,14 @@ def display(user) -> str:
 
 
 def md_escape(text: str) -> str:
+    """Escape all Telegram MarkdownV2 special characters in a string."""
     for ch in r"\_*`[]()~>#+-=|{}.!":
         text = text.replace(ch, f"\\{ch}")
     return text
 
 
 def level_info(xp: int):
+    """Return (level_index, level_name, xp_to_next, progress_pct) for the given XP value."""
     lvl = 0
     for i, t in enumerate(LEVEL_THRESHOLDS[:-1]):
         if xp >= t:
@@ -30,14 +33,17 @@ def level_info(xp: int):
 
 
 def progress_bar(pct: int, length: int = 10) -> str:
+    """Render a filled/empty block progress bar string for the given percentage."""
     filled = max(0, min(length, int(length * pct / 100)))
     return "█" * filled + "░" * (length - filled)
 
 
 def planned_for_day(user):
+    """Return (planned_count, day_type_name) for the user's current position in their program cycle."""
     base = user["base_pullups"]
     program_day = user["program_day"] or 0
-    name, coeff = WAVE[program_day % 7]
+    wave = PROGRAMS.get(user["program_type"] or "standard", PROGRAMS["standard"])
+    name, coeff = wave[program_day % 7]
     return int(base * coeff), name
 
 
@@ -60,6 +66,7 @@ def weekly_chart(workouts: list, lang: str = "ru") -> str:
 
 
 def activity_reduction(extra_activity: str, minutes: int) -> float:
+    """Return a load multiplier (0.5–1.0) based on yesterday's extra activity type and duration."""
     if not extra_activity or minutes == 0:
         return 1.0
     a = extra_activity.lower()

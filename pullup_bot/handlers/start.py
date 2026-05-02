@@ -20,6 +20,7 @@ router = Router()
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: types.Message, state: FSMContext):
+    """Clear any active FSM state and confirm the cancellation to the user."""
     data = await state.get_data()
     user = await get_user(message.from_user.id)
     lang = (user["lang"] or "ru") if user else data.get("lang", "ru")
@@ -35,6 +36,7 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
 
 @router.message(StateFilter(None), text_filter("btn_entrance"))
 async def entrance_handler(message: types.Message, state: FSMContext):
+    """Clear state and return to the landing/welcome screen."""
     await state.clear()
     user = await get_user(message.from_user.id)
     lang = (user["lang"] or "ru") if user else "ru"
@@ -43,6 +45,7 @@ async def entrance_handler(message: types.Message, state: FSMContext):
 
 @router.message(StateFilter(None), text_filter("btn_back"))
 async def back_handler(message: types.Message, state: FSMContext):
+    """Clear state and return the user to their appropriate main menu (logged-in or landing)."""
     await state.clear()
     lang = await get_lang(message.from_user.id)
     user = await get_user(message.from_user.id)
@@ -54,6 +57,7 @@ async def back_handler(message: types.Message, state: FSMContext):
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
+    """Handle /start: send the welcome screen for existing users or the language picker for new ones."""
     await state.clear()
     user = await get_user(message.from_user.id)
     if user:
@@ -72,6 +76,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 @router.message(Login.lang, F.text.in_({LANG_RU_BTN, LANG_EN_BTN, LANG_TOGGLE_BTN}))
 async def start_pick_lang_toggle(message: types.Message, state: FSMContext):
+    """Save the chosen language and show the landing screen."""
     data = await state.get_data()
     if message.text == LANG_RU_BTN:
         lang = "ru"
@@ -87,6 +92,7 @@ async def start_pick_lang_toggle(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_about"))
 async def about_bot(message: types.Message, state: FSMContext):
+    """Show the first About page and start the About pager flow."""
     user = await get_user(message.from_user.id)
     data = await state.get_data()
     lang = (user["lang"] or "ru") if user else data.get("lang", "ru")
@@ -98,6 +104,7 @@ async def about_bot(message: types.Message, state: FSMContext):
 
 @router.message(About.page2, text_filter("btn_about_next"))
 async def about_page2(message: types.Message, state: FSMContext):
+    """Advance to About page 2."""
     data = await state.get_data()
     lang = data.get("about_lang", "ru")
     await state.set_state(About.page3)
@@ -107,6 +114,7 @@ async def about_page2(message: types.Message, state: FSMContext):
 
 @router.message(About.page3, text_filter("btn_about_next"))
 async def about_page3(message: types.Message, state: FSMContext):
+    """Show About page 3 (last page) and return to the landing keyboard."""
     data = await state.get_data()
     lang = data.get("about_lang", "ru")
     await state.clear()
@@ -116,6 +124,7 @@ async def about_page3(message: types.Message, state: FSMContext):
 
 @router.message(StateFilter(About.page2, About.page3), text_filter("btn_back"))
 async def about_back(message: types.Message, state: FSMContext):
+    """Exit the About flow and return to the landing screen."""
     data = await state.get_data()
     lang = data.get("about_lang", "ru")
     await state.clear()
@@ -124,6 +133,7 @@ async def about_back(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_guide"))
 async def guide_handler(message: types.Message, state: FSMContext):
+    """Show the guide intro page and enter the step-by-step guide flow."""
     user = await get_user(message.from_user.id)
     data = await state.get_data()
     lang = (user["lang"] or "ru") if user else data.get("lang", "ru")
@@ -135,6 +145,7 @@ async def guide_handler(message: types.Message, state: FSMContext):
 
 @router.message(Guide.step1, text_filter("btn_guide_step1"))
 async def guide_step1(message: types.Message, state: FSMContext):
+    """Advance the guide to step 1 (registration)."""
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.set_state(Guide.step2)
@@ -144,6 +155,7 @@ async def guide_step1(message: types.Message, state: FSMContext):
 
 @router.message(Guide.step2, text_filter("btn_guide_step2"))
 async def guide_step2(message: types.Message, state: FSMContext):
+    """Advance the guide to step 2 (the wave cycle)."""
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.set_state(Guide.step3)
@@ -153,6 +165,7 @@ async def guide_step2(message: types.Message, state: FSMContext):
 
 @router.message(Guide.step3, text_filter("btn_guide_step3"))
 async def guide_step3(message: types.Message, state: FSMContext):
+    """Advance the guide to step 3 (XP and streaks)."""
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.set_state(Guide.step4)
@@ -162,6 +175,7 @@ async def guide_step3(message: types.Message, state: FSMContext):
 
 @router.message(Guide.step4, text_filter("btn_guide_step4"))
 async def guide_step4(message: types.Message, state: FSMContext):
+    """Advance the guide to step 4 (tips and AI)."""
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.set_state(Guide.extra)
@@ -171,6 +185,7 @@ async def guide_step4(message: types.Message, state: FSMContext):
 
 @router.message(Guide.extra, text_filter("btn_guide_extra"))
 async def guide_extra(message: types.Message, state: FSMContext):
+    """Show the extra tips page and finish the guide flow."""
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.clear()
@@ -181,6 +196,7 @@ async def guide_extra(message: types.Message, state: FSMContext):
 @router.message(StateFilter(Guide.step1, Guide.step2, Guide.step3, Guide.step4, Guide.extra),
                 text_filter("btn_back"))
 async def guide_back(message: types.Message, state: FSMContext):
+    """Exit the guide flow and return to the landing screen."""
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.clear()
@@ -189,6 +205,7 @@ async def guide_back(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_exit"))
 async def exit_btn(message: types.Message, state: FSMContext):
+    """Handle the Exit button: prompt for logout confirmation if logged in, or farewell if not."""
     user = await get_user(message.from_user.id)
     data = await state.get_data()
     lang = (user["lang"] or "ru") if user else data.get("lang", "ru")
@@ -202,6 +219,7 @@ async def exit_btn(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_login"))
 async def login_start(message: types.Message, state: FSMContext):
+    """Handle Join button: re-activate a logged-out user or start the registration flow for new users."""
     user = await get_user(message.from_user.id)
     if user:
         if user["is_logged_out"]:
@@ -238,6 +256,7 @@ async def login_start(message: types.Message, state: FSMContext):
 
 @router.message(Reg.name)
 async def reg_name(message: types.Message, state: FSMContext):
+    """Validate and save the registration name (minimum 3 chars), then ask for max pullups."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     name = (message.text or "").strip()
@@ -252,6 +271,7 @@ async def reg_name(message: types.Message, state: FSMContext):
 
 @router.message(Reg.max_pullups)
 async def reg_max_pullups(message: types.Message, state: FSMContext):
+    """Validate max pullups (1-200), create the user row, and broadcast the new arrival."""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     if not message.text:
@@ -288,6 +308,7 @@ async def reg_max_pullups(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("welcome_new:"))
 async def welcome_new_user_callback(callback: types.CallbackQuery):
+    """Handle a user clicking Welcome for a new member: register the greeting and notify both parties."""
     raw = callback.data or ""
     try:
         target_tg_id = int(raw.split(":", 1)[1])
@@ -353,6 +374,7 @@ async def welcome_new_user_callback(callback: types.CallbackQuery):
 
 
 async def _broadcast_new_user(new_tg_id: int, name: str):
+    """Notify all existing users that a new member joined, with a one-time Welcome inline button."""
     from ..main import bot
     conn = await get_db()
     async with conn.execute("SELECT tg_id, lang FROM users WHERE tg_id != ?", (new_tg_id,)) as cur:
