@@ -176,9 +176,9 @@ async def init_db():
             await conn.execute(col_sql)
         except Exception:
             pass  # column already exists
-    # Seed program_day from start_day for existing users
+    # Seed program_day from start_day for existing users (only where never set)
     await conn.execute(
-        "UPDATE users SET program_day = start_day WHERE program_day = 0 OR program_day IS NULL"
+        "UPDATE users SET program_day = start_day WHERE program_day IS NULL"
     )
     await conn.commit()
 

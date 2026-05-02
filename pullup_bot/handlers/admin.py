@@ -1,4 +1,5 @@
 import asyncio
+import html
 import os
 import re
 import sys
@@ -622,10 +623,10 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
             lines = []
             for r in rows:
                 ts = (r["created"] or "")[:16]
-                name = r["name"] or "unknown"
+                name = html.escape(r["name"] or "unknown")
                 model_short = (r["model"] or "?").replace("gemini-", "").replace("-preview", "★")
-                q = (r["question"] or "")[:200]
-                a = (r["answer"] or "")[:300]
+                q = html.escape((r["question"] or "")[:200])
+                a = html.escape((r["answer"] or "")[:300])
                 lines.append(
                     f"<b>{name}</b> · {ts} · <code>{model_short}</code>\n"
                     f"❓ {q}\n"
