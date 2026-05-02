@@ -438,10 +438,20 @@ async def custom_set_input(message: types.Message, state: FSMContext):
             await message.answer(t("enter_number", lang, example="10"))
             return
         data = await state.get_data()
+        lang = data.get("lang", "ru")
         sets = data.get("sets", [])
         sets.append(reps)
         await state.update_data(sets=sets)
         await _training_status(message, state)
+
+        # Check for per-set personal record
+        user = await get_user(uid)
+        if user and reps > (user["set_record"] or 0):
+            conn = await get_db()
+            await conn.execute("UPDATE users SET set_record=? WHERE tg_id=?", (reps, uid))
+            await conn.commit()
+            await state.update_data(session_set_pr=reps)
+            await message.answer(t("set_pr_congrats", lang, reps=reps), parse_mode="Markdown")
 
 
 @router.message(Training.rpe)
@@ -753,11 +763,12 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
             summary += rec
 
     await msg.answer(summary, parse_mode="Markdown", reply_markup=main_kb(lang))
-    await _notify_friends(tg_id, done, planned, len(sets), lang)
+    session_set_pr = data.get("session_set_pr")
+    await _notify_friends(tg_id, done, planned, len(sets), lang, set_pr=session_set_pr)
     await state.clear()
 
 
-async def _notify_friends(tg_id: int, done: int, planned: int, sets_count: int, lang: str = "ru"):
+async def _notify_friends(tg_id: int, done: int, planned: int, sets_count: int, lang: str = "ru", set_pr=None):
     """Send a workout completion notification to all users who opted in to workout alerts."""
     from ..main import bot
     user = await get_user(tg_id)
@@ -773,11 +784,11 @@ async def _notify_friends(tg_id: int, done: int, planned: int, sets_count: int, 
     for p in participants:
         try:
             p_lang = p["lang"] or "ru"
-            await bot.send_message(
-                p["tg_id"],
-                t("train_friend_notify", p_lang,
-                  name=md_escape(display(user)),
-                  emoji=emoji, done=done, planned=planned, sets=sets_count),
-                parse_mode="Markdown")
+            text = t("train_friend_notify", p_lang,
+                     name=md_escape(display(user)),
+                     emoji=emoji, done=done, planned=planned, sets=sets_count)
+            if set_pr:
+                text += t("set_pr_friend_line", p_lang, reps=set_pr)
+            await bot.send_message(p["tg_id"], text, parse_mode="Markdown")
         except Exception as e:
             logger.debug(f"[notify_friends] {p['tg_id']}: {e}")

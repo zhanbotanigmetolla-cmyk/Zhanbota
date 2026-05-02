@@ -63,6 +63,8 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN notify_workouts INTEGER DEFAULT 0",
     # index 20 — flag for morning reminder when base was auto-increased
     "ALTER TABLE users ADD COLUMN base_increased_to INTEGER DEFAULT NULL",
+    # index 21 — per-set personal record (best single-set rep count ever)
+    "ALTER TABLE users ADD COLUMN set_record INTEGER DEFAULT 0",
 ]
 
 

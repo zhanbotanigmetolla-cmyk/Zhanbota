@@ -4,6 +4,13 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-05-02]
+
+### Added
+- Per-set personal record (PR) tracking. A new `set_record` column stores the user's all-time best single-set rep count. When a user enters a set that beats their record, they immediately receive a "New personal record! Congrats! 🎉" message mid-session. If a session PR was set, the workout completion notification sent to other users also includes a trophy line showing the record count.
+
+---
+
 ## [2026-04-27]
 
 ### Fixed

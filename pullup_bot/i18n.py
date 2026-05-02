@@ -260,6 +260,8 @@ STRINGS = {
         "train_progression": "\n🎯 Цикл завершён! Стабильный прогресс — база повышена до {base} (+5%).",
         "density_hint": "💡 _День плотности: много коротких подходов, минимум отдыха между ними. Цель — набрать объём равномерно в течение дня._",
         "train_friend_notify": "📣 *{name}* завершил тренировку!\n🎯 Цель: {planned} | Выполнено: {done} | Подходов: {sets}",
+        "set_pr_congrats": "🏆 *Новый личный рекорд: {reps} подтягиваний за подход!* Congrats! 🎉",
+        "set_pr_friend_line": "\n🏆 Личный рекорд за подход: *{reps}*",
         # Rest day override
         "rest_day_prompt": "😴 Сегодня день отдыха. Что хочешь сделать?",
         "rest_day_train": "💪 Тренироваться",
@@ -695,6 +697,8 @@ STRINGS = {
         "train_progression": "\n🎯 Cycle complete! Consistent progress — base raised to {base} (+5%).",
         "density_hint": "💡 _Density day: many short sets, minimal rest between them. Goal — accumulate volume spread throughout the day._",
         "train_friend_notify": "📣 *{name}* finished training!\n🎯 Goal: {planned} | Done: {done} | Sets: {sets}",
+        "set_pr_congrats": "🏆 *New personal record: {reps} pullups in one set!* Congrats! 🎉",
+        "set_pr_friend_line": "\n🏆 All-time set PR: *{reps}*",
         # Rest day override
         "rest_day_prompt": "😴 Today is a rest day. What do you want to do?",
         "rest_day_train": "💪 Train anyway",
