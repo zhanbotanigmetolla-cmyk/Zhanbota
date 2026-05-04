@@ -190,7 +190,6 @@ After logging in the user sees these buttons:
 Opened via ⚙️ Настройки / Settings:
 - 🔔 Время уведомлений / Notification Time — set daily reminder time, format HH:MM (e.g. 08:00)
 - 📊 Изменить базу / Change Base — update the daily pullup target (the number the wave cycle is based on)
-- ⚖️ Изменить вес / Change Weight — update body weight in kg
 - ✏️ Изменить имя / Change Name — change the display name shown in the friends list and leaderboard
 - 📝 Редактировать день / Edit Day — edit any past workout: enter date as DD.MM, then corrected reps, RPE, activity, notes; entering 0 reps deletes the record
 - 📅 Причина пропуска / Skip Reason — log a reason for a missed day (illness, travel, etc.) which can restore the streak

@@ -294,7 +294,7 @@ STRINGS = {
             "Будь прямым, мотивирующим и честным. Не давай общих советов."
         ),
         "ai_user_prompt": (
-            "Атлет: {name}, вес {weight}кг\n"
+            "Атлет: {name}\n"
             "Стрик: {streak} дней | Уровень: {level} | База: {base} подтяг/день\n"
             "День программы: {program_day} | Завтра: {next_day}\n\n"
             "Последние тренировки:\n{summary}\n\n"
@@ -751,7 +751,7 @@ STRINGS = {
             "Be direct, motivating and honest. No generic tips."
         ),
         "ai_user_prompt": (
-            "Athlete: {name}, weight {weight}kg\n"
+            "Athlete: {name}\n"
             "Streak: {streak} days | Level: {level} | Base: {base} pullups/day\n"
             "Program day: {program_day} | Tomorrow: {next_day}\n\n"
             "Recent workouts:\n{summary}\n\n"
