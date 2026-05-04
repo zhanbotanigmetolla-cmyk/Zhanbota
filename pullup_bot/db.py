@@ -239,22 +239,19 @@ async def upsert_workout(user_id: int, d: str, **kwargs):
         if k not in _WORKOUT_COLS:
             raise ValueError(f"Invalid workout column: {k}")
     conn = await get_db()
-    async with conn.execute(
-        "SELECT id FROM workouts WHERE user_id=? AND date=?", (user_id, d)
-    ) as cur:
-        existing = await cur.fetchone()
-    if existing:
-        s = ", ".join(f"{k}=?" for k in kwargs)
-        await conn.execute(
-            f"UPDATE workouts SET {s} WHERE user_id=? AND date=?",
-            list(kwargs.values()) + [user_id, d],
-        )
-    else:
+    if kwargs:
         cols = "user_id, date, " + ", ".join(kwargs.keys())
         vals = "?, ?, " + ", ".join("?" * len(kwargs))
+        updates = ", ".join(f"{k}=excluded.{k}" for k in kwargs)
         await conn.execute(
-            f"INSERT INTO workouts ({cols}) VALUES ({vals})",
+            f"INSERT INTO workouts ({cols}) VALUES ({vals})"
+            f" ON CONFLICT(user_id, date) DO UPDATE SET {updates}",
             [user_id, d] + list(kwargs.values()),
+        )
+    else:
+        await conn.execute(
+            "INSERT OR IGNORE INTO workouts (user_id, date) VALUES (?, ?)",
+            (user_id, d),
         )
     await conn.commit()
 
