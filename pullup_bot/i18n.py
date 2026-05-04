@@ -290,7 +290,7 @@ STRINGS = {
         "ai_system_prompt": (
             "Ты персональный тренер по подтягиваниям. Анализируй данные атлета и давай "
             "конкретные, персонализированные советы на русском языке (4-5 предложений). "
-            "Учитывай вес тела, усталость по RPE, стрик и тип завтрашнего дня. "
+            "Учитывай усталость по RPE, стрик и тип завтрашнего дня. "
             "Будь прямым, мотивирующим и честным. Не давай общих советов."
         ),
         "ai_user_prompt": (
@@ -747,7 +747,7 @@ STRINGS = {
         "ai_system_prompt": (
             "You are a personal pullup coach. Analyze the athlete's data and give "
             "specific, personalized advice in English (4-5 sentences). "
-            "Consider body weight, fatigue from RPE, streak, and tomorrow's session type. "
+            "Consider fatigue from RPE, streak, and tomorrow's session type. "
             "Be direct, motivating and honest. No generic tips."
         ),
         "ai_user_prompt": (

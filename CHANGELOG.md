@@ -8,7 +8,8 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ### Fixed
 - Fixed `IntegrityError: UNIQUE constraint failed: workouts.user_id, workouts.date` crash when tapping Training — replaced the SELECT-then-INSERT pattern with an atomic `INSERT … ON CONFLICT DO UPDATE` to eliminate the race condition.
-- Removed dead `weight_kg` field: it was never collected during registration, always defaulted to 80, and was only feeding a wrong value into the AI context. Cleaned up the DB schema, states, i18n strings, AI prompt, scheduler, and tests.
+- Removed dead `weight_kg` field: it was never collected during registration, always defaulted to 80, and was only feeding a wrong value into the AI context. Cleaned up the DB schema, states, i18n strings, AI prompt, scheduler, and tests. Added DB migration (index 24) to drop the column from existing databases.
+- Removed stale body-weight instruction from `ai_system_prompt` in both locales — the prompt no longer supplies weight data, so telling the model to "consider body weight" was misleading.
 
 ## [2026-05-02]
 

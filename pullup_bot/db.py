@@ -69,6 +69,8 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN program_type TEXT DEFAULT 'standard'",
     # index 23 — all-time maximum streak reached
     "ALTER TABLE users ADD COLUMN max_streak INTEGER DEFAULT 0",
+    # index 24 — drop legacy weight_kg column (never collected, always defaulted to 80)
+    "ALTER TABLE users DROP COLUMN weight_kg",
 ]
 
 
