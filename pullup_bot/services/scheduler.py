@@ -432,7 +432,7 @@ async def watchdog_health_check(bot):
             state_name = row["state"] or ""
             # Training and AI states are the ones most likely to get stuck
             if not any(s in state_name for s in ["Training", "AIChat", "EditDay",
-                                                   "SetNotify", "SetBase", "SetWeight",
+                                                   "SetNotify", "SetBase",
                                                    "SetName", "SkipReason"]):
                 continue
             # For training states: check if the stored date is today

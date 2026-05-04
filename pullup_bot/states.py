@@ -62,9 +62,6 @@ class SetBase(StatesGroup):
     enter_base = State()
 
 
-class SetWeight(StatesGroup):
-    enter_weight = State()
-
 
 class SetName(StatesGroup):
     enter_name = State()

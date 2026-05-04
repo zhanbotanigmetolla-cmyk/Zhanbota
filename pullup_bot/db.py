@@ -109,7 +109,6 @@ async def init_db():
             freeze_tokens INTEGER DEFAULT 3,
             last_workout  TEXT,
             notify_time   TEXT DEFAULT '09:00',
-            weight_kg     REAL DEFAULT 80,
             lang          TEXT DEFAULT 'ru',
             program_day   INTEGER DEFAULT 0
         );
