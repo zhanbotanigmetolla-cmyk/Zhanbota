@@ -405,6 +405,50 @@ async def reset_xp(tg_id: int) -> None:
     await conn.commit()
 
 
+async def apply_xp_decay(tg_id: int, days_inactive: int):
+    """
+    Decay XP for an inactive user (grace period: 7 days).
+
+    Decay rate:
+      days 7–13: 0.5% of XP/day (min 20 XP)
+      days 14–20: 1.0% of XP/day (min 30 XP)
+      days 21+:   1.5% of XP/day (min 50 XP)
+
+    Floor: XP cannot drop below the threshold of one rank below current.
+    Returns (old_xp, new_xp, old_level, new_level) or None if no decay applied.
+    """
+    if days_inactive < 7:
+        return None
+    conn = await get_db()
+    async with conn.execute("SELECT xp, level FROM users WHERE tg_id=?", (tg_id,)) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return None
+    current_xp = row[0] or 0
+    current_level = row[1] or 0
+    # Floor: one rank below current — cap the loss at a single rank per absence
+    floor_xp = LEVEL_THRESHOLDS[max(0, current_level - 1)] if current_level > 0 else 0
+    if current_xp <= floor_xp:
+        return None
+    if days_inactive < 14:
+        rate, min_decay = 0.005, 20
+    elif days_inactive < 21:
+        rate, min_decay = 0.010, 30
+    else:
+        rate, min_decay = 0.015, 50
+    decay = max(min_decay, int(current_xp * rate))
+    new_xp = max(floor_xp, current_xp - decay)
+    if new_xp == current_xp:
+        return None
+    new_level = _level_from_xp(new_xp)
+    await conn.execute(
+        "UPDATE users SET xp=?, level=? WHERE tg_id=?",
+        (new_xp, new_level, tg_id)
+    )
+    await conn.commit()
+    return current_xp, new_xp, current_level, new_level
+
+
 async def give_freeze_tokens(tg_id: int, delta: int, max_tokens: int = 5) -> None:
     """Add or remove freeze tokens, clamping the result between 0 and max_tokens."""
     conn = await get_db()

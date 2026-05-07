@@ -609,7 +609,13 @@ async def _check_weekly_progression(tg_id: int, user_id: int, current_base: int)
 
 
 async def _apply_rpe_adjustment(tg_id: int, user_id: int, current_base: int):
-    """Rolling average of last 3 RPE readings. Proportional adjustments both ways."""
+    """
+    Rolling average of last 3 RPE readings — 4 zones:
+      <= 5.5              : base +3% (training feels easy)
+      5.5 < avg < 7.0     : no change (normal zone)
+      7.0 <= avg < 8.5    : base −2% (high effort, ease back slightly)
+      >= 8.5              : base −5% (too hard)
+    """
     conn = await get_db()
     async with conn.execute(
         "SELECT rpe, completed, planned FROM workouts "
@@ -623,6 +629,11 @@ async def _apply_rpe_adjustment(tg_id: int, user_id: int, current_base: int):
     all_hit = all(r["completed"] >= r["planned"] for r in rows)
     if avg_rpe >= 8.5:
         new_base = max(10, int(current_base * 0.95))
+        await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
+        await conn.commit()
+        return new_base, avg_rpe
+    if avg_rpe >= 7.0:
+        new_base = max(10, int(current_base * 0.98))
         await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
         await conn.commit()
         return new_base, avg_rpe
@@ -731,6 +742,8 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
     if rpe_new_base and avg_rpe is not None:
         if avg_rpe >= 8.5:
             rpe_comment = t("train_rpe_trending_high", lang, avg=avg_rpe, base=rpe_new_base)
+        elif avg_rpe >= 7.0:
+            rpe_comment = t("train_rpe_trending_moderate", lang, avg=avg_rpe, base=rpe_new_base)
         else:
             rpe_comment = t("train_rpe_trending_low", lang, avg=avg_rpe, base=rpe_new_base)
 

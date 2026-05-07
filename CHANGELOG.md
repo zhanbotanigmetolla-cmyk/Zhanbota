@@ -6,9 +6,13 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-05-07]
 
+### Added
+- XP decay system: after 7 days of inactivity, XP decreases daily (0.5%→1%→1.5% per day as absence grows). Floor: can lose at most one rank per absence. Notifies user on first decay day and on rank loss.
+
 ### Changed
 - Slowed down base progression: weekly +5% bump now blocked if avg RPE of last 5 workouts is ≥ 7.0 (high effort = no auto-advance)
 - Lowered RPE threshold for base growth from ≤ 6.5 to ≤ 5.5 — base now only grows via RPE path when training feels easy
+- Filled the RPE dead zone: added −2% base zone for avg RPE 7.0–8.4 (previously no change at all in that wide range)
 
 ## [2026-05-04]
 
