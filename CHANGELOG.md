@@ -4,6 +4,12 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-05-07]
+
+### Changed
+- Slowed down base progression: weekly +5% bump now blocked if avg RPE of last 5 workouts is ≥ 7.0 (high effort = no auto-advance)
+- Lowered RPE threshold for base growth from ≤ 6.5 to ≤ 5.5 — base now only grows via RPE path when training feels easy
+
 ## [2026-05-04]
 
 ### Fixed
