@@ -64,16 +64,10 @@ def test_smart_set_buttons_zero_planned():
     assert 5 in result
 
 
-def test_smart_set_buttons_row1_consecutive():
+def test_smart_set_buttons_all_consecutive():
     result = smart_set_buttons(100)
-    for i in range(4):
+    for i in range(9):
         assert result[i + 1] - result[i] == 1
-
-
-def test_smart_set_buttons_row2_increasing_gaps():
-    result = smart_set_buttons(100)
-    gaps = [result[i + 1] - result[i] for i in range(5, 9)]
-    assert gaps == sorted(gaps)
 
 
 def test_smart_set_buttons_small_planned():

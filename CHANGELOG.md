@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-05-08]
+
+### Changed
+- Training session rep buttons now show 10 consecutive numbers (e.g. 8–17) instead of spaced-out values. Range is still anchored to the user's per-set target so relevant counts are always visible.
+
 ## [2026-05-07]
 
 ### Added
