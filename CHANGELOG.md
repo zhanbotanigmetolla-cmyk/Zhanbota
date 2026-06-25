@@ -4,6 +4,20 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-06-25]
+
+### Changed
+- Post-training flow simplified: removed the extra-activity (cardio/gym) question and notes step. Only RPE rating remains — tap a number and you're done.
+- Streaks are now protected silently: if you miss a training day, a freeze token is auto-spent without any prompt. No more streak resets that happen without the user knowing.
+- Rest days on the "Keep resting" screen no longer ask about freeze tokens — the system handles it automatically on the next training day.
+
+### Fixed
+- Streak bug: if a training day was skipped and the next day was a scheduled rest day, the streak would silently reset the day after. Now `update_streak` checks rest-day records in the workout history and only spends tokens for genuinely missed training days.
+- Restored streaks for 3 users whose streaks were incorrectly reset by the rest-day bug.
+
+### Added
+- Stats screen now shows longest streak ever: "🔥 Streak: X days (best: Y)" alongside current streak.
+
 ## [2026-05-08]
 
 ### Changed

@@ -132,7 +132,8 @@ async def show_stats(message: types.Message):
 
     if lang == "ru":
         level_line = f"🏅 *{lname}* → {next_lname}   {bar}   {xp_in_level}/{xp_needed} XP"
-        streak_line = f"🔥 Стрик: *{user['streak']}* дн.  |  🧊 Заморозок: {user['freeze_tokens']}  |  🏆 Рекорд: {pr}"
+        best_streak = user["max_streak"] or user["streak"] or 0
+        streak_line = f"🔥 Стрик: *{user['streak']}* дн. (лучший: {best_streak})  |  🧊 Заморозок: {user['freeze_tokens']}  |  🏆 Рекорд: {pr} подт."
         today_line = f"📅 Сегодня ({today_type_display}): *{today_done}/{today_plan}*"
         week_line = f"📆 Эта неделя: {week_done}/{week_planned} подтяг. ({week_pct}%)"
         total_line = f"🏋️ За всё время: *{total}* подтягиваний"
@@ -140,7 +141,8 @@ async def show_stats(message: types.Message):
         schedule_header = "📅 *Следующие 7 дней:*"
     else:
         level_line = f"🏅 *{lname}* → {next_lname}   {bar}   {xp_in_level}/{xp_needed} XP"
-        streak_line = f"🔥 Streak: *{user['streak']}* days  |  🧊 Freezes: {user['freeze_tokens']}  |  🏆 Best: {pr}"
+        best_streak = user["max_streak"] or user["streak"] or 0
+        streak_line = f"🔥 Streak: *{user['streak']}* days (best: {best_streak})  |  🧊 Freezes: {user['freeze_tokens']}  |  🏆 PR: {pr} reps"
         today_line = f"📅 Today ({today_type_display}): *{today_done}/{today_plan}*"
         week_line = f"📆 This week: {week_done}/{week_planned} pullups ({week_pct}%)"
         total_line = f"🏋️ All time: *{total}* pullups"

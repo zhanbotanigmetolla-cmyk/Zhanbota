@@ -281,27 +281,62 @@ async def add_xp(tg_id: int, amount: int):
 
 
 async def update_streak(tg_id: int, today: str = None):
-    """Extend or reset the streak based on whether the user trained yesterday, and award streak XP."""
+    """Extend or reset the streak. Auto-spends freeze tokens for missed training days."""
     user = await get_user(tg_id)
     if not user:
         return
     if today is None:
         today = date.today().isoformat()
     last = user["last_workout"]
-    yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+    today_d = date.fromisoformat(today)
+    yesterday = (today_d - timedelta(days=1)).isoformat()
     conn = await get_db()
     if last == today:
         return
-    if last is None or last != yesterday:
-        new_streak = 1
+
+    old_streak = user["streak"] or 0
+
+    if last is None or last == yesterday:
+        # No gap — simple start or extend
+        new_streak = 1 if last is None else old_streak + 1
     else:
-        new_streak = (user["streak"] or 0) + 1
+        # Gap detected — find which gap days have rest-day records (free) vs missed (cost a token each)
+        last_d = date.fromisoformat(last)
+        gap_days = [
+            (last_d + timedelta(days=i)).isoformat()
+            for i in range(1, (today_d - last_d).days)
+        ]
+        if gap_days:
+            placeholders = ",".join("?" * len(gap_days))
+            async with conn.execute(
+                f"SELECT date FROM workouts WHERE user_id=? AND date IN ({placeholders}) AND planned=0",
+                [user["id"]] + gap_days,
+            ) as cur:
+                rest_rows = await cur.fetchall()
+            rest_dates = {r["date"] for r in rest_rows}
+            missed = [d for d in gap_days if d not in rest_dates]
+        else:
+            missed = []
+
+        tokens = user["freeze_tokens"] or 0
+        if len(missed) <= tokens:
+            # Auto-spend tokens silently to bridge missed days
+            if missed:
+                await conn.execute(
+                    "UPDATE users SET freeze_tokens=? WHERE tg_id=?",
+                    (tokens - len(missed), tg_id),
+                )
+            new_streak = old_streak + 1
+        else:
+            # Not enough tokens — streak resets
+            new_streak = 1
+
     await conn.execute(
         "UPDATE users SET streak=?, last_workout=?, inactivity_warned=NULL WHERE tg_id=?",
         (new_streak, today, tg_id),
     )
-    # Only award streak XP if continuing a streak (not first day)
-    if last == yesterday:
+    # Award streak XP whenever the streak genuinely continued (not a reset to 1 from nothing)
+    if last is not None and new_streak == old_streak + 1:
         await conn.execute(
             "UPDATE users SET xp = xp + ? WHERE tg_id=?", (XP_PER_STREAK_DAY, tg_id)
         )
