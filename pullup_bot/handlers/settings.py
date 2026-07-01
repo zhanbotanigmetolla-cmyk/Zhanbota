@@ -649,6 +649,15 @@ async def skip_reason_save(message: types.Message, state: FSMContext):
         await conn.execute("UPDATE users SET streak = streak + 1 WHERE id=?", (user["id"],))
     await conn.commit()
     await sync_max_streak(message.from_user.id)
+
+    # Mark the skipped day as a rest row so stats shows 😴 instead of ❌.
+    # Only overwrite the workout if the user didn't actually log any reps.
+    existing_w = await get_today_workout(user["id"], d)
+    if not existing_w or (existing_w["completed"] or 0) == 0:
+        import json as _json
+        await upsert_workout(user["id"], d, planned=0, day_type="Отдых",
+                             sets_json=_json.dumps([]), completed=0)
+
     await message.answer(
         t("skip_ok", lang, date=date.fromisoformat(d).strftime("%d.%m.%Y"), reason=reason),
         parse_mode="Markdown")

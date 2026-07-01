@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-01]
+
+### Fixed
+- Skip reason (overtraining/illness/etc.) now writes a rest-day row to the workouts table, so stats shows 😴 instead of ❌ and the training screen no longer says "didn't complete plan" after a skip.
+
 ## [2026-06-25]
 
 ### Changed
