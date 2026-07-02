@@ -278,8 +278,8 @@ async def _show_user_profile(callback: types.CallbackQuery, state: FSMContext, t
     text = (
         f"<b>👤 Профиль пользователя</b>\n\n"
         f"ID: <code>{user['tg_id']}</code>\n"
-        f"Username: @{user['username'] or '—'}\n"
-        f"Имя: {user['first_name'] or '—'}\n"
+        f"Username: @{html.escape(user['username'] or '—')}\n"
+        f"Имя: {html.escape(user['first_name'] or '—')}\n"
         f"Зарегистрирован: {user['joined'] or '—'}\n"
         f"Уровень: {user['level']} | XP: {user['xp']}\n"
         f"Стрик: {user['streak']} дней\n"
@@ -334,7 +334,7 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         await state.set_state(AdminPanel.user_list)
         await state.update_data(ap_page=page)
         per_page = 10
-        header = f"🔍 Поиск: <i>{search_query}</i>\n" if search_query else ""
+        header = f"🔍 Поиск: <i>{html.escape(search_query)}</i>\n" if search_query else ""
         text = f"<b>👥 Пользователи</b>\n{header}Всего: {total}\n\nНажми на пользователя для управления:"
         kb = admin_users_kb(users, page, total, per_page)
         try:
@@ -490,7 +490,7 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         await state.set_state(AdminPanel.change_name)
         await state.update_data(ap_target_tg_id=tg_id)
         target = await get_user(tg_id)
-        current = (target["first_name"] or target["username"] or "—") if target else "—"
+        current = html.escape((target["first_name"] or target["username"] or "—") if target else "—")
         try:
             await callback.message.edit_text(
                 f"✏️ Изменить имя пользователя <code>{tg_id}</code>\nТекущее имя: <b>{current}</b>\n\nВведи новое имя:",
@@ -799,7 +799,7 @@ async def admin_search_input(message: types.Message, state: FSMContext):
     total = len(results)
     per_page = 10
     page_results = results[:per_page]
-    text = f"<b>🔍 Результаты поиска: {query}</b>\nНайдено: {total}"
+    text = f"<b>🔍 Результаты поиска: {html.escape(query)}</b>\nНайдено: {total}"
     kb = admin_users_kb(page_results, 0, total, per_page)
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
@@ -899,7 +899,7 @@ async def admin_change_name_input(message: types.Message, state: FSMContext):
         conn = await get_db()
         await conn.execute("UPDATE users SET first_name=? WHERE tg_id=?", (new_name, tg_id))
         await conn.commit()
-        await message.answer(f"✅ Имя пользователя <code>{tg_id}</code> изменено на <b>{new_name}</b>", parse_mode="HTML")
+        await message.answer(f"✅ Имя пользователя <code>{tg_id}</code> изменено на <b>{html.escape(new_name)}</b>", parse_mode="HTML")
     await state.set_state(AdminPanel.main)
     text_panel, kb = await _build_main_panel_view()
     await message.answer(text_panel, reply_markup=kb, parse_mode="HTML")

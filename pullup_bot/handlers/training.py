@@ -198,6 +198,11 @@ async def _begin_training(message, state, user, lang, today_str, planned, day_ty
         # overriding a rest day passes base_pullups which we must not lose).
         if existing["planned"]:
             planned = existing["planned"]
+        elif was_rest_override:
+            # Persist the override: otherwise the day stays stored as planned=0/"Отдых"
+            # and history/stats would show the reps against a rest day (e.g. "😴 50/0").
+            # Cancelling restores the rest row via _cleanup_cancelled_workout.
+            await upsert_workout(user["id"], today_str, planned=planned, day_type=day_type)
         # Do NOT restore day_type from DB — the caller already computed it correctly,
         # and overwriting here would revert a rest-day override back to "Отдых".
     else:

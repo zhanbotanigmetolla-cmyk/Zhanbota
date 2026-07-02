@@ -146,9 +146,10 @@ Every user follows a repeating weekly pattern based on their personal daily base
 - Day 7 Rest: 0 pullups — mandatory recovery
 
 ### Automatic progression rules
-- Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥80% across the last 5 real training sessions
+- Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥80% across the last 5 real training sessions (and avg RPE < 7)
 - RPE too high (−5% base): triggers when the 3-session rolling avg RPE ≥8.5
-- RPE trending easy (+3% base): triggers when 3-session rolling avg RPE ≤6.5 AND all sessions fully completed
+- RPE high (−2% base): triggers when the 3-session rolling avg RPE is between 7.0 and 8.5
+- RPE trending easy (+3% base): triggers when 3-session rolling avg RPE ≤5.5 AND all sessions fully completed
 - Extra activity reduction: logging running/cardio/gym after training reduces tomorrow's load proportionally
 
 ### RPE — Rate of Perceived Exertion
@@ -240,9 +241,9 @@ def _user_data_block(user, workouts) -> str:
         today_plan, today_type = planned_for_day(user)
         today_summary = f"{today_type} — {today_plan} pullups planned"
 
-    # Tomorrow: mirror stats.py — if today's row already exists, program_day has already
-    # advanced to tomorrow's slot, so no extra +1 is needed (pd_offset cancels it).
-    pd_offset = -1 if today_row else 0
+    # Tomorrow: mirror stats.py — program_day advances exactly when last_workout is set
+    # to today, so that (not the mere existence of a row) decides the offset.
+    pd_offset = -1 if user["last_workout"] == today_str else 0
     next_user = {**dict(user), "program_day": ((user["program_day"] or 0) + 1 + pd_offset) % 7}
     next_plan, next_type = planned_for_day(next_user)
 

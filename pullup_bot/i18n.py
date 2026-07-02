@@ -164,8 +164,9 @@ STRINGS = {
             "База — это твоя ежедневная норма подтягиваний. Она меняется автоматически.\n\n"
             "▲ *Повышается:*\n"
             "• +5% после завершения 7-дневного цикла, если среднее выполнение последних 5 тренировок ≥80%\n"
-            "• +3% если средний RPE последних 3 сессий ≤6.5 и все цели выполнены\n\n"
+            "• +3% если средний RPE последних 3 сессий ≤5.5 и все цели выполнены\n\n"
             "▼ *Понижается:*\n"
+            "• −2% если средний RPE последних 3 сессий 7.0–8.5\n"
             "• −5% если средний RPE последних 3 сессий ≥8.5\n"
             "• Первая тренировка после перерыва 3–6 дней — план снижен на 25%\n"
             "• Первая тренировка после перерыва 7+ дней — план снижен на 40%\n\n"
@@ -183,8 +184,9 @@ STRINGS = {
             "_Снижение не больше 50%. Указывай активность честно — бот защитит от перегрузки._\n\n"
             "📊 *Как RPE влияет на план*\n\n"
             "RPE (1–10) влияет на базу долгосрочно через скользящее среднее за 3 сессии:\n"
-            "• RPE ≤6.5 (тренировки даются умеренно) → база постепенно растёт (+3%)\n"
-            "• RPE >6.5 и <8.5 (нормальная нагрузка) → без изменений\n"
+            "• RPE ≤5.5 (тренировки даются легко) → база постепенно растёт (+3%)\n"
+            "• RPE 5.5–7.0 (нормальная нагрузка) → без изменений\n"
+            "• RPE 7.0–8.5 (нагрузка высокая) → база слегка снижается (−2%)\n"
             "• RPE ≥8.5 (постоянно на пределе) → база снижается (−5%)\n"
             "_Одна тяжёлая тренировка ничего не изменит — важна тенденция за 3 подряд._\n\n"
             "📈 *Статистика и история*\n\n"
@@ -308,7 +310,7 @@ STRINGS = {
         "set_time_bad": "❌ Неверный формат. Введи как: 09:00",
         "set_base_prompt": "Текущая норма: *{base}* подтягиваний/день\n\nВведи новое значение:",
         "set_base_ok": "✅ Норма обновлена: *{base}* подтягиваний/день",
-        "set_base_range": "❌ Введи число от 1 до 2000:",
+        "set_base_range": "❌ Введи число от 1 до 500:",
         "edit_date_prompt": "Введи дату в формате *ДД.ММ*:",
         "edit_date_bad": "❌ Неверный формат. Введи как: 14.03",
         "edit_done_prompt": "Сколько подтягиваний сделано *{date}*?",
@@ -622,8 +624,9 @@ STRINGS = {
             "Your base is your daily pullup target. It adjusts automatically.\n\n"
             "▲ *Increases when:*\n"
             "• +5% after completing a 7-day cycle if your last 5 training sessions averaged ≥80% completion\n"
-            "• +3% if your average RPE over the last 3 sessions is ≤6.5 and all targets were hit\n\n"
+            "• +3% if your average RPE over the last 3 sessions is ≤5.5 and all targets were hit\n\n"
             "▼ *Decreases when:*\n"
+            "• −2% if your average RPE over the last 3 sessions is 7.0–8.5\n"
             "• −5% if your average RPE over the last 3 sessions is ≥8.5\n"
             "• First session after a 3–6 day break — plan reduced by 25%\n"
             "• First session after a 7+ day break — plan reduced by 40%\n\n"
@@ -641,8 +644,9 @@ STRINGS = {
             "_Never below 50%. Log your activity honestly — the bot will protect you from overload._\n\n"
             "📊 *How RPE affects your plan*\n\n"
             "RPE (1–10) shapes your base over time via a rolling average of 3 sessions:\n"
-            "• RPE ≤6.5 (workouts feel moderate or easier) → base gradually increases (+3%)\n"
-            "• RPE >6.5 and <8.5 (normal load) → no change\n"
+            "• RPE ≤5.5 (workouts feel easy) → base gradually increases (+3%)\n"
+            "• RPE 5.5–7.0 (normal load) → no change\n"
+            "• RPE 7.0–8.5 (load is high) → base eases slightly (−2%)\n"
             "• RPE ≥8.5 (constantly at the limit) → base decreases (−5%)\n"
             "_One hard session won't change anything — the trend over 3 in a row matters._\n\n"
             "📈 *Stats & History*\n\n"
@@ -766,7 +770,7 @@ STRINGS = {
         "set_time_bad": "❌ Invalid format. Enter as: 09:00",
         "set_base_prompt": "Current target: *{base}* pullups/day\n\nEnter new value:",
         "set_base_ok": "✅ Target updated: *{base}* pullups/day",
-        "set_base_range": "❌ Enter a number from 1 to 2000:",
+        "set_base_range": "❌ Enter a number from 1 to 500:",
         "edit_date_prompt": "Enter date as *DD.MM*:",
         "edit_date_bad": "❌ Invalid format. Enter as: 14.03",
         "edit_done_prompt": "How many pullups done on *{date}*?",

@@ -59,6 +59,11 @@ async def unhandled_message(message: types.Message, state: FSMContext):
         last = _fallback_cooldown.get(uid, 0)
         if now - last < _FALLBACK_COOLDOWN_SECS:
             return  # cooldown active — stay silent
+        # Prune expired entries so the dict doesn't grow forever
+        if len(_fallback_cooldown) > 200:
+            for k in [k for k, v in _fallback_cooldown.items()
+                      if now - v >= _FALLBACK_COOLDOWN_SECS]:
+                del _fallback_cooldown[k]
         manager = get_manager()
         if manager.is_daily_exhausted():
             return  # no quota left — stay silent

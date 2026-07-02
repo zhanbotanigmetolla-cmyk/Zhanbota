@@ -4,6 +4,21 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-02]
+
+### Fixed
+- Full project audit. Bugs found and fixed:
+  - Deleting today's workout via "Edit Day" corrupted the program cycle position: `program_day` was wrapped with `% 7` even though it's a monotonic counter (e.g. day 22 → 0 instead of 21), silently shifting the whole future schedule.
+  - "Next 7 days" schedule in Stats (and the AI's view of tomorrow) was off by one whenever a workout row existed but the day wasn't finished yet — the offset now keys off `last_workout == today` (the moment `program_day` actually advances) instead of the row's existence.
+  - Training on a rest day ("Train anyway") saved the workout against a `planned=0 / Отдых` row, so history showed things like "😴 50/0" and the session never counted toward RPE/weekly progression. The override is now persisted as a real training day (cancelling still restores the rest row).
+  - The 23:55 auto-rest job could overwrite today's workout row for a user mid rest-day-override session; it now skips users who already have real activity recorded today.
+  - Base-change validation message claimed "1 to 2000" while the code accepts 1–500.
+  - Guide and AI system prompt described outdated RPE progression rules (≤6.5 for +3%, no −2% zone) — aligned with the actual code (≤5.5 / 5.5–7.0 / 7.0–8.5 −2% / ≥8.5 −5%).
+  - Admin panel: user names and search queries are now HTML-escaped — a user named e.g. `<b>` made the profile view silently fail to render.
+  - Gemini fallback per-user cooldown dict grew without bound — expired entries are now pruned.
+  - `.gitignore` contained corrupted UTF-16 garbage lines, so `bot.log` and DB backups weren't actually ignored — rewritten clean.
+  - Test suite repaired: 8 tests were stale (old rank names, old XP thresholds, missing `program_type` field) — updated to match current config; added coverage for beginner/unknown program types. 80/80 passing.
+
 ## [2026-07-01]
 
 ### Fixed

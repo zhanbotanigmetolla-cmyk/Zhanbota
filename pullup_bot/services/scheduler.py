@@ -421,6 +421,11 @@ async def auto_acknowledge_rest_days(bot):
         _, name = planned_for_day(user)
         if name != "Отдых":
             continue
+        # Don't clobber a day the user actually interacted with (e.g. an
+        # in-progress rest-day-override training session)
+        existing = await get_today_workout(user["id"], today_str)
+        if existing and ((existing["planned"] or 0) > 0 or (existing["completed"] or 0) > 0):
+            continue
         program_day = user["program_day"] or 0
         # Advance program_day and mark last_workout=today so the streak stays intact
         new_pd = program_day + 1

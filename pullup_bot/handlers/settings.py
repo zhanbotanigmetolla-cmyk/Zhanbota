@@ -428,7 +428,9 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
                 # If deleting today's record, revert program_day and last_workout
                 # (program_day was already incremented when the day was acknowledged)
                 if d == date.today().isoformat():
-                    new_pd = ((user["program_day"] or 0) - 1) % 7
+                    # program_day is a monotonic counter (only planned_for_day applies % 7),
+                    # so just step it back — wrapping with % 7 would corrupt the position
+                    new_pd = max(0, (user["program_day"] or 0) - 1)
                     async with conn.execute(
                         "SELECT date FROM workouts WHERE user_id=? ORDER BY date DESC LIMIT 1",
                         (user["id"],)
