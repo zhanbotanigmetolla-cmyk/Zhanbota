@@ -428,7 +428,9 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
                 # If deleting today's record, revert program_day and last_workout
                 # (program_day was already incremented when the day was acknowledged)
                 if d == date.today().isoformat():
-                    new_pd = ((user["program_day"] or 0) - 1) % 7
+                    # program_day is a monotonic counter (only planned_for_day applies % 7),
+                    # so just step it back — wrapping with % 7 would corrupt the position
+                    new_pd = max(0, (user["program_day"] or 0) - 1)
                     async with conn.execute(
                         "SELECT date FROM workouts WHERE user_id=? ORDER BY date DESC LIMIT 1",
                         (user["id"],)
@@ -483,6 +485,11 @@ async def _save_edit(message: types.Message, state: FSMContext,
         planned = existing["planned"] if existing["planned"] is not None else user["base_pullups"]
         day_type = existing["day_type"] or "Средний"
     else:
+        planned = user["base_pullups"]
+        day_type = "Средний"
+    # Adding reps to a stored rest day means the user actually trained —
+    # convert it to a training day so history doesn't show "😴 50/0"
+    if done > 0 and planned == 0:
         planned = user["base_pullups"]
         day_type = "Средний"
     old = existing["completed"] if existing else 0
@@ -649,6 +656,15 @@ async def skip_reason_save(message: types.Message, state: FSMContext):
         await conn.execute("UPDATE users SET streak = streak + 1 WHERE id=?", (user["id"],))
     await conn.commit()
     await sync_max_streak(message.from_user.id)
+
+    # Mark the skipped day as a rest row so stats shows 😴 instead of ❌.
+    # Only overwrite the workout if the user didn't actually log any reps.
+    existing_w = await get_today_workout(user["id"], d)
+    if not existing_w or (existing_w["completed"] or 0) == 0:
+        import json as _json
+        await upsert_workout(user["id"], d, planned=0, day_type="Отдых",
+                             sets_json=_json.dumps([]), completed=0)
+
     await message.answer(
         t("skip_ok", lang, date=date.fromisoformat(d).strftime("%d.%m.%Y"), reason=reason),
         parse_mode="Markdown")

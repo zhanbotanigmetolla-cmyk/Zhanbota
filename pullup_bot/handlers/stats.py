@@ -117,7 +117,9 @@ async def show_stats(message: types.Message):
     # After today's session is recorded, program_day already points to *tomorrow's* slot,
     # so offset is i-1. If today hasn't been logged yet, program_day still points to today,
     # so offset is i (tomorrow = today+1 in cycle).
-    pd_offset = -1 if today_w else 0
+    # program_day advances exactly when last_workout is set to today — a workout row can
+    # exist for an unfinished session, so checking today_w here would be off by one.
+    pd_offset = -1 if user["last_workout"] == today.isoformat() else 0
     schedule_lines = []
     for i in range(1, 8):
         future_pd = ((user["program_day"] or 0) + i + pd_offset) % 7
@@ -132,7 +134,8 @@ async def show_stats(message: types.Message):
 
     if lang == "ru":
         level_line = f"🏅 *{lname}* → {next_lname}   {bar}   {xp_in_level}/{xp_needed} XP"
-        streak_line = f"🔥 Стрик: *{user['streak']}* дн.  |  🧊 Заморозок: {user['freeze_tokens']}  |  🏆 Рекорд: {pr}"
+        best_streak = user["max_streak"] or user["streak"] or 0
+        streak_line = f"🔥 Стрик: *{user['streak']}* дн. (лучший: {best_streak})  |  🧊 Заморозок: {user['freeze_tokens']}  |  🏆 Рекорд: {pr} подт."
         today_line = f"📅 Сегодня ({today_type_display}): *{today_done}/{today_plan}*"
         week_line = f"📆 Эта неделя: {week_done}/{week_planned} подтяг. ({week_pct}%)"
         total_line = f"🏋️ За всё время: *{total}* подтягиваний"
@@ -140,7 +143,8 @@ async def show_stats(message: types.Message):
         schedule_header = "📅 *Следующие 7 дней:*"
     else:
         level_line = f"🏅 *{lname}* → {next_lname}   {bar}   {xp_in_level}/{xp_needed} XP"
-        streak_line = f"🔥 Streak: *{user['streak']}* days  |  🧊 Freezes: {user['freeze_tokens']}  |  🏆 Best: {pr}"
+        best_streak = user["max_streak"] or user["streak"] or 0
+        streak_line = f"🔥 Streak: *{user['streak']}* days (best: {best_streak})  |  🧊 Freezes: {user['freeze_tokens']}  |  🏆 PR: {pr} reps"
         today_line = f"📅 Today ({today_type_display}): *{today_done}/{today_plan}*"
         week_line = f"📆 This week: {week_done}/{week_planned} pullups ({week_pct}%)"
         total_line = f"🏋️ All time: *{total}* pullups"

@@ -4,6 +4,73 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-03]
+
+### Fixed
+- Second audit pass — remaining issues fixed:
+  - Editing a stored rest day to add reps kept the row as `planned=0 / Отдых`, so history showed "😴 50/0" and the session never counted toward progression (same class of bug as the rest-day-override fix) — now converted to a training day.
+  - Finishing a training session overwrote `extra_activity` / `extra_minutes` / `notes` with empty values (the flow no longer collects them), erasing data added via "Edit Day". Those columns are no longer touched by the training save.
+  - Admin exemption unified: ban/mute and maintenance middlewares checked only the admin Telegram ID while the admin panel also accepted the admin username — both now use one shared `is_admin_user()` check.
+  - Maintenance mode now also blocks inline-button (callback) presses, not just messages.
+  - Morning reminders moved from a 1-minute interval to a cron tick with a 30s grace period — a slow tick can no longer silently skip a minute (and its reminders).
+  - Per-user duplicate-message locks no longer evict a lock that is currently held.
+
+## [2026-07-02]
+
+### Fixed
+- Full project audit. Bugs found and fixed:
+  - Deleting today's workout via "Edit Day" corrupted the program cycle position: `program_day` was wrapped with `% 7` even though it's a monotonic counter (e.g. day 22 → 0 instead of 21), silently shifting the whole future schedule.
+  - "Next 7 days" schedule in Stats (and the AI's view of tomorrow) was off by one whenever a workout row existed but the day wasn't finished yet — the offset now keys off `last_workout == today` (the moment `program_day` actually advances) instead of the row's existence.
+  - Training on a rest day ("Train anyway") saved the workout against a `planned=0 / Отдых` row, so history showed things like "😴 50/0" and the session never counted toward RPE/weekly progression. The override is now persisted as a real training day (cancelling still restores the rest row).
+  - The 23:55 auto-rest job could overwrite today's workout row for a user mid rest-day-override session; it now skips users who already have real activity recorded today.
+  - Base-change validation message claimed "1 to 2000" while the code accepts 1–500.
+  - Guide and AI system prompt described outdated RPE progression rules (≤6.5 for +3%, no −2% zone) — aligned with the actual code (≤5.5 / 5.5–7.0 / 7.0–8.5 −2% / ≥8.5 −5%).
+  - Admin panel: user names and search queries are now HTML-escaped — a user named e.g. `<b>` made the profile view silently fail to render.
+  - Gemini fallback per-user cooldown dict grew without bound — expired entries are now pruned.
+  - `.gitignore` contained corrupted UTF-16 garbage lines, so `bot.log` and DB backups weren't actually ignored — rewritten clean.
+  - Test suite repaired: 8 tests were stale (old rank names, old XP thresholds, missing `program_type` field) — updated to match current config; added coverage for beginner/unknown program types. 80/80 passing.
+
+## [2026-07-01]
+
+### Fixed
+- Skip reason (overtraining/illness/etc.) now writes a rest-day row to the workouts table, so stats shows 😴 instead of ❌ and the training screen no longer says "didn't complete plan" after a skip.
+
+## [2026-06-25]
+
+### Changed
+- Post-training flow simplified: removed the extra-activity (cardio/gym) question and notes step. Only RPE rating remains — tap a number and you're done.
+- Streaks are now protected silently: if you miss a training day, a freeze token is auto-spent without any prompt. No more streak resets that happen without the user knowing.
+- Rest days on the "Keep resting" screen no longer ask about freeze tokens — the system handles it automatically on the next training day.
+
+### Fixed
+- Streak bug: if a training day was skipped and the next day was a scheduled rest day, the streak would silently reset the day after. Now `update_streak` checks rest-day records in the workout history and only spends tokens for genuinely missed training days.
+- Restored streaks for 3 users whose streaks were incorrectly reset by the rest-day bug.
+
+### Added
+- Stats screen now shows longest streak ever: "🔥 Streak: X days (best: Y)" alongside current streak.
+
+## [2026-05-08]
+
+### Changed
+- Training session rep buttons now show 10 consecutive numbers (e.g. 8–17) instead of spaced-out values. Range is still anchored to the user's per-set target so relevant counts are always visible.
+
+## [2026-05-07]
+
+### Added
+- XP decay system: after 7 days of inactivity, XP decreases daily (0.5%→1%→1.5% per day as absence grows). Floor: can lose at most one rank per absence. Notifies user on first decay day and on rank loss.
+
+### Changed
+- Slowed down base progression: weekly +5% bump now blocked if avg RPE of last 5 workouts is ≥ 7.0 (high effort = no auto-advance)
+- Lowered RPE threshold for base growth from ≤ 6.5 to ≤ 5.5 — base now only grows via RPE path when training feels easy
+- Filled the RPE dead zone: added −2% base zone for avg RPE 7.0–8.4 (previously no change at all in that wide range)
+
+## [2026-05-04]
+
+### Fixed
+- Fixed `IntegrityError: UNIQUE constraint failed: workouts.user_id, workouts.date` crash when tapping Training — replaced the SELECT-then-INSERT pattern with an atomic `INSERT … ON CONFLICT DO UPDATE` to eliminate the race condition.
+- Removed dead `weight_kg` field: it was never collected during registration, always defaulted to 80, and was only feeding a wrong value into the AI context. Cleaned up the DB schema, states, i18n strings, AI prompt, scheduler, and tests. Added DB migration (index 24) to drop the column from existing databases.
+- Removed stale body-weight instruction from `ai_system_prompt` in both locales — the prompt no longer supplies weight data, so telling the model to "consider body weight" was misleading.
+
 ## [2026-05-02]
 
 ### Added

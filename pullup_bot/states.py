@@ -24,10 +24,6 @@ class Training(StatesGroup):
     rest_day = State()
     cancel_confirm = State()
     rpe = State()
-    activity = State()
-    act_mins = State()
-    notes = State()
-    freeze_confirm = State()
 
 
 class Logout(StatesGroup):
@@ -61,9 +57,6 @@ class SetNotify(StatesGroup):
 class SetBase(StatesGroup):
     enter_base = State()
 
-
-class SetWeight(StatesGroup):
-    enter_weight = State()
 
 
 class SetName(StatesGroup):

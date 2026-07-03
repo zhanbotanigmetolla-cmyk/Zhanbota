@@ -8,7 +8,7 @@ from pullup_bot.services.xp import (
 def test_level_info_zero():
     lvl, name, to_nxt, pct = level_info(0)
     assert lvl == 0
-    assert name == "Новичок"
+    assert name == "Silver I"
     assert to_nxt == 500
     assert pct == 0
 
@@ -24,8 +24,10 @@ def test_level_info_exact_threshold():
 
 
 def test_level_info_high():
-    lvl, _, _, _ = level_info(25000)
-    assert lvl == 9
+    # 25000 XP: >= 23000 (Master Guardian II, index 11), < 29000
+    lvl, name, _, _ = level_info(25000)
+    assert lvl == 11
+    assert name == "Master Guardian II"
 
 
 # --- progress_bar ---
@@ -59,42 +61,56 @@ def test_progress_bar_over_100():
 # --- planned_for_day ---
 
 def test_planned_medium():
-    user = {"base_pullups": 100, "program_day": 0}
+    user = {"base_pullups": 100, "program_day": 0, "program_type": "standard"}
     planned, day_type = planned_for_day(user)
     assert planned == 100
     assert day_type == "Средний"
 
 
 def test_planned_light():
-    user = {"base_pullups": 100, "program_day": 1}
+    user = {"base_pullups": 100, "program_day": 1, "program_type": "standard"}
     planned, day_type = planned_for_day(user)
     assert planned == 50
     assert day_type == "Лёгкий"
 
 
 def test_planned_heavy():
-    user = {"base_pullups": 100, "program_day": 2}
+    user = {"base_pullups": 100, "program_day": 2, "program_type": "standard"}
     planned, day_type = planned_for_day(user)
     assert planned == 114  # int(100 * 1.15)
     assert day_type == "Тяжёлый"
 
 
 def test_planned_rest():
-    user = {"base_pullups": 100, "program_day": 3}
+    user = {"base_pullups": 100, "program_day": 3, "program_type": "standard"}
     planned, day_type = planned_for_day(user)
     assert planned == 0
     assert day_type == "Отдых"
 
 
 def test_planned_wraps_around():
-    user = {"base_pullups": 100, "program_day": 7}
+    user = {"base_pullups": 100, "program_day": 7, "program_type": "standard"}
     planned, day_type = planned_for_day(user)
     assert day_type == "Средний"
 
 
 def test_planned_none_program_day():
-    user = {"base_pullups": 100, "program_day": None}
+    user = {"base_pullups": 100, "program_day": None, "program_type": None}
     planned, day_type = planned_for_day(user)
+    assert day_type == "Средний"
+
+
+def test_planned_beginner_program():
+    user = {"base_pullups": 100, "program_day": 0, "program_type": "beginner"}
+    planned, day_type = planned_for_day(user)
+    assert planned == 60
+    assert day_type == "Лёгкий"
+
+
+def test_planned_unknown_program_falls_back_to_standard():
+    user = {"base_pullups": 100, "program_day": 0, "program_type": "bogus"}
+    planned, day_type = planned_for_day(user)
+    assert planned == 100
     assert day_type == "Средний"
 
 

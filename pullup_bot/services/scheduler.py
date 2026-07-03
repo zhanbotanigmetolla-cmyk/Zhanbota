@@ -275,6 +275,70 @@ async def db_integrity_check(bot):
         logger.info("[db_integrity] OK")
 
 
+async def daily_xp_decay(bot):
+    """
+    Decay XP daily for users inactive 7+ days.
+    Grace period: 7 days — no decay before that.
+    Notifies the user only on the first decay day and whenever they lose a rank.
+    """
+    from ..db import apply_xp_decay
+    from ..config import LEVEL_NAMES
+    today = date.today()
+    conn = await get_db()
+    async with conn.execute(
+        "SELECT * FROM users WHERE last_workout IS NOT NULL AND is_logged_out=0 AND is_banned=0"
+    ) as cur:
+        users = await cur.fetchall()
+
+    decayed = 0
+    for user in users:
+        try:
+            days_inactive = (today - date.fromisoformat(user["last_workout"])).days
+        except Exception:
+            continue
+        if days_inactive < 7:
+            continue
+        result = await apply_xp_decay(user["tg_id"], days_inactive)
+        if result is None:
+            continue
+        old_xp, new_xp, old_level, new_level = result
+        decayed += 1
+        lang = user["lang"] or "ru"
+        rank_lost = new_level < old_level
+        first_decay = days_inactive == 7
+        # Notify only on first decay day or rank loss — avoid daily spam
+        if not first_decay and not rank_lost:
+            continue
+        if rank_lost:
+            msg = (
+                f"📉 Ты не тренировался {days_inactive} дней — ранг упал!\n"
+                f"*{LEVEL_NAMES[old_level]}* → *{LEVEL_NAMES[new_level]}*\n"
+                f"XP: {old_xp} → {new_xp}\n\n"
+                f"Вернись и тренируйся, чтобы восстановить ранг 💪"
+                if lang == "ru" else
+                f"📉 You haven't trained for {days_inactive} days — rank dropped!\n"
+                f"*{LEVEL_NAMES[old_level]}* → *{LEVEL_NAMES[new_level]}*\n"
+                f"XP: {old_xp} → {new_xp}\n\n"
+                f"Come back and train to recover your rank 💪"
+            )
+        else:
+            msg = (
+                f"⏳ Ты не тренировался {days_inactive} дней — XP начал убывать.\n"
+                f"XP: {old_xp} → {new_xp}\n\n"
+                f"Тренируйся, чтобы остановить потерю 💪"
+                if lang == "ru" else
+                f"⏳ You haven't trained for {days_inactive} days — XP is decaying.\n"
+                f"XP: {old_xp} → {new_xp}\n\n"
+                f"Train to stop the loss 💪"
+            )
+        try:
+            await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
+        except Exception as e:
+            logger.warning(f"[xp_decay] {user['tg_id']}: {e}")
+
+    logger.info(f"[xp_decay] applied decay to {decayed} user(s)")
+
+
 async def auto_cleanup_inactive(bot):
     """Warn at 27 days of inactivity, delete at 30 days."""
     today = date.today()
@@ -357,6 +421,11 @@ async def auto_acknowledge_rest_days(bot):
         _, name = planned_for_day(user)
         if name != "Отдых":
             continue
+        # Don't clobber a day the user actually interacted with (e.g. an
+        # in-progress rest-day-override training session)
+        existing = await get_today_workout(user["id"], today_str)
+        if existing and ((existing["planned"] or 0) > 0 or (existing["completed"] or 0) > 0):
+            continue
         program_day = user["program_day"] or 0
         # Advance program_day and mark last_workout=today so the streak stays intact
         new_pd = program_day + 1
@@ -432,7 +501,7 @@ async def watchdog_health_check(bot):
             state_name = row["state"] or ""
             # Training and AI states are the ones most likely to get stuck
             if not any(s in state_name for s in ["Training", "AIChat", "EditDay",
-                                                   "SetNotify", "SetBase", "SetWeight",
+                                                   "SetNotify", "SetBase",
                                                    "SetName", "SkipReason"]):
                 continue
             # For training states: check if the stored date is today

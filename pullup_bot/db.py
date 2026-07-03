@@ -69,6 +69,8 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN program_type TEXT DEFAULT 'standard'",
     # index 23 — all-time maximum streak reached
     "ALTER TABLE users ADD COLUMN max_streak INTEGER DEFAULT 0",
+    # index 24 — drop legacy weight_kg column (never collected, always defaulted to 80)
+    "ALTER TABLE users DROP COLUMN weight_kg",
 ]
 
 
@@ -109,7 +111,6 @@ async def init_db():
             freeze_tokens INTEGER DEFAULT 3,
             last_workout  TEXT,
             notify_time   TEXT DEFAULT '09:00',
-            weight_kg     REAL DEFAULT 80,
             lang          TEXT DEFAULT 'ru',
             program_day   INTEGER DEFAULT 0
         );
@@ -240,22 +241,19 @@ async def upsert_workout(user_id: int, d: str, **kwargs):
         if k not in _WORKOUT_COLS:
             raise ValueError(f"Invalid workout column: {k}")
     conn = await get_db()
-    async with conn.execute(
-        "SELECT id FROM workouts WHERE user_id=? AND date=?", (user_id, d)
-    ) as cur:
-        existing = await cur.fetchone()
-    if existing:
-        s = ", ".join(f"{k}=?" for k in kwargs)
-        await conn.execute(
-            f"UPDATE workouts SET {s} WHERE user_id=? AND date=?",
-            list(kwargs.values()) + [user_id, d],
-        )
-    else:
+    if kwargs:
         cols = "user_id, date, " + ", ".join(kwargs.keys())
         vals = "?, ?, " + ", ".join("?" * len(kwargs))
+        updates = ", ".join(f"{k}=excluded.{k}" for k in kwargs)
         await conn.execute(
-            f"INSERT INTO workouts ({cols}) VALUES ({vals})",
+            f"INSERT INTO workouts ({cols}) VALUES ({vals})"
+            f" ON CONFLICT(user_id, date) DO UPDATE SET {updates}",
             [user_id, d] + list(kwargs.values()),
+        )
+    else:
+        await conn.execute(
+            "INSERT OR IGNORE INTO workouts (user_id, date) VALUES (?, ?)",
+            (user_id, d),
         )
     await conn.commit()
 
@@ -283,27 +281,62 @@ async def add_xp(tg_id: int, amount: int):
 
 
 async def update_streak(tg_id: int, today: str = None):
-    """Extend or reset the streak based on whether the user trained yesterday, and award streak XP."""
+    """Extend or reset the streak. Auto-spends freeze tokens for missed training days."""
     user = await get_user(tg_id)
     if not user:
         return
     if today is None:
         today = date.today().isoformat()
     last = user["last_workout"]
-    yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+    today_d = date.fromisoformat(today)
+    yesterday = (today_d - timedelta(days=1)).isoformat()
     conn = await get_db()
     if last == today:
         return
-    if last is None or last != yesterday:
-        new_streak = 1
+
+    old_streak = user["streak"] or 0
+
+    if last is None or last == yesterday:
+        # No gap — simple start or extend
+        new_streak = 1 if last is None else old_streak + 1
     else:
-        new_streak = (user["streak"] or 0) + 1
+        # Gap detected — find which gap days have rest-day records (free) vs missed (cost a token each)
+        last_d = date.fromisoformat(last)
+        gap_days = [
+            (last_d + timedelta(days=i)).isoformat()
+            for i in range(1, (today_d - last_d).days)
+        ]
+        if gap_days:
+            placeholders = ",".join("?" * len(gap_days))
+            async with conn.execute(
+                f"SELECT date FROM workouts WHERE user_id=? AND date IN ({placeholders}) AND planned=0",
+                [user["id"]] + gap_days,
+            ) as cur:
+                rest_rows = await cur.fetchall()
+            rest_dates = {r["date"] for r in rest_rows}
+            missed = [d for d in gap_days if d not in rest_dates]
+        else:
+            missed = []
+
+        tokens = user["freeze_tokens"] or 0
+        if len(missed) <= tokens:
+            # Auto-spend tokens silently to bridge missed days
+            if missed:
+                await conn.execute(
+                    "UPDATE users SET freeze_tokens=? WHERE tg_id=?",
+                    (tokens - len(missed), tg_id),
+                )
+            new_streak = old_streak + 1
+        else:
+            # Not enough tokens — streak resets
+            new_streak = 1
+
     await conn.execute(
         "UPDATE users SET streak=?, last_workout=?, inactivity_warned=NULL WHERE tg_id=?",
         (new_streak, today, tg_id),
     )
-    # Only award streak XP if continuing a streak (not first day)
-    if last == yesterday:
+    # Award streak XP whenever the streak genuinely continued (not a reset to 1 from nothing)
+    if last is not None and new_streak == old_streak + 1:
         await conn.execute(
             "UPDATE users SET xp = xp + ? WHERE tg_id=?", (XP_PER_STREAK_DAY, tg_id)
         )
@@ -405,6 +438,50 @@ async def reset_xp(tg_id: int) -> None:
     conn = await get_db()
     await conn.execute("UPDATE users SET xp=0, level=0 WHERE tg_id=?", (tg_id,))
     await conn.commit()
+
+
+async def apply_xp_decay(tg_id: int, days_inactive: int):
+    """
+    Decay XP for an inactive user (grace period: 7 days).
+
+    Decay rate:
+      days 7–13: 0.5% of XP/day (min 20 XP)
+      days 14–20: 1.0% of XP/day (min 30 XP)
+      days 21+:   1.5% of XP/day (min 50 XP)
+
+    Floor: XP cannot drop below the threshold of one rank below current.
+    Returns (old_xp, new_xp, old_level, new_level) or None if no decay applied.
+    """
+    if days_inactive < 7:
+        return None
+    conn = await get_db()
+    async with conn.execute("SELECT xp, level FROM users WHERE tg_id=?", (tg_id,)) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return None
+    current_xp = row[0] or 0
+    current_level = row[1] or 0
+    # Floor: one rank below current — cap the loss at a single rank per absence
+    floor_xp = LEVEL_THRESHOLDS[max(0, current_level - 1)] if current_level > 0 else 0
+    if current_xp <= floor_xp:
+        return None
+    if days_inactive < 14:
+        rate, min_decay = 0.005, 20
+    elif days_inactive < 21:
+        rate, min_decay = 0.010, 30
+    else:
+        rate, min_decay = 0.015, 50
+    decay = max(min_decay, int(current_xp * rate))
+    new_xp = max(floor_xp, current_xp - decay)
+    if new_xp == current_xp:
+        return None
+    new_level = _level_from_xp(new_xp)
+    await conn.execute(
+        "UPDATE users SET xp=?, level=? WHERE tg_id=?",
+        (new_xp, new_level, tg_id)
+    )
+    await conn.commit()
+    return current_xp, new_xp, current_level, new_level
 
 
 async def give_freeze_tokens(tg_id: int, delta: int, max_tokens: int = 5) -> None:

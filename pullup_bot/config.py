@@ -95,6 +95,13 @@ def is_admin_id(tg_id: int) -> bool:
     """Return True if the given Telegram ID matches the configured admin."""
     return tg_id == ADMIN_TG_ID
 
+
+def is_admin_user(tg_id: int, username: str | None = None) -> bool:
+    """Return True if the Telegram ID or username matches the configured admin."""
+    if tg_id == ADMIN_TG_ID:
+        return True
+    return (username or "").lower() in {u.lower() for u in ADMIN_USERNAMES}
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",

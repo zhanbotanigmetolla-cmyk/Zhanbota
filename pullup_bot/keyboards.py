@@ -84,13 +84,10 @@ def program_select_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
 
 
 def smart_set_buttons(planned: int) -> list:
-    """Generate 10 sensible rep-count button values centered around 10% of the planned target."""
+    """Generate 10 consecutive rep-count button values starting near the per-set target."""
     base = 7 if planned <= 0 else max(3, planned // 10)
-    start = max(4, base - 2)
-    row1 = list(range(start, start + 5))
-    r2 = start + 5
-    row2 = [r2, r2 + 1, r2 + 4, r2 + 7, r2 + 10]
-    return row1 + row2
+    start = max(1, base - 2)
+    return list(range(start, start + 10))
 
 
 def training_kb(sets: list, planned: int = 0, lang: str = "ru") -> ReplyKeyboardMarkup:
