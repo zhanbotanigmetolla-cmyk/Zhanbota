@@ -11,7 +11,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
-from ..config import ADMIN_TG_ID, ADMIN_USERNAMES, logger
+from ..config import ADMIN_TG_ID, is_admin_user, logger
 from ..db import (ban_user, delete_user_by_tg_id, get_db, get_lang, get_user,
                   give_freeze_tokens, is_muted, mute_user, reset_streak,
                   reset_xp, search_users, unban_user, unmute_user,
@@ -28,18 +28,12 @@ from .. import globals as g
 
 def _is_admin(message) -> bool:
     """Return True if the message sender is the configured admin (by ID or username)."""
-    if message.from_user.id == ADMIN_TG_ID:
-        return True
-    uname = (message.from_user.username or "").lower()
-    return uname in {u.lower() for u in ADMIN_USERNAMES}
+    return is_admin_user(message.from_user.id, message.from_user.username)
 
 
 def _is_admin_cb(callback: types.CallbackQuery) -> bool:
     """Return True if the callback sender is the configured admin (by ID or username)."""
-    if callback.from_user.id == ADMIN_TG_ID:
-        return True
-    uname = (callback.from_user.username or "").lower()
-    return uname in {u.lower() for u in ADMIN_USERNAMES}
+    return is_admin_user(callback.from_user.id, callback.from_user.username)
 
 router = Router()
 

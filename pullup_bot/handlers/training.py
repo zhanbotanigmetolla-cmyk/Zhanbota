@@ -35,12 +35,15 @@ _user_locks: dict[int, asyncio.Lock] = {}
 
 
 def _get_lock(uid: int) -> asyncio.Lock:
-    """Return the per-user asyncio lock, evicting the oldest entry when the cap is reached."""
+    """Return the per-user asyncio lock, evicting the oldest idle entry when the cap is reached."""
     if uid not in _user_locks:
         if len(_user_locks) >= _MAX_LOCKS:
-            # Evict the oldest entry
-            oldest = next(iter(_user_locks))
-            del _user_locks[oldest]
+            # Evict the oldest entry that is not currently held — evicting a held
+            # lock would let a concurrent message bypass the duplicate guard
+            for k, lock in _user_locks.items():
+                if not lock.locked():
+                    del _user_locks[k]
+                    break
         _user_locks[uid] = asyncio.Lock()
     return _user_locks[uid]
 
@@ -497,9 +500,6 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
     done = done_before + done_now
     planned = data.get("planned", 0)
     rpe = data.get("rpe", 0)
-    act = data.get("activity", "")
-    mins = data.get("act_mins", 0)
-    notes = data.get("notes", "")
     d = data.get("date", date.today().isoformat())
 
     # Capture state before any updates
@@ -513,8 +513,10 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
         old_sets = []
         logger.warning(f"[WARN] Corrupted sets_json for user {tg_id} on {d}")
     all_sets = old_sets + sets
+    # Only the columns collected by the training flow — extra_activity/minutes/notes
+    # come from the Edit Day flow and must not be overwritten with empties here
     await upsert_workout(user_before["id"], d, completed=done, sets_json=json.dumps(all_sets),
-                         rpe=rpe, extra_activity=act, extra_minutes=mins, notes=notes)
+                         rpe=rpe)
 
     # Personal record check
     pr_broken = done > (user_before["personal_record"] or 0) and done > 0
@@ -593,8 +595,6 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
                 xp_gained=xp_gained, xp_total=user["xp"],
                 level=lname, bar=bar, to_next=to_nxt,
                 streak=user["streak"])
-    if act:
-        summary += t("train_extra_note", lang, act=act, mins=mins)
     if progression_comment:
         summary += progression_comment
     if pr_broken:

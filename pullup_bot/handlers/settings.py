@@ -487,6 +487,11 @@ async def _save_edit(message: types.Message, state: FSMContext,
     else:
         planned = user["base_pullups"]
         day_type = "Средний"
+    # Adding reps to a stored rest day means the user actually trained —
+    # convert it to a training day so history doesn't show "😴 50/0"
+    if done > 0 and planned == 0:
+        planned = user["base_pullups"]
+        day_type = "Средний"
     old = existing["completed"] if existing else 0
     xp_diff = (done - old) * XP_PER_PULLUP
     await upsert_workout(user["id"], d, completed=done, planned=planned, day_type=day_type,

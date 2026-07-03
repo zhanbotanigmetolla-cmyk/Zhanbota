@@ -5,7 +5,7 @@ import traceback
 from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, is_admin_id, logger
+from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, is_admin_user, logger
 from .db import close_db, get_user, init_db, is_muted, is_permanently_banned
 from .handlers import register_all
 from .storage import SqliteStorage
@@ -74,7 +74,7 @@ async def _check_ban_and_mute(uid: int) -> str | None:
 async def ban_check_middleware(handler, event: types.Message, data):
     """Drop messages from banned users; silently ignore messages from muted users."""
     uid = event.from_user.id if event.from_user else None
-    if uid and not is_admin_id(uid):
+    if uid and not is_admin_user(uid, event.from_user.username):
         try:
             reason = await _check_ban_and_mute(uid)
             if reason == "banned":
@@ -91,7 +91,7 @@ async def ban_check_middleware(handler, event: types.Message, data):
 async def ban_check_cb_middleware(handler, event: types.CallbackQuery, data):
     """Alert banned/muted users on callback queries and suppress the event."""
     uid = event.from_user.id if event.from_user else None
-    if uid and not is_admin_id(uid):
+    if uid and not is_admin_user(uid, event.from_user.username):
         try:
             reason = await _check_ban_and_mute(uid)
             if reason == "banned":
@@ -110,8 +110,19 @@ async def maintenance_middleware(handler, event: types.Message, data):
     """Block non-admin messages while maintenance mode is active."""
     if g.maintenance_mode:
         uid = event.from_user.id if event.from_user else None
-        if uid and not is_admin_id(uid):
+        if uid and not is_admin_user(uid, event.from_user.username):
             await event.answer("🔧 Бот на техническом обслуживании. Скоро вернёмся!")
+            return
+    return await handler(event, data)
+
+
+@dp.callback_query.middleware()
+async def maintenance_cb_middleware(handler, event: types.CallbackQuery, data):
+    """Block non-admin callback queries while maintenance mode is active."""
+    if g.maintenance_mode:
+        uid = event.from_user.id if event.from_user else None
+        if uid and not is_admin_user(uid, event.from_user.username):
+            await event.answer("🔧 Бот на техническом обслуживании. Скоро вернёмся!", show_alert=True)
             return
     return await handler(event, data)
 
@@ -147,7 +158,10 @@ async def main():
     await init_db()
     await bot.delete_webhook(drop_pending_updates=True)
 
-    scheduler.add_job(daily_reminder, "interval", minutes=1, args=[bot])
+    # Cron at second 0 of every minute so each HH:MM is matched exactly once;
+    # grace period lets a late tick still fire instead of silently skipping a minute
+    scheduler.add_job(daily_reminder, "cron", minute="*", args=[bot],
+                      misfire_grace_time=30)
     scheduler.add_job(daily_health_summary, "cron", hour=8, minute=0, args=[bot])
     scheduler.add_job(db_integrity_check, "cron", hour=3, minute=0, args=[bot])
     scheduler.add_job(weekly_summary, "cron", day_of_week="mon", hour=8, minute=0, args=[bot])

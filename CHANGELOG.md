@@ -4,6 +4,17 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-03]
+
+### Fixed
+- Second audit pass — remaining issues fixed:
+  - Editing a stored rest day to add reps kept the row as `planned=0 / Отдых`, so history showed "😴 50/0" and the session never counted toward progression (same class of bug as the rest-day-override fix) — now converted to a training day.
+  - Finishing a training session overwrote `extra_activity` / `extra_minutes` / `notes` with empty values (the flow no longer collects them), erasing data added via "Edit Day". Those columns are no longer touched by the training save.
+  - Admin exemption unified: ban/mute and maintenance middlewares checked only the admin Telegram ID while the admin panel also accepted the admin username — both now use one shared `is_admin_user()` check.
+  - Maintenance mode now also blocks inline-button (callback) presses, not just messages.
+  - Morning reminders moved from a 1-minute interval to a cron tick with a 30s grace period — a slow tick can no longer silently skip a minute (and its reminders).
+  - Per-user duplicate-message locks no longer evict a lock that is currently held.
+
 ## [2026-07-02]
 
 ### Fixed
