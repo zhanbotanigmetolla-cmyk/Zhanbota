@@ -141,6 +141,15 @@ def rest_day_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     return b.as_markup(resize_keyboard=True)
 
 
+def exercise_picker_kb(labels: list, lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return a one-button-per-row exercise picker with a Back button at the bottom."""
+    b = ReplyKeyboardBuilder()
+    for label in labels:
+        b.row(KeyboardButton(text=label))
+    b.row(KeyboardButton(text=t("btn_back", lang)))
+    return b.as_markup(resize_keyboard=True)
+
+
 def cancel_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     """Return the training cancel confirmation keyboard: Yes cancel / Continue."""
     b = ReplyKeyboardBuilder()
@@ -154,14 +163,6 @@ def delete_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("delete_confirm_yes", lang)),
           KeyboardButton(text=t("delete_confirm_no", lang)))
-    return b.as_markup(resize_keyboard=True)
-
-
-def freeze_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
-    """Return the streak-freeze spend confirmation keyboard: Use token / Skip."""
-    b = ReplyKeyboardBuilder()
-    b.row(KeyboardButton(text=t("freeze_yes_btn", lang)),
-          KeyboardButton(text=t("freeze_no_btn", lang)))
     return b.as_markup(resize_keyboard=True)
 
 
@@ -181,27 +182,6 @@ def skip_reason_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
         b.button(text=t(key, lang))
     b.adjust(2)
     return b.as_markup(resize_keyboard=True)
-
-
-def activity_reply_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
-    """Return the extra-activity selection keyboard (run/gym/both/skip) after a workout."""
-    b = ReplyKeyboardBuilder()
-    if lang == "en":
-        b.row(KeyboardButton(text="🏃 Running/Cardio"), KeyboardButton(text="🏋️ Gym"))
-        b.row(KeyboardButton(text="🏃+🏋️ Cardio+Gym"), KeyboardButton(text="⏭️ Skip"))
-    else:
-        b.row(KeyboardButton(text="🏃 Бег/Кардио"), KeyboardButton(text="🏋️ Зал"))
-        b.row(KeyboardButton(text="🏃+🏋️ Кардио+Зал"), KeyboardButton(text="⏭️ Пропустить"))
-    b.row(KeyboardButton(text=t("btn_back", lang)))
-    return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
-
-
-def edit_extras_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
-    """Return the edit-day extras prompt keyboard: Add extras / Save without."""
-    b = ReplyKeyboardBuilder()
-    b.row(KeyboardButton(text=t("btn_yes_add", lang)),
-          KeyboardButton(text=t("btn_no_save", lang)))
-    return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
 def ai_chat_kb(lang: str = "ru") -> ReplyKeyboardMarkup:

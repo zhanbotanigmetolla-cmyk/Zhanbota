@@ -203,20 +203,6 @@ async def guide_back(message: types.Message, state: FSMContext):
     await message.answer(t("main_menu", lang), reply_markup=landing_kb(lang))
 
 
-@router.message(text_filter("btn_exit"))
-async def exit_btn(message: types.Message, state: FSMContext):
-    """Handle the Exit button: prompt for logout confirmation if logged in, or farewell if not."""
-    user = await get_user(message.from_user.id)
-    data = await state.get_data()
-    lang = (user["lang"] or "ru") if user else data.get("lang", "ru")
-    if user:
-        await message.answer(t("confirm_logout", lang), reply_markup=logout_confirm_kb(lang))
-        await state.set_state(Logout.confirm)
-    else:
-        await state.clear()
-        await message.answer(t("bye", lang), reply_markup=ReplyKeyboardRemove())
-
-
 @router.message(text_filter("btn_login"))
 async def login_start(message: types.Message, state: FSMContext):
     """Handle Join button: re-activate a logged-out user or start the registration flow for new users."""

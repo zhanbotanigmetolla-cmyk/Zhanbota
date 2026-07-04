@@ -10,8 +10,8 @@ from aiogram.fsm.context import FSMContext
 from ..db import get_db, get_user
 from ..i18n import t, text_filter
 from ..keyboards import main_kb
-from ..services.xp import display, level_info, md_escape, planned_for_day
-from ..config import logger
+from ..services.xp import day_type_for, display, level_info, md_escape, user_base
+from ..config import EXERCISES, EXERCISE_EMOJI, XP_CASE_SQL, logger
 from ..states import Friends
 
 router = Router()
@@ -51,27 +51,38 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
         page_ids + [today_str]
     ) as cur:
         today_rows = await cur.fetchall()
-    today_map = {r["user_id"]: r for r in today_rows}
+    today_map: dict = {}
+    for r in today_rows:
+        today_map.setdefault(r["user_id"], []).append(r)
 
     header = t("friends_title", lang)
     if total_pages > 1:
         header += f"  _{t('friends_page', lang, page=page + 1, total=total_pages)}_"
     text = header + "\n\n"
 
+    rest_label = "😴"
     for f in page_users:
-        today_w = today_map.get(f["id"])
-        done = today_w["completed"] if today_w else 0
-        if today_w:
-            plan = today_w["planned"] if today_w["planned"] is not None else 0
-        elif f["last_workout"] == today_str:
-            plan = 0
+        day_rows = today_map.get(f["id"], [])
+        training = [r for r in day_rows if r["exercise"] != "rest"]
+        if training:
+            today_cell = " ".join(
+                f"{EXERCISE_EMOJI.get(r['exercise'], '')}{r['completed']}/{r['planned']}"
+                for r in training)
+        elif day_rows or f["last_workout"] == today_str:
+            today_cell = rest_label
         else:
-            plan, _ = planned_for_day(f)
+            name_dt, coeff = day_type_for(f)
+            if coeff == 0:
+                today_cell = rest_label
+            else:
+                today_cell = " ".join(
+                    f"{EXERCISE_EMOJI[ex]}0/{int(user_base(f, ex) * coeff)}"
+                    for ex in EXERCISES if user_base(f, ex) > 0) or "—"
         _, lname, _, _ = level_info(f["xp"])
         today_label = "Сегодня" if lang == "ru" else "Today"
         is_me = f["id"] == user["id"]
         me_marker = f" *({you_label})*" if is_me else ""
-        text += f"👤 *{md_escape(display(f))}*{me_marker} — {lname}\n   {today_label}: {done}/{plan} | 🔥{f['streak']}\n\n"
+        text += f"👤 *{md_escape(display(f))}*{me_marker} — {lname}\n   {today_label}: {today_cell} | 🔥{f['streak']}\n\n"
 
     poke_prefix = "💪 Пнуть " if lang == "ru" else "💪 Poke "
     b = ReplyKeyboardBuilder()
@@ -148,7 +159,7 @@ async def friends_menu(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_leaderboard"))
 async def leaderboard(message: types.Message):
-    """Show the weekly pullup leaderboard ranked by total reps over the last 7 days."""
+    """Show the weekly leaderboard ranked by XP earned over the last 7 days (all exercises)."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
@@ -169,30 +180,30 @@ async def leaderboard(message: types.Message):
                              reply_markup=main_kb(lang))
         return
 
-    # Batch query: get weekly totals for all users in one go
+    # Batch query: weekly XP totals for all users in one go
     async with conn.execute(
-        "SELECT user_id, COALESCE(SUM(completed), 0) as week_done "
+        f"SELECT user_id, COALESCE(SUM({XP_CASE_SQL}), 0) as week_xp "
         "FROM workouts WHERE date>=? GROUP BY user_id",
         (week_ago,)
     ) as cur:
         weekly_rows = await cur.fetchall()
-    weekly_map = {r["user_id"]: r["week_done"] for r in weekly_rows}
+    weekly_map = {r["user_id"]: int(round(r["week_xp"])) for r in weekly_rows}
 
     entries = []
     for u in all_users:
-        week_done = weekly_map.get(u["id"], 0)
+        week_xp = weekly_map.get(u["id"], 0)
         _, lname, _, _ = level_info(u["xp"])
-        entries.append((u, week_done, lname))
+        entries.append((u, week_xp, lname))
 
     entries.sort(key=lambda x: x[1], reverse=True)
 
     text = t("leaderboard_title", lang) + "\n\n"
     medals = ["🥇", "🥈", "🥉"]
-    for i, (u, week_done, lname) in enumerate(entries):
+    for i, (u, week_xp, lname) in enumerate(entries):
         medal = medals[i] if i < 3 else f"{i+1}."
         you = t("leaderboard_you_marker", lang) if u["tg_id"] == message.from_user.id else ""
         crown = " 👑" if u["is_weekly_champ"] else ""
-        text += f"{medal} *{md_escape(display(u))}*{crown} — {week_done} | 🔥{u['streak']}{you}\n"
+        text += f"{medal} *{md_escape(display(u))}*{crown} — {week_xp} XP | 🔥{u['streak']}{you}\n"
 
     await message.answer(text, parse_mode="Markdown", reply_markup=main_kb(lang))
 

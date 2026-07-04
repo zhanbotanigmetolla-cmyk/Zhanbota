@@ -65,7 +65,58 @@ PROGRAMS = {
 # Backward-compat alias — code that imports WAVE directly still works
 WAVE = PROGRAMS["standard"]
 
-XP_PER_PULLUP = 1
+# ── Exercises ────────────────────────────────────────────────────────────────
+# Every workout row is tagged with one of these (or 'rest' for rest-day rows).
+EXERCISES = ["pullups", "pushups", "dips"]
+
+EXERCISE_EMOJI = {
+    "pullups": "🆙",
+    "pushups": "💪",
+    "dips": "⏸️",
+}
+
+# XP per rep — push-ups/dips are easier per rep than pull-ups, so they earn
+# proportionally less to keep ranks comparable across exercises.
+XP_PER_REP = {
+    "pullups": 1.0,
+    "dips": 0.75,
+    "pushups": 0.5,
+}
+
+# users-table column that stores the daily base for each exercise
+BASE_COLS = {
+    "pullups": "base_pullups",
+    "pushups": "base_pushups",
+    "dips": "base_dips",
+}
+
+# users-table columns for records (best day total / best single set)
+PR_COLS = {
+    "pullups": "personal_record",
+    "pushups": "personal_record_pushups",
+    "dips": "personal_record_dips",
+}
+SET_RECORD_COLS = {
+    "pullups": "set_record",
+    "pushups": "set_record_pushups",
+    "dips": "set_record_dips",
+}
+
+# SQL expression converting a workouts row to XP (for weekly leaderboards)
+XP_CASE_SQL = (
+    "CASE exercise "
+    "WHEN 'pullups' THEN completed "
+    "WHEN 'dips' THEN completed * 0.75 "
+    "WHEN 'pushups' THEN completed * 0.5 "
+    "ELSE 0 END"
+)
+
+
+def xp_for(exercise: str, reps: int) -> int:
+    """XP earned for the given rep count of an exercise (rounded to nearest int)."""
+    return int(round(reps * XP_PER_REP.get(exercise, 0)))
+
+
 XP_PER_STREAK_DAY = 50
 LEVEL_THRESHOLDS = [
     0, 500, 1000, 1800, 2800, 4000,        # Silver I – Silver Elite Master

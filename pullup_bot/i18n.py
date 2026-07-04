@@ -15,7 +15,6 @@ STRINGS = {
         # Buttons - landing
         "btn_login": "💪 Войти в Турникмен",
         "btn_about": "ℹ️ О боте",
-        "btn_exit": "🚪 Выйти",
         # Buttons - training
         "btn_undo": "↩️ Отменить подход",
         "btn_manual": "✏️ Ввести вручную",
@@ -33,20 +32,24 @@ STRINGS = {
         "btn_notify_workouts_off": "🔕 Уведомления от друзей: ВЫКЛ",
         "notify_workouts_enabled": "🔔 Уведомления о тренировках друзей *включены*. Ты будешь получать сообщение, когда кто-то завершит тренировку.",
         "notify_workouts_disabled": "🔕 Уведомления о тренировках друзей *выключены*.",
-        # Start
-        "welcome_intro": (
-            "💪 *Турникмен*\n\n"
-            "Привет! Я твой персональный тренер по подтягиваниям. Я помогу тебе следить за прогрессом, "
-            "адаптировать план тренировок и не терять мотивацию.\n\n"
-            "Бот полностью бесплатный. Навсегда.\n\n"
-            "🤖 Включает *Турникмен AI* — персональный ИИ-тренер на базе Google Gemini 3 Flash. "
-            "Знает всю историю твоих тренировок, отвечает на любые вопросы.\n\n"
-            "🐛 Сообщить о баге"
+        # Exercises
+        "ex_pullups": "Подтягивания",
+        "ex_pushups": "Отжимания",
+        "ex_dips": "Брусья",
+        "ex_gen_pullups": "подтягиваний",
+        "ex_gen_pushups": "отжиманий",
+        "ex_gen_dips": "отжиманий на брусьях",
+        "train_pick_exercise": "🏋️ Что тренируем сегодня?",
+        "ex_setup_prompt": (
+            "Первый раз! 💪 Сколько {ex} ты можешь сделать *за один подход* максимум?\n"
+            "_Введи честное число — программа подстроится под тебя._"
         ),
+        "ex_setup_ok": "✅ Дневная норма — *{base}*. Начинаем!",
+        # Start
         "welcome": (
             "💪 *Турникмен*\n\n"
-            "Привет! Я твой персональный тренер по подтягиваниям. Я помогу тебе следить за прогрессом, "
-            "адаптировать план тренировок и не терять мотивацию.\n\n"
+            "Привет! Я твой персональный тренер по подтягиваниям, отжиманиям и брусьям. "
+            "Я помогу тебе следить за прогрессом, адаптировать план тренировок и не терять мотивацию.\n\n"
             "Бот полностью бесплатный. Навсегда.\n\n"
             "🤖 Включает *Турникмен AI* — персональный ИИ-тренер на базе Google Gemini 3 Flash. "
             "Знает всю историю твоих тренировок, отвечает на любые вопросы.\n\n"
@@ -55,22 +58,25 @@ STRINGS = {
         ),
         "about": (
             "ℹ️ *О боте — 1/3*\n\n"
-            "💪 Турникмен — персональный тренер по подтягиваниям.\n\n"
+            "💪 Турникмен — персональный тренер по подтягиваниям, отжиманиям и брусьям.\n\n"
             "Бот строит план, отслеживает прогресс и адаптирует нагрузку под тебя автоматически.\n\n"
             "🔄 *7-дневный волновой цикл:*\n"
             "Средний → Лёгкий → Тяжёлый → Отдых → Плотность → Лёгкий → Отдых\n\n"
-            "Чередование нагрузки предотвращает привыкание и ускоряет рост.\n\n"
+            "Тип дня один для всех упражнений: он задаёт, насколько тяжело сегодня. "
+            "А какое упражнение делать — выбираешь ты: одно, два или все три. "
+            "День засчитан, если сделал хотя бы одно.\n\n"
             "📈 *Автоматическая прогрессия:*\n"
-            "Каждые 7 дней стабильной работы — база +5%.\n"
-            "Высокий RPE → нагрузка снижается. Низкий RPE → нагрузка повышается."
+            "У каждого упражнения своя норма. Стабильно выполняешь цикл — норма +5%.\n"
+            "Высокий RPE → нагрузка снижается. Низкий RPE → нагрузка повышается.\n\n"
+            "_Программу можно сменить в Настройках: Стандарт (5х/нед), Новичок (3х/нед), Продвинутый (6х/нед)._"
         ),
         "about_page2": (
             "ℹ️ *О боте — 2/3*\n\n"
             "📊 *RPE — оценка усилия:*\n"
             "После каждой тренировки оцени от 1 до 10 насколько было тяжело.\n"
-            "Бот корректирует план автоматически на основе скользящего среднего.\n\n"
+            "Бот корректирует норму упражнения автоматически на основе скользящего среднего.\n\n"
             "🧊 *Токены заморозки:*\n"
-            "Пропустил день — потрать токен, стрик сохранится.\n"
+            "Пропустил день — бот сам потратит токен, и стрик сохранится. Ничего нажимать не нужно.\n"
             "Как заработать: каждые 7 дней стрика подряд, при повышении ранга, при новом рекорде.\n"
             "Максимум — 5 токенов.\n\n"
             "🤖 *Турникмен AI:*\n"
@@ -84,7 +90,9 @@ STRINGS = {
         "about_page3": (
             "ℹ️ *О боте — 3/3*\n\n"
             "⭐ *Как работает XP:*\n"
-            "+1 XP за каждое выполненное подтягивание\n"
+            "+1 XP за подтягивание\n"
+            "+0.75 XP за отжимание на брусьях\n"
+            "+0.5 XP за отжимание\n"
             "+50 XP за каждый день стрика подряд\n\n"
             "🏅 *Ранги (как в CS:GO):*\n"
             "`Silver I                 0 XP`\n"
@@ -105,8 +113,8 @@ STRINGS = {
             "`LEM                 53 000 XP`\n"
             "`SMFC                63 000 XP`\n"
             "`The Global Elite    70 000 XP`\n\n"
-            "🎯 *До Global Elite:* ~1.5 года и ~40 000 подтягиваний\n"
-            "_(при средней норме 70 подтягиваний/день со стриком)_\n\n"
+            "🎯 *До Global Elite:* ~1.5 года при ~70 XP в день со стриком\n"
+            "_(например, 70 подтягиваний или 100 отжиманий + 20 подтягиваний)_\n\n"
             "🗑 *Удаление аккаунта:*\n"
             "Если ты решишь уйти — можно полностью удалить аккаунт через _Настройки_. "
             "Все данные будут стёрты навсегда."
@@ -120,7 +128,8 @@ STRINGS = {
         "btn_guide_extra": "Дополнительно →",
         "guide_intro": (
             "📖 *Руководство для новичка*\n\n"
-            "Бот помогает систематически увеличивать количество подтягиваний. "
+            "Бот помогает систематически прогрессировать в трёх упражнениях: "
+            "подтягивания, отжимания и брусья. "
             "Он строит план, отслеживает прогресс и адаптирует нагрузку под тебя.\n\n"
             "🤖 Есть встроенный *Турникмен AI* — задавай любые вопросы про тренировки или бот."
         ),
@@ -128,22 +137,28 @@ STRINGS = {
             "📋 *Шаг 1 — Регистрация*\n\n"
             "1. Нажми «💪 Войти в Турникмен»\n"
             "2. Укажи своё имя\n"
-            "3. Укажи максимальное количество подтягиваний за один подход"
+            "3. Укажи максимальное количество подтягиваний за один подход\n\n"
+            "_Отжимания и брусья настроишь позже — бот спросит твой максимум, "
+            "когда впервые выберешь это упражнение._"
         ),
         "guide_step2": (
             "📅 *Шаг 2 — Ежедневный план*\n\n"
-            "Бот чередует нагрузку по 7-дневному циклу:\n"
-            "• Средний — ~100% нормы\n"
-            "• Лёгкий — ~60–70% нормы\n"
-            "• Тяжёлый — ~120–130% нормы\n"
+            "У каждого дня есть тип — он общий для всех упражнений:\n"
+            "• Средний — 100% нормы\n"
+            "• Лёгкий — ~50–60% нормы\n"
+            "• Тяжёлый — ~115% нормы\n"
             "• Отдых — восстановление\n"
-            "• Плотность — много коротких подходов"
+            "• Плотность — много коротких подходов\n\n"
+            "Какое упражнение делать сегодня — выбираешь ты. "
+            "Хотя бы одно — и день засчитан."
         ),
         "guide_step3": (
             "🏋️ *Шаг 3 — Тренировка*\n\n"
             "1. Нажми «🏋️ Тренировка»\n"
-            "2. Делай подходы — нажимай на цифры или «✏️ Ввести вручную»\n"
-            "3. Нажми «✅ Завершить тренировку» когда закончишь"
+            "2. Выбери упражнение — подтягивания, отжимания или брусья\n"
+            "3. Делай подходы — нажимай на цифры или «✏️ Ввести вручную»\n"
+            "4. Нажми «✅ Завершить тренировку» когда закончишь\n\n"
+            "Хочешь ещё? Снова нажми «Тренировка» и выбери другое упражнение."
         ),
         "guide_step4": (
             "📊 *Шаг 4 — RPE (оценка усилия)*\n\n"
@@ -153,15 +168,17 @@ STRINGS = {
         ),
         "guide_extra": (
             "🔥 *Стрик и токены заморозки*\n\n"
-            "Стрик — количество дней подряд с тренировкой. Не прерывай его!\n"
-            "Если пропустил день — потрать токен заморозки, чтобы сохранить серию.\n\n"
+            "Стрик — количество дней подряд с тренировкой (любое упражнение) "
+            "или подтверждённым отдыхом. Не прерывай его!\n"
+            "Пропустил день — бот сам потратит токен заморозки, и серия сохранится.\n\n"
             "Как заработать новый токен:\n"
             "• 🔥 каждые 7 дней стрика подряд\n"
             "• ⬆️ при повышении уровня\n"
             "• 🏆 при новом личном рекорде\n"
             "_(максимум 5 токенов)_\n\n"
-            "📈 *Как меняется твоя база*\n\n"
-            "База — это твоя ежедневная норма подтягиваний. Она меняется автоматически.\n\n"
+            "📈 *Как меняется твоя норма*\n\n"
+            "У каждого упражнения своя дневная норма. Она меняется автоматически "
+            "и независимо от других упражнений.\n\n"
             "▲ *Повышается:*\n"
             "• +5% после завершения 7-дневного цикла, если среднее выполнение последних 5 тренировок ≥80%\n"
             "• +3% если средний RPE последних 3 сессий ≤5.5 и все цели выполнены\n\n"
@@ -175,31 +192,30 @@ STRINGS = {
             "Шаг засчитывается когда ты тренируешься или подтверждаешь день отдыха в боте. "
             "Пропустил день без открытия бота — шаг не засчитался, но начинать с нуля не нужно. "
             "Просто продолжи с того же места.\n\n"
-            "⬇️ *Что снижает план на завтра*\n\n"
-            "Если сегодня указал дополнительную активность — завтрашний план снизится:\n"
-            "• Бег + зал: до −40% от нормы\n"
-            "• Только зал: до −30%\n"
-            "• Только бег/кардио: до −22%\n"
-            "• Другая активность: до −15%\n"
-            "_Снижение не больше 50%. Указывай активность честно — бот защитит от перегрузки._\n\n"
             "📊 *Как RPE влияет на план*\n\n"
-            "RPE (1–10) влияет на базу долгосрочно через скользящее среднее за 3 сессии:\n"
-            "• RPE ≤5.5 (тренировки даются легко) → база постепенно растёт (+3%)\n"
+            "RPE (1–10) влияет на норму долгосрочно через скользящее среднее за 3 сессии "
+            "этого упражнения:\n"
+            "• RPE ≤5.5 (тренировки даются легко) → норма постепенно растёт (+3%)\n"
             "• RPE 5.5–7.0 (нормальная нагрузка) → без изменений\n"
-            "• RPE 7.0–8.5 (нагрузка высокая) → база слегка снижается (−2%)\n"
-            "• RPE ≥8.5 (постоянно на пределе) → база снижается (−5%)\n"
+            "• RPE 7.0–8.5 (нагрузка высокая) → норма слегка снижается (−2%)\n"
+            "• RPE ≥8.5 (постоянно на пределе) → норма снижается (−5%)\n"
             "_Одна тяжёлая тренировка ничего не изменит — важна тенденция за 3 подряд._\n\n"
+            "⭐ *XP за упражнения*\n\n"
+            "• Подтягивание — 1 XP\n"
+            "• Отжимание на брусьях — 0.75 XP\n"
+            "• Отжимание — 0.5 XP\n"
+            "• Каждый день стрика — +50 XP\n"
+            "Рейтинг недели и «Кочка недели» считаются по XP за неделю.\n\n"
             "📈 *Статистика и история*\n\n"
             "• «📊 Статистика» — прогресс, XP, уровень, стрик\n"
-            "• «🗓 История» — все прошлые тренировки по неделям\n\n"
+            "• «📋 История» — все прошлые тренировки по неделям\n\n"
             "🤖 *Турникмен AI*\n\n"
             "Нажми «🤖 Турникмен AI» — задай любой вопрос про тренировки или бот. ИИ знает всю твою историю.\n\n"
             "💡 *Совет*\n\n"
-            "Начни с консервативной нормы (50–80 подтягиваний в день). "
-            "Бот сам повысит её, когда ты будешь готов.\n\n"
+            "Начни с консервативной нормы. Бот сам повысит её, когда ты будешь готов.\n\n"
             "🔑 *Главный принцип*\n\n"
-            "Не успел сделать полную тренировку? Ничего страшного — залогируй хотя бы 10 подтягиваний. "
-            "Даже несколько подтягиваний, сделанных в свободную минуту, на длинной дистанции дают огромный эффект. "
+            "Не успел сделать полную тренировку? Ничего страшного — залогируй хотя бы 10 повторений. "
+            "Даже несколько повторений, сделанных в свободную минуту, на длинной дистанции дают огромный эффект. "
             "Мы здесь ради долгосрочного результата, а не идеального выполнения каждого дня. "
             "Последовательность важнее совершенства."
         ),
@@ -209,45 +225,28 @@ STRINGS = {
         "nothing_to_cancel": "Нечего отменять.",
         "cancelled": "❌ Действие отменено.",
         # Login / Registration
-        "enter_secret": "Введи секретный код для регистрации:\n_(/cancel — отменить)_",
-        "wrong_code": "❌ Неверный код. Попробуй ещё раз: ({attempts} из 3)",
-        "wrong_code_locked": "🔒 Слишком много попыток. Попробуй снова через 1 час.",
         "poke_already_today": "⏳ Ты уже отправил мотивацию {name} сегодня. Можно снова завтра.",
         "code_accepted": "Как тебя зовут?\n_(Введите минимум 3 символа)_",
         "hello_name": "👋 Привет, *{name}*!\n\nСколько подтягиваний ты можешь сделать *за один подход* максимум?\n_Введи честное число — программа подстроится под тебя._",
-        "enter_base": "Сколько подтягиваний твоя *дневная норма*?",
-        "enter_start_day": (
-            "Какой сейчас *день программы*?\n\n"
-            "_(1 — если это твой первый день тренировок на турнике\n"
-            "22 — если ты уже 22 дня в программе\n\n"
-            "Это нужно чтобы бот знал на каком этапе цикла ты находишься.\n"
-            "Можно изменить позже в Настройках.)_"
-        ),
         "welcome_user": "🎉 *Добро пожаловать, {name}!*\n\nМакс. за подход: *{max_pullups}* → дневная норма: *{base}* подтягиваний\nУровень: {level} — начинаем! 💪",
         "welcome_back": "👋 С возвращением, *{name}*!\n\nУровень: {level} ⭐ XP: {xp}\n🔥 Стрик: {streak} дней",
         "enter_number": "❌ Введи число, например: {example}",
         # Training
-        "train_day": "{icon} *{day_type} день*",
-        "train_goal": "🎯 Цель: *{planned}* подтягиваний",
+        "train_goal": "🎯 Цель: *{planned}* {ex}",
         "train_done_today": "✅ Сделано за сегодня: *{done}*",
         "train_done_now": "🏋️ Сделано сейчас: *{done}*",
         "train_in_progress": "🏋️ *Тренировка идёт...*\n_Нажми на число или введи вручную:_",
         "train_no_sets": "❌ Нечего отменять — подходов ещё нет.",
         "train_enter_reps": "Введи количество повторений в подходе:",
-        "train_rate_rpe": "Оцени по шкале от 1 до 10, насколько тяжелыми были подтягивания:\n1 = очень легко · 10 = полный отказ",
+        "train_rate_rpe": "Оцени по шкале от 1 до 10, насколько тяжёлой была тренировка:\n1 = очень легко · 10 = полный отказ",
         "train_rpe_invalid": "❌ Введи число 1-10 или нажми ⏭️ Пропустить.",
-        "train_extra_activity": "Была ли дополнительная активность сегодня?\n_(бег, зал, кардио — повлияет на план завтра)_",
-        "train_how_long": "Сколько минут занял *{act}*? (например: 45)",
-        "train_enter_mins": "❌ Введи число минут:",
         "train_cancelled": "🚫 Тренировка отменена.",
-        "train_confirm_cancel": "⚠️ Уверены что хотите отменить?\n\nВы потеряете *{done}* подтягиваний за {sets} подходов.",
+        "train_confirm_cancel": "⚠️ Уверены что хотите отменить?\n\nВы потеряете *{done}* повторений за {sets} подходов.",
         "train_yes_cancel": "❌ Да, отменить тренировку",
         "train_continue": "↩️ Нет, продолжить тренировку",
-        "train_already_done": "Тренировка уже завершена.",
         "train_lets_go": "💪 Продолжаем!",
-        "train_reduction": "\n⬇️ Снижено {pct}% за вчерашнюю активность",
         "train_complete": (
-            "{em} *Тренировка завершена!*\n\n"
+            "{em} *Тренировка завершена — {ex}!*\n\n"
             "📊 Сделано: *{done}* / {planned} ({pct})\n"
             "📦 Подходов: {sets}\n"
             "💪 RPE: {rpe}/10{rpe_comment}\n\n"
@@ -255,21 +254,18 @@ STRINGS = {
             "🏅 Уровень: {level} [{bar}] {to_next} до след.\n"
             "🔥 Стрик: {streak} дней"
         ),
-        "train_extra_note": "\n🏃 Доп. активность: {act} {mins} мин",
-        "train_rpe_trending_high": "\n⚠️ Средний RPE {avg:.1f} за 3 сессии — нагрузка слишком высокая. База снижена до {base} (−5%).",
-        "train_rpe_trending_moderate": "\n📉 Средний RPE {avg:.1f} за 3 сессии — нагрузка высокая. База немного снижена до {base} (−2%).",
-        "train_rpe_trending_low": "\n🚀 Средний RPE {avg:.1f} за 3 сессии — форма отличная! База повышена до {base} (+3%).",
-        "train_progression": "\n🎯 Цикл завершён! Стабильный прогресс — база повышена до {base} (+5%).",
+        "train_rpe_trending_high": "\n⚠️ Средний RPE {avg:.1f} за 3 сессии — нагрузка слишком высокая. Норма ({ex}) снижена до {base} (−5%).",
+        "train_rpe_trending_moderate": "\n📉 Средний RPE {avg:.1f} за 3 сессии — нагрузка высокая. Норма ({ex}) немного снижена до {base} (−2%).",
+        "train_rpe_trending_low": "\n🚀 Средний RPE {avg:.1f} за 3 сессии — форма отличная! Норма ({ex}) повышена до {base} (+3%).",
+        "train_progression": "\n🎯 Цикл завершён! Стабильный прогресс — норма ({ex}) повышена до {base} (+5%).",
         "density_hint": "💡 _День плотности: много коротких подходов, минимум отдыха между ними. Цель — набрать объём равномерно в течение дня._",
-        "train_friend_notify": "📣 *{name}* завершил тренировку!\n🎯 Цель: {planned} | Выполнено: {done} | Подходов: {sets}",
-        "set_pr_congrats": "🏆 *Новый личный рекорд: {reps} подтягиваний за подход!* Congrats! 🎉",
-        "set_pr_friend_line": "\n🏆 Личный рекорд за подход: *{reps}*",
+        "train_friend_notify": "📣 *{name}* завершил тренировку — {ex}!\n🎯 Цель: {planned} | Выполнено: {done} | Подходов: {sets}",
+        "set_pr_congrats": "🏆 *Новый личный рекорд: {reps} за подход ({ex})!* Congrats! 🎉",
+        "set_pr_friend_line": "\n🏆 Личный рекорд за подход ({ex}): *{reps}*",
         # Rest day override
         "rest_day_prompt": "😴 Сегодня день отдыха. Что хочешь сделать?",
         "rest_day_train": "💪 Тренироваться",
         "rest_day_rest": "😴 Отдыхать",
-        # Stats
-        "stats_title": "📊 *Статистика — {name}*",
         # Friends
         "btn_friends_prev": "← Пред.",
         "btn_friends_next": "След. →",
@@ -283,51 +279,30 @@ STRINGS = {
         # AI
         "ai_thinking": "🤖 Анализирую твои данные...",
         "ai_thinking_chat": "💭 Думаю...",
-        "ai_thinking_long": "⏳ Думаю дольше чем обычно, ещё немного...",
-        "ai_thinking_longer": "⏳ Ещё обрабатываю... почти готово",
-        "ai_thinking_almost": "⏳ Почти готово...",
-        "ai_no_data": "Сначала запиши несколько тренировок!",
         "ai_unavailable": "⚠️ ИИ временно недоступен — серверы перегружены. Попробуй ещё раз, обычно со второй-третьей попытки работает.",
         "ai_limit_daily": "🤖 Бот использовал дневной лимит запросов к ИИ. Попробуй снова завтра!",
         "ai_limit_minute": "🤖 Слишком много запросов к ИИ за раз. Подожди минуту и попробуй снова.",
-        "ai_system_prompt": (
-            "Ты персональный тренер по подтягиваниям. Анализируй данные атлета и давай "
-            "конкретные, персонализированные советы на русском языке (4-5 предложений). "
-            "Учитывай усталость по RPE, стрик и тип завтрашнего дня. "
-            "Будь прямым, мотивирующим и честным. Не давай общих советов."
-        ),
-        "ai_user_prompt": (
-            "Атлет: {name}\n"
-            "Стрик: {streak} дней | Уровень: {level} | База: {base} подтяг/день\n"
-            "День программы: {program_day} | Завтра: {next_day}\n\n"
-            "Последние тренировки:\n{summary}\n\n"
-            "Дай конкретный совет с учётом всех данных — что делать завтра и почему."
-        ),
         # Settings
-        "settings_title": "⚙️ *Настройки*\n\nБаза: {base} подтягиваний\nУведомления: {notify}\nЗаморозок: {freeze}",
+        "settings_title": "⚙️ *Настройки*\n\nНормы:\n{bases}\nУведомления: {notify}\nЗаморозок: {freeze}",
         "set_time_prompt": "Текущее время уведомлений: *{current}*\n\nВведи новое время в формате *ЧЧ:ММ* (например: 09:00):",
         "set_time_ok": "✅ Напоминания в *{time}*",
         "set_time_bad": "❌ Неверный формат. Введи как: 09:00",
-        "set_base_prompt": "Текущая норма: *{base}* подтягиваний/день\n\nВведи новое значение:",
-        "set_base_ok": "✅ Норма обновлена: *{base}* подтягиваний/день",
+        "set_base_pick": "Норму какого упражнения изменить?",
+        "set_base_prompt": "Текущая норма ({ex}): *{base}*/день\n\nВведи новое значение:",
+        "set_base_ok": "✅ Норма ({ex}): *{base}*/день",
         "set_base_range": "❌ Введи число от 1 до 500:",
         "edit_date_prompt": "Введи дату в формате *ДД.ММ*:",
         "edit_date_bad": "❌ Неверный формат. Введи как: 14.03",
-        "edit_done_prompt": "Сколько подтягиваний сделано *{date}*?",
+        "edit_pick_exercise": "Какое упражнение редактируем?",
+        "edit_done_prompt": "Сколько повторений ({ex}) сделано *{date}*?\n_0 — удалить запись_",
         "edit_rpe_prompt": "Оцени RPE (1-10) для того дня:",
-        "edit_ok": "✅ День *{date}* обновлён: {done} подтягиваний, RPE {rpe}",
-        "edit_deleted": "🗑 Тренировка за *{date}* удалена.",
+        "edit_ok": "✅ День *{date}* обновлён ({ex}): {done} повторений, RPE {rpe}",
+        "edit_deleted": "🗑 Запись ({ex}) за *{date}* удалена.",
         "edit_no_date": "❌ Ошибка: дата не найдена.",
-        "edit_ask_extras": "Добавить дополнительную активность и заметки к этой тренировке?",
-        "btn_yes_add": "✅ Да, добавить",
-        "btn_no_save": "⏭️ Нет, сохранить",
         "skip_date_prompt": "За какую дату добавить причину? Формат *ДД.ММ*:\n_(до 3 дней назад)_",
         "skip_date_range": "❌ Можно добавить причину только за последние 3 дня.",
         "skip_choose_reason": "Выбери причину:",
         "skip_ok": "✅ Причина добавлена за *{date}*: {reason}\n🔥 Стрик восстановлен!",
-        "skip_day_msg": "📅 День пропущен. Стрик сброшен.\n💪 Начни заново завтра!",
-        "freeze_ok": "🧊 Стрик заморожен! Осталось заморозок: {tokens}",
-        "freeze_none": "❌ Нет заморозок!",
         # Skip reasons
         "reason_study": "📚 Учёба/работа",
         "reason_sick": "🤒 Болезнь",
@@ -371,10 +346,8 @@ STRINGS = {
             "/fixbug — закрыть баг (admin)"
         ),
         # Reminders
-        "reminder_base_increased": "📈 Твоя база выросла до {base} — продолжай в том же духе!\n\n",
         "reminder_rest": "😴 Сегодня день отдыха. Восстанавливайся!",
-        "reminder_train": "🔔 Не забудь про подтягивания!\n📋 {day_type} день: {planned} подтягиваний\n{status}",
-        "reminder_done": "✅ Сделано: {done}",
+        "reminder_train": "🔔 Не забудь про тренировку!\n📋 {day_type} день:\n{plans}\n{status}",
         "reminder_not_started": "⏳ Ещё не начинал",
         # Language
         "lang_prompt": "🌐 Выбери язык / Choose language:",
@@ -382,9 +355,8 @@ STRINGS = {
         # History browser
         "btn_history": "📋 История",
         "history_title": "📋 *История — {date_from}–{date_to}*",
-        "history_week_total": "📊 Неделя: {done}/{planned} ({pct}%)",
+        "history_week_total": "📊 Неделя: {totals}",
         "history_no_data": "📋 *История*\n\nНет записей.",
-        "history_no_week_data": "📋 *История*\n\nПока нет данных за эту неделю.\nЗавершишь несколько тренировок — и здесь появится статистика 💪",
         "history_empty_day": "нет данных",
         # Poke messages
         "poke_msgs": [
@@ -402,39 +374,27 @@ STRINGS = {
         "welcome_greet_missing": "Не удалось отправить приветствие: пользователь недоступен.",
         "welcome_greet_self": "Себя приветствовать не нужно 😄",
         # Personal record
-        "personal_best": "🏆 Рекорд",
-        "new_pr": "\n\n🏆 *Новый рекорд дня: {done} подтягиваний!* 🎉",
-        # Workout notes
-        "train_notes_prompt": "📝 Заметки к тренировке?\n_(Что чувствовал, условия, мысли — любой текст)_",
-        "train_skip_notes": "⏭️ Без заметок",
+        "new_pr": "\n\n🏆 *Новый рекорд дня ({ex}): {done}!* 🎉",
         "train_saving": "⏳ Сохраняю...",
         # Upcoming schedule
-        "stats_schedule_title": "📅 *Ближайшие 7 дней:*",
         "stats_schedule_rest": "😴 Отдых",
-        # Progress chart
-        "stats_chart_title": "📈 *График (7 дней):*",
         # Weekly summary
         "weekly_summary_title": "📊 *Итоги недели*",
         "weekly_summary_body": (
-            "🏋️ Подтягиваний: *{done}* / {planned} ({pct}%)\n"
-            "🔥 Лучший день: {best_day} — {best_done} подтяг\n"
+            "🏋️ Объём:\n{volume}\n"
+            "⭐ XP за неделю: *{week_xp}*\n"
             "💪 Средний RPE: {avg_rpe}\n"
             "🔥 Стрик: *{streak}* дней\n"
             "🧊 Заморозок: {freeze}"
         ),
         "weekly_summary_no_workouts": "📊 На прошлой неделе тренировок не было. Не сдавайся! 💪",
         # Freeze token mechanic
-        "freeze_prompt": "🧊 Стрик вот-вот прервётся!\n\nИспользовать заморозку чтобы сохранить стрик?\n_(Осталось заморозок: {tokens})_",
-        "freeze_yes_btn": "🧊 Да, заморозить",
-        "freeze_no_btn": "❌ Нет, сбросить",
-        "freeze_used": "🧊 Заморозка использована! Стрик *{streak}* дней сохранён.\nОсталось заморозок: {tokens}",
-        "freeze_empty": "❌ Нет заморозок. Стрик сброшен. Начни заново! 💪",
         "token_earned_level": "\n\n🧊 *+1 заморозка* — за повышение уровня! _(всего: {tokens})_",
         "token_earned_streak": "\n\n🧊 *+1 заморозка* — за {streak} дней стрика подряд! _(всего: {tokens})_",
         "token_earned_pr": "\n\n🧊 *+1 заморозка* — за новый личный рекорд! _(всего: {tokens})_",
         # Leaderboard
         "btn_leaderboard": "🏆 Рейтинг",
-        "leaderboard_title": "🏆 *Рейтинг — неделя*",
+        "leaderboard_title": "🏆 *Рейтинг — XP за неделю*",
         "leaderboard_empty": "🏆 *Рейтинг*\n\nПока никого нет — ты первый! 💪",
         "leaderboard_you_marker": " ← ты",
         # Program selection
@@ -450,15 +410,15 @@ STRINGS = {
         "export_empty": "📋 Нет данных для экспорта.",
         # History monthly view
         "history_monthly_title": "📅 *История по месяцам*",
-        "history_monthly_row": "`{month}  {done}/{planned}  {pct}%  {days}д`",
+        "history_monthly_row": "`{month}  {totals}  {days}д`",
         "btn_history_monthly": "📅 По месяцам",
         "btn_history_weekly": "📅 По неделям",
         # Advanced analytics
         "btn_analytics": "📈 Подробно",
         "analytics_title": "📈 *Аналитика*",
-        "analytics_monthly_vol": "📊 *Объём по месяцам (посл. 6):*",
+        "analytics_monthly_vol": "📊 *Объём по месяцам (XP, посл. 6):*",
         "analytics_day_type": "📋 *Выполнение по типу дня:*",
-        "analytics_records": "🏆 *Рекорды:*\nЛучший день: {pr} подтяг\nЛучший подход: {set_pr} подтяг\nМакс. стрик: {max_streak} дней",
+        "analytics_records": "🏆 *Рекорды (день / подход):*\n{records}\n🔥 Макс. стрик: {max_streak} дней",
         "analytics_weekday": "📅 *Самый активный день недели:* {day} ({count} тренировок)",
         "btn_back_stats": "◀️ К статистике",
     },
@@ -476,7 +436,6 @@ STRINGS = {
         # Buttons - landing
         "btn_login": "💪 Join Pullup Pro",
         "btn_about": "ℹ️ About",
-        "btn_exit": "🚪 Exit",
         # Buttons - training
         "btn_undo": "↩️ Undo Set",
         "btn_manual": "✏️ Enter Manually",
@@ -494,20 +453,24 @@ STRINGS = {
         "btn_notify_workouts_off": "🔕 Friend Notifications: OFF",
         "notify_workouts_enabled": "🔔 Friend workout notifications *enabled*. You'll be notified when someone finishes a workout.",
         "notify_workouts_disabled": "🔕 Friend workout notifications *disabled*.",
-        # Start
-        "welcome_intro": (
-            "💪 *Pullup Pro*\n\n"
-            "Hey! I'm your personal pullup coach. I'll help you track progress, "
-            "adapt your training plan, and stay motivated.\n"
-            "The bot is completely free. Forever.\n\n"
-            "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
-            "It knows your full training history and answers any question.\n\n"
-            "🐛 Report a Bug"
+        # Exercises
+        "ex_pullups": "Pull-ups",
+        "ex_pushups": "Push-ups",
+        "ex_dips": "Dips",
+        "ex_gen_pullups": "pull-ups",
+        "ex_gen_pushups": "push-ups",
+        "ex_gen_dips": "dips",
+        "train_pick_exercise": "🏋️ What are we training today?",
+        "ex_setup_prompt": (
+            "First time! 💪 How many {ex} can you do *in one set* at your max?\n"
+            "_Be honest — the program will adjust to you._"
         ),
+        "ex_setup_ok": "✅ Daily target — *{base}*. Let's go!",
+        # Start
         "welcome": (
             "💪 *Pullup Pro*\n\n"
-            "Hey! I'm your personal pullup coach. I'll help you track progress, "
-            "adapt your training plan, and stay motivated.\n"
+            "Hey! I'm your personal coach for pull-ups, push-ups and dips. "
+            "I'll help you track progress, adapt your training plan, and stay motivated.\n"
             "The bot is completely free. Forever.\n\n"
             "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
             "It knows your full training history and answers any question.\n\n"
@@ -516,22 +479,25 @@ STRINGS = {
         ),
         "about": (
             "ℹ️ *About — 1/3*\n\n"
-            "💪 Pullup Pro — your personal pullup coach.\n\n"
+            "💪 Pullup Pro — your personal coach for pull-ups, push-ups and dips.\n\n"
             "The bot builds your plan, tracks progress, and automatically adapts load to you.\n\n"
             "🔄 *7-day wave cycle:*\n"
             "Medium → Light → Heavy → Rest → Density → Light → Rest\n\n"
-            "Alternating load prevents adaptation and accelerates growth.\n\n"
+            "The day type is shared by all exercises: it sets how hard today is. "
+            "Which exercise to do is up to you — one, two, or all three. "
+            "The day counts as long as you do at least one.\n\n"
             "📈 *Automatic progression:*\n"
-            "Every 7 days of steady work — base +5%.\n"
-            "High RPE → load decreases. Low RPE → load increases."
+            "Each exercise has its own daily target. Complete cycles consistently — target +5%.\n"
+            "High RPE → load decreases. Low RPE → load increases.\n\n"
+            "_You can switch programs in Settings: Standard (5x/week), Beginner (3x/week), Advanced (6x/week)._"
         ),
         "about_page2": (
             "ℹ️ *About — 2/3*\n\n"
             "📊 *RPE — effort rating:*\n"
             "After each workout rate how hard it was from 1 to 10.\n"
-            "The bot adjusts your plan automatically using a rolling average.\n\n"
+            "The bot adjusts the exercise's target automatically using a rolling average.\n\n"
             "🧊 *Freeze tokens:*\n"
-            "Miss a day? Spend a token and keep your streak.\n"
+            "Miss a day? The bot spends a token automatically and your streak survives — nothing to press.\n"
             "Earn tokens: every 7-day streak milestone, on each rank-up, on a new personal record.\n"
             "Maximum 5 tokens.\n\n"
             "🤖 *Turnikmen AI:*\n"
@@ -544,7 +510,9 @@ STRINGS = {
         "about_page3": (
             "ℹ️ *About — 3/3*\n\n"
             "⭐ *How XP works:*\n"
-            "+1 XP for every pullup completed\n"
+            "+1 XP per pull-up\n"
+            "+0.75 XP per dip\n"
+            "+0.5 XP per push-up\n"
             "+50 XP for every consecutive streak day\n\n"
             "🏅 *Ranks (CS:GO style):*\n"
             "`Silver I                 0 XP`\n"
@@ -565,8 +533,8 @@ STRINGS = {
             "`LEM                 53,000 XP`\n"
             "`SMFC                63,000 XP`\n"
             "`The Global Elite    70,000 XP`\n\n"
-            "🎯 *Road to Global Elite:* ~1.5 years and ~40,000 pullups\n"
-            "_(averaging 70 pullups/day with an active streak)_\n\n"
+            "🎯 *Road to Global Elite:* ~1.5 years at ~70 XP/day with an active streak\n"
+            "_(e.g. 70 pull-ups, or 100 push-ups + 20 pull-ups)_\n\n"
             "🗑 *Deleting your account:*\n"
             "If you ever decide to leave — you can permanently delete your account via _Settings_. "
             "All data will be erased forever."
@@ -580,7 +548,8 @@ STRINGS = {
         "btn_guide_extra": "More →",
         "guide_intro": (
             "📖 *Beginner's Guide*\n\n"
-            "The bot helps you systematically increase your pullup count. "
+            "The bot helps you progress systematically in three exercises: "
+            "pull-ups, push-ups and dips. "
             "It builds your plan, tracks progress, and automatically adapts load to you.\n\n"
             "🤖 Includes built-in *Turnikmen AI* — ask anything about your training or the bot."
         ),
@@ -588,22 +557,28 @@ STRINGS = {
             "📋 *Step 1 — Registration*\n\n"
             "1. Tap «💪 Join Turnikmen»\n"
             "2. Enter your name\n"
-            "3. Enter your max pullups in one set"
+            "3. Enter your max pullups in one set\n\n"
+            "_Push-ups and dips get set up later — the bot asks for your max "
+            "the first time you pick that exercise._"
         ),
         "guide_step2": (
             "📅 *Step 2 — Your Daily Plan*\n\n"
-            "The bot alternates load on a 7-day wave cycle:\n"
-            "• Medium — ~100% of your target\n"
-            "• Light — ~60–70% of your target\n"
-            "• Heavy — ~120–130% of your target\n"
+            "Every day has a type — shared by all exercises:\n"
+            "• Medium — 100% of your target\n"
+            "• Light — ~50–60% of your target\n"
+            "• Heavy — ~115% of your target\n"
             "• Rest — recovery day\n"
-            "• Density — many short sets"
+            "• Density — many short sets\n\n"
+            "Which exercise to do today is your choice. "
+            "At least one — and the day counts."
         ),
         "guide_step3": (
             "🏋️ *Step 3 — Training*\n\n"
             "1. Tap «🏋️ Training»\n"
-            "2. Do sets — tap the numbers or «✏️ Enter Manually»\n"
-            "3. Tap «✅ Finish Training» when done"
+            "2. Pick an exercise — pull-ups, push-ups or dips\n"
+            "3. Do sets — tap the numbers or «✏️ Enter Manually»\n"
+            "4. Tap «✅ Finish Training» when done\n\n"
+            "Want more? Tap «Training» again and pick another exercise."
         ),
         "guide_step4": (
             "📊 *Step 4 — RPE (Effort Rating)*\n\n"
@@ -613,15 +588,17 @@ STRINGS = {
         ),
         "guide_extra": (
             "🔥 *Streak & Freeze Tokens*\n\n"
-            "Your streak counts days trained in a row. Keep it alive!\n"
-            "Miss a day? Use a freeze token to protect your streak.\n\n"
+            "Your streak counts consecutive days with a workout (any exercise) "
+            "or a confirmed rest day. Keep it alive!\n"
+            "Miss a day? The bot spends a freeze token automatically and your streak survives.\n\n"
             "How to earn tokens:\n"
             "• 🔥 every 7-day streak milestone\n"
             "• ⬆️ each time you level up\n"
             "• 🏆 when you set a new personal record\n"
             "_(maximum 5 tokens)_\n\n"
-            "📈 *How your base changes*\n\n"
-            "Your base is your daily pullup target. It adjusts automatically.\n\n"
+            "📈 *How your targets change*\n\n"
+            "Each exercise has its own daily target. It adjusts automatically "
+            "and independently of the other exercises.\n\n"
             "▲ *Increases when:*\n"
             "• +5% after completing a 7-day cycle if your last 5 training sessions averaged ≥80% completion\n"
             "• +3% if your average RPE over the last 3 sessions is ≤5.5 and all targets were hit\n\n"
@@ -635,30 +612,29 @@ STRINGS = {
             "A step is counted each time you train or confirm a rest day in the bot. "
             "If you skip a day without opening the bot, that step isn't counted, "
             "but you don't restart from zero. Just continue from where you left off.\n\n"
-            "⬇️ *What reduces tomorrow's plan*\n\n"
-            "If you log extra activity today, tomorrow's plan will be reduced:\n"
-            "• Running + gym: up to −40% of target\n"
-            "• Gym only: up to −30%\n"
-            "• Running/cardio only: up to −22%\n"
-            "• Other activity: up to −15%\n"
-            "_Never below 50%. Log your activity honestly — the bot will protect you from overload._\n\n"
             "📊 *How RPE affects your plan*\n\n"
-            "RPE (1–10) shapes your base over time via a rolling average of 3 sessions:\n"
-            "• RPE ≤5.5 (workouts feel easy) → base gradually increases (+3%)\n"
+            "RPE (1–10) shapes each exercise's target over time via a rolling average "
+            "of that exercise's last 3 sessions:\n"
+            "• RPE ≤5.5 (workouts feel easy) → target gradually increases (+3%)\n"
             "• RPE 5.5–7.0 (normal load) → no change\n"
-            "• RPE 7.0–8.5 (load is high) → base eases slightly (−2%)\n"
-            "• RPE ≥8.5 (constantly at the limit) → base decreases (−5%)\n"
+            "• RPE 7.0–8.5 (load is high) → target eases slightly (−2%)\n"
+            "• RPE ≥8.5 (constantly at the limit) → target decreases (−5%)\n"
             "_One hard session won't change anything — the trend over 3 in a row matters._\n\n"
+            "⭐ *XP per exercise*\n\n"
+            "• Pull-up — 1 XP\n"
+            "• Dip — 0.75 XP\n"
+            "• Push-up — 0.5 XP\n"
+            "• Each streak day — +50 XP\n"
+            "The weekly leaderboard and Beast of the Week are ranked by weekly XP.\n\n"
             "📈 *Stats & History*\n\n"
             "• «📊 Statistics» — progress, XP, level, streak\n"
-            "• «🗓 History» — all past workouts by week\n\n"
+            "• «📋 History» — all past workouts by week\n\n"
             "🤖 *Turnikmen AI*\n\n"
             "Tap «🤖 Turnikmen AI» to chat — ask anything about your training or how the bot works. It knows your full history.\n\n"
             "💡 *Tip*\n\n"
-            "Start with a conservative target (50–80 pullups per day). "
-            "The bot will raise it automatically when you're ready.\n\n"
+            "Start with a conservative target. The bot will raise it automatically when you're ready.\n\n"
             "🔑 *The key principle*\n\n"
-            "Can't finish the full workout today? That's fine — log even 10 pullups. "
+            "Can't finish the full workout today? That's fine — log even 10 reps. "
             "A few reps squeezed into a spare moment add up to a huge impact over the long run. "
             "We're here for long-term results, not short-term perfection. "
             "Consistency beats perfection every time."
@@ -669,45 +645,28 @@ STRINGS = {
         "nothing_to_cancel": "Nothing to cancel.",
         "cancelled": "❌ Action cancelled.",
         # Login / Registration
-        "enter_secret": "Enter the secret code to register:\n_(/cancel to cancel)_",
-        "wrong_code": "❌ Wrong code. Try again: ({attempts} of 3)",
-        "wrong_code_locked": "🔒 Too many attempts. Try again in 1 hour.",
         "poke_already_today": "⏳ You already sent motivation to {name} today. Try again tomorrow.",
         "code_accepted": "What's your name?\n_(Enter at least 3 characters)_",
         "hello_name": "👋 Hi, *{name}*!\n\nHow many pullups can you do in *one set* at your max?\n_Be honest — the program will adjust to you._",
-        "enter_base": "What's your *daily pullup target*?",
-        "enter_start_day": (
-            "What *program day* are you on?\n\n"
-            "_(1 — if this is your very first day of pullup training\n"
-            "22 — if you've already been training for 22 days\n\n"
-            "This tells the bot where you are in the wave cycle.\n"
-            "You can change it later in Settings.)_"
-        ),
         "welcome_user": "🎉 *Welcome, {name}!*\n\nMax per set: *{max_pullups}* → daily target: *{base}* pullups\nLevel: {level} — let's go! 💪",
         "welcome_back": "👋 Welcome back, *{name}*!\n\nLevel: {level} ⭐ XP: {xp}\n🔥 Streak: {streak} days",
         "enter_number": "❌ Enter a number, e.g.: {example}",
         # Training
-        "train_day": "{icon} *{day_type} day*",
-        "train_goal": "🎯 Goal: *{planned}* pullups",
+        "train_goal": "🎯 Goal: *{planned}* {ex}",
         "train_done_today": "✅ Done today: *{done}*",
         "train_done_now": "🏋️ Done now: *{done}*",
         "train_in_progress": "🏋️ *Training in progress...*\n_Tap a number or enter manually:_",
         "train_no_sets": "❌ Nothing to undo — no sets yet.",
         "train_enter_reps": "Enter the number of reps:",
-        "train_rate_rpe": "Rate from 1 to 10 how hard the pullups were:\n1 = very easy · 10 = total failure",
+        "train_rate_rpe": "Rate from 1 to 10 how hard the workout was:\n1 = very easy · 10 = total failure",
         "train_rpe_invalid": "❌ Enter a number 1-10 or tap ⏭️ Skip.",
-        "train_extra_activity": "Any extra activity today?\n_(running, gym, cardio — affects tomorrow's plan)_",
-        "train_how_long": "How many minutes was *{act}*? (e.g.: 45)",
-        "train_enter_mins": "❌ Enter number of minutes:",
         "train_cancelled": "🚫 Training cancelled.",
-        "train_confirm_cancel": "⚠️ Are you sure you want to cancel?\n\nYou'll lose *{done}* pullups from {sets} sets.",
+        "train_confirm_cancel": "⚠️ Are you sure you want to cancel?\n\nYou'll lose *{done}* reps from {sets} sets.",
         "train_yes_cancel": "❌ Yes, cancel training",
         "train_continue": "↩️ No, continue training",
-        "train_already_done": "Training already finished.",
         "train_lets_go": "💪 Let's go!",
-        "train_reduction": "\n⬇️ Reduced {pct}% due to yesterday's activity",
         "train_complete": (
-            "{em} *Training complete!*\n\n"
+            "{em} *Training complete — {ex}!*\n\n"
             "📊 Done: *{done}* / {planned} ({pct})\n"
             "📦 Sets: {sets}\n"
             "💪 RPE: {rpe}/10{rpe_comment}\n\n"
@@ -715,21 +674,18 @@ STRINGS = {
             "🏅 Level: {level} [{bar}] {to_next} to next\n"
             "🔥 Streak: {streak} days"
         ),
-        "train_extra_note": "\n🏃 Extra activity: {act} {mins} min",
-        "train_rpe_trending_high": "\n⚠️ Avg RPE {avg:.1f} over 3 sessions — load too high. Base reduced to {base} (−5%).",
-        "train_rpe_trending_moderate": "\n📉 Avg RPE {avg:.1f} over 3 sessions — load is high. Base eased slightly to {base} (−2%).",
-        "train_rpe_trending_low": "\n🚀 Avg RPE {avg:.1f} over 3 sessions — great form! Base raised to {base} (+3%).",
-        "train_progression": "\n🎯 Cycle complete! Consistent progress — base raised to {base} (+5%).",
+        "train_rpe_trending_high": "\n⚠️ Avg RPE {avg:.1f} over 3 sessions — load too high. Target ({ex}) reduced to {base} (−5%).",
+        "train_rpe_trending_moderate": "\n📉 Avg RPE {avg:.1f} over 3 sessions — load is high. Target ({ex}) eased slightly to {base} (−2%).",
+        "train_rpe_trending_low": "\n🚀 Avg RPE {avg:.1f} over 3 sessions — great form! Target ({ex}) raised to {base} (+3%).",
+        "train_progression": "\n🎯 Cycle complete! Consistent progress — target ({ex}) raised to {base} (+5%).",
         "density_hint": "💡 _Density day: many short sets, minimal rest between them. Goal — accumulate volume spread throughout the day._",
-        "train_friend_notify": "📣 *{name}* finished training!\n🎯 Goal: {planned} | Done: {done} | Sets: {sets}",
-        "set_pr_congrats": "🏆 *New personal record: {reps} pullups in one set!* Congrats! 🎉",
-        "set_pr_friend_line": "\n🏆 All-time set PR: *{reps}*",
+        "train_friend_notify": "📣 *{name}* finished training — {ex}!\n🎯 Goal: {planned} | Done: {done} | Sets: {sets}",
+        "set_pr_congrats": "🏆 *New personal record: {reps} in one set ({ex})!* Congrats! 🎉",
+        "set_pr_friend_line": "\n🏆 All-time set PR ({ex}): *{reps}*",
         # Rest day override
         "rest_day_prompt": "😴 Today is a rest day. What do you want to do?",
         "rest_day_train": "💪 Train anyway",
         "rest_day_rest": "😴 Rest",
-        # Stats
-        "stats_title": "📊 *Statistics — {name}*",
         # Friends
         "btn_friends_prev": "← Prev",
         "btn_friends_next": "Next →",
@@ -743,51 +699,30 @@ STRINGS = {
         # AI
         "ai_thinking": "🤖 Analyzing your data...",
         "ai_thinking_chat": "💭 Thinking...",
-        "ai_thinking_long": "⏳ Taking a bit longer than usual, almost there...",
-        "ai_thinking_longer": "⏳ Still processing... nearly done",
-        "ai_thinking_almost": "⏳ Almost ready...",
-        "ai_no_data": "Log some workouts first!",
         "ai_unavailable": "⚠️ AI is temporarily unavailable — servers are overloaded. Try again, it usually works on the second or third attempt.",
         "ai_limit_daily": "🤖 The bot has used up its daily AI request limit. Please try again tomorrow!",
         "ai_limit_minute": "🤖 Too many AI requests at once. Wait a minute and try again.",
-        "ai_system_prompt": (
-            "You are a personal pullup coach. Analyze the athlete's data and give "
-            "specific, personalized advice in English (4-5 sentences). "
-            "Consider fatigue from RPE, streak, and tomorrow's session type. "
-            "Be direct, motivating and honest. No generic tips."
-        ),
-        "ai_user_prompt": (
-            "Athlete: {name}\n"
-            "Streak: {streak} days | Level: {level} | Base: {base} pullups/day\n"
-            "Program day: {program_day} | Tomorrow: {next_day}\n\n"
-            "Recent workouts:\n{summary}\n\n"
-            "Give specific advice considering all the data — what to do tomorrow and why."
-        ),
         # Settings
-        "settings_title": "⚙️ *Settings*\n\nBase: {base} pullups\nNotifications: {notify}\nFreezes: {freeze}",
+        "settings_title": "⚙️ *Settings*\n\nTargets:\n{bases}\nNotifications: {notify}\nFreezes: {freeze}",
         "set_time_prompt": "Current notification time: *{current}*\n\nEnter new time as *HH:MM* (e.g.: 09:00):",
         "set_time_ok": "✅ Reminders at *{time}*",
         "set_time_bad": "❌ Invalid format. Enter as: 09:00",
-        "set_base_prompt": "Current target: *{base}* pullups/day\n\nEnter new value:",
-        "set_base_ok": "✅ Target updated: *{base}* pullups/day",
+        "set_base_pick": "Which exercise's target do you want to change?",
+        "set_base_prompt": "Current target ({ex}): *{base}*/day\n\nEnter new value:",
+        "set_base_ok": "✅ Target ({ex}): *{base}*/day",
         "set_base_range": "❌ Enter a number from 1 to 500:",
         "edit_date_prompt": "Enter date as *DD.MM*:",
         "edit_date_bad": "❌ Invalid format. Enter as: 14.03",
-        "edit_done_prompt": "How many pullups done on *{date}*?",
+        "edit_pick_exercise": "Which exercise are we editing?",
+        "edit_done_prompt": "How many reps ({ex}) done on *{date}*?\n_0 — delete the record_",
         "edit_rpe_prompt": "Rate RPE (1-10) for that day:",
-        "edit_ok": "✅ Day *{date}* updated: {done} pullups, RPE {rpe}",
-        "edit_deleted": "🗑 Workout for *{date}* deleted.",
+        "edit_ok": "✅ Day *{date}* updated ({ex}): {done} reps, RPE {rpe}",
+        "edit_deleted": "🗑 Record ({ex}) for *{date}* deleted.",
         "edit_no_date": "❌ Error: date not found.",
-        "edit_ask_extras": "Add extra activity and notes to this session?",
-        "btn_yes_add": "✅ Yes, add",
-        "btn_no_save": "⏭️ No, save",
         "skip_date_prompt": "For which date? Format *DD.MM*:\n_(up to 3 days ago)_",
         "skip_date_range": "❌ Can only add reason for the last 3 days.",
         "skip_choose_reason": "Choose a reason:",
         "skip_ok": "✅ Reason added for *{date}*: {reason}\n🔥 Streak restored!",
-        "skip_day_msg": "📅 Day skipped. Streak reset.\n💪 Start again tomorrow!",
-        "freeze_ok": "🧊 Streak frozen! Freezes left: {tokens}",
-        "freeze_none": "❌ No freezes left!",
         # Skip reasons
         "reason_study": "📚 Study/Work",
         "reason_sick": "🤒 Illness",
@@ -831,10 +766,8 @@ STRINGS = {
             "/fixbug — close bug (admin)"
         ),
         # Reminders
-        "reminder_base_increased": "📈 Your base increased to {base} — keep it up!\n\n",
         "reminder_rest": "😴 Today is a rest day. Recover!",
-        "reminder_train": "🔔 Don't forget pullups!\n📋 {day_type} day: {planned} pullups\n{status}",
-        "reminder_done": "✅ Done: {done}",
+        "reminder_train": "🔔 Don't forget your workout!\n📋 {day_type} day:\n{plans}\n{status}",
         "reminder_not_started": "⏳ Haven't started yet",
         # Language
         "lang_prompt": "🌐 Выбери язык / Choose language:",
@@ -842,9 +775,8 @@ STRINGS = {
         # History browser
         "btn_history": "📋 History",
         "history_title": "📋 *History — {date_from}–{date_to}*",
-        "history_week_total": "📊 Week: {done}/{planned} ({pct}%)",
+        "history_week_total": "📊 Week: {totals}",
         "history_no_data": "📋 *History*\n\nNo records yet.",
-        "history_no_week_data": "📋 *History*\n\nNo data for this week yet.\nComplete a few workouts and your stats will appear here 💪",
         "history_empty_day": "no data",
         # Poke messages
         "poke_msgs": [
@@ -862,39 +794,27 @@ STRINGS = {
         "welcome_greet_already": "You already welcomed {name}.",
         "welcome_greet_missing": "Couldn't send greeting: user is unavailable.",
         "welcome_greet_self": "No need to welcome yourself 😄",
-        "personal_best": "🏆 Best",
-        "new_pr": "\n\n🏆 *New day record: {done} pullups!* 🎉",
-        # Workout notes
-        "train_notes_prompt": "📝 Any notes about this workout?\n_(How you felt, conditions, thoughts — anything)_",
-        "train_skip_notes": "⏭️ Skip notes",
+        "new_pr": "\n\n🏆 *New day record ({ex}): {done}!* 🎉",
         "train_saving": "⏳ Saving...",
         # Upcoming schedule
-        "stats_schedule_title": "📅 *Next 7 days:*",
         "stats_schedule_rest": "😴 Rest",
-        # Progress chart
-        "stats_chart_title": "📈 *Chart (7 days):*",
         # Weekly summary
         "weekly_summary_title": "📊 *Weekly Summary*",
         "weekly_summary_body": (
-            "🏋️ Pullups: *{done}* / {planned} ({pct}%)\n"
-            "🔥 Best day: {best_day} — {best_done} pullups\n"
+            "🏋️ Volume:\n{volume}\n"
+            "⭐ Weekly XP: *{week_xp}*\n"
             "💪 Avg RPE: {avg_rpe}\n"
             "🔥 Streak: *{streak}* days\n"
             "🧊 Freezes: {freeze}"
         ),
         "weekly_summary_no_workouts": "📊 No workouts last week. Don't give up! 💪",
         # Freeze token mechanic
-        "freeze_prompt": "🧊 Your streak is about to break!\n\nUse a freeze token to protect your streak?\n_(Freezes left: {tokens})_",
-        "freeze_yes_btn": "🧊 Yes, freeze it",
-        "freeze_no_btn": "❌ No, reset",
-        "freeze_used": "🧊 Freeze used! Streak *{streak}* days protected.\nFreezes left: {tokens}",
-        "freeze_empty": "❌ No freezes left. Streak reset. Start fresh! 💪",
         "token_earned_level": "\n\n🧊 *+1 freeze token* — for reaching a new level! _(total: {tokens})_",
         "token_earned_streak": "\n\n🧊 *+1 freeze token* — for a {streak}-day streak! _(total: {tokens})_",
         "token_earned_pr": "\n\n🧊 *+1 freeze token* — for a new personal record! _(total: {tokens})_",
         # Leaderboard
         "btn_leaderboard": "🏆 Leaderboard",
-        "leaderboard_title": "🏆 *Leaderboard — this week*",
+        "leaderboard_title": "🏆 *Leaderboard — weekly XP*",
         "leaderboard_empty": "🏆 *Leaderboard*\n\nNo one yet — you're first! 💪",
         "leaderboard_you_marker": " ← you",
         # Program selection
@@ -910,15 +830,15 @@ STRINGS = {
         "export_empty": "📋 No data to export.",
         # History monthly view
         "history_monthly_title": "📅 *History by Month*",
-        "history_monthly_row": "`{month}  {done}/{planned}  {pct}%  {days}d`",
+        "history_monthly_row": "`{month}  {totals}  {days}d`",
         "btn_history_monthly": "📅 By Month",
         "btn_history_weekly": "📅 By Week",
         # Advanced analytics
         "btn_analytics": "📈 Analytics",
         "analytics_title": "📈 *Analytics*",
-        "analytics_monthly_vol": "📊 *Volume by Month (last 6):*",
+        "analytics_monthly_vol": "📊 *Volume by Month (XP, last 6):*",
         "analytics_day_type": "📋 *Completion by Day Type:*",
-        "analytics_records": "🏆 *Records:*\nBest day: {pr} pullups\nBest set: {set_pr} pullups\nMax streak: {max_streak} days",
+        "analytics_records": "🏆 *Records (day / set):*\n{records}\n🔥 Max streak: {max_streak} days",
         "analytics_weekday": "📅 *Most trained day:* {day} ({count} sessions)",
         "btn_back_stats": "◀️ Back to Stats",
     },
