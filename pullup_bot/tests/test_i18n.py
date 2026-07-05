@@ -31,7 +31,7 @@ def test_ru_en_key_parity():
 
 
 def test_exercise_names_defined():
-    for ex in ["pullups", "pushups", "dips"]:
+    for ex in ["pullups", "pushups", "dips", "squats"]:
         for lang in ["ru", "en"]:
             assert t(f"ex_{ex}", lang) != f"ex_{ex}"
             assert t(f"ex_gen_{ex}", lang) != f"ex_gen_{ex}"

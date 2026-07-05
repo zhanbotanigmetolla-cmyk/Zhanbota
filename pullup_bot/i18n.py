@@ -36,9 +36,11 @@ STRINGS = {
         "ex_pullups": "Подтягивания",
         "ex_pushups": "Отжимания",
         "ex_dips": "Брусья",
+        "ex_squats": "Приседания",
         "ex_gen_pullups": "подтягиваний",
         "ex_gen_pushups": "отжиманий",
         "ex_gen_dips": "отжиманий на брусьях",
+        "ex_gen_squats": "приседаний",
         "train_pick_exercise": "🏋️ Что тренируем сегодня?",
         "ex_setup_prompt": (
             "Первый раз! 💪 Сколько {ex} ты можешь сделать *за один подход* максимум?\n"
@@ -48,7 +50,7 @@ STRINGS = {
         # Start
         "welcome": (
             "💪 *Турникмен*\n\n"
-            "Привет! Я твой персональный тренер по подтягиваниям, отжиманиям и брусьям. "
+            "Привет! Я твой персональный тренер по подтягиваниям, отжиманиям, брусьям и приседаниям. "
             "Я помогу тебе следить за прогрессом, адаптировать план тренировок и не терять мотивацию.\n\n"
             "Бот полностью бесплатный. Навсегда.\n\n"
             "🤖 Включает *Турникмен AI* — персональный ИИ-тренер на базе Google Gemini 3 Flash. "
@@ -58,7 +60,7 @@ STRINGS = {
         ),
         "about": (
             "ℹ️ *О боте — 1/3*\n\n"
-            "💪 Турникмен — персональный тренер по подтягиваниям, отжиманиям и брусьям.\n\n"
+            "💪 Турникмен — персональный тренер по подтягиваниям, отжиманиям, брусьям и приседаниям.\n\n"
             "Бот строит план, отслеживает прогресс и адаптирует нагрузку под тебя автоматически.\n\n"
             "🔄 *7-дневный волновой цикл:*\n"
             "Средний → Лёгкий → Тяжёлый → Отдых → Плотность → Лёгкий → Отдых\n\n"
@@ -93,6 +95,7 @@ STRINGS = {
             "+1 XP за подтягивание\n"
             "+0.75 XP за отжимание на брусьях\n"
             "+0.5 XP за отжимание\n"
+            "+0.25 XP за приседание\n"
             "+50 XP за каждый день стрика подряд\n\n"
             "🏅 *Ранги (как в CS:GO):*\n"
             "`Silver I                 0 XP`\n"
@@ -128,8 +131,8 @@ STRINGS = {
         "btn_guide_extra": "Дополнительно →",
         "guide_intro": (
             "📖 *Руководство для новичка*\n\n"
-            "Бот помогает систематически прогрессировать в трёх упражнениях: "
-            "подтягивания, отжимания и брусья. "
+            "Бот помогает систематически прогрессировать в четырёх упражнениях: "
+            "подтягивания, отжимания, брусья и приседания. "
             "Он строит план, отслеживает прогресс и адаптирует нагрузку под тебя.\n\n"
             "🤖 Есть встроенный *Турникмен AI* — задавай любые вопросы про тренировки или бот."
         ),
@@ -138,8 +141,8 @@ STRINGS = {
             "1. Нажми «💪 Войти в Турникмен»\n"
             "2. Укажи своё имя\n"
             "3. Укажи максимальное количество подтягиваний за один подход\n\n"
-            "_Отжимания и брусья настроишь позже — бот спросит твой максимум, "
-            "когда впервые выберешь это упражнение._"
+            "_Остальные упражнения настроишь позже — бот спросит твой максимум, "
+            "когда впервые выберешь их._"
         ),
         "guide_step2": (
             "📅 *Шаг 2 — Ежедневный план*\n\n"
@@ -155,7 +158,7 @@ STRINGS = {
         "guide_step3": (
             "🏋️ *Шаг 3 — Тренировка*\n\n"
             "1. Нажми «🏋️ Тренировка»\n"
-            "2. Выбери упражнение — подтягивания, отжимания или брусья\n"
+            "2. Выбери упражнение — подтягивания, отжимания, брусья или приседания\n"
             "3. Делай подходы — нажимай на цифры или «✏️ Ввести вручную»\n"
             "4. Нажми «✅ Завершить тренировку» когда закончишь\n\n"
             "Хочешь ещё? Снова нажми «Тренировка» и выбери другое упражнение."
@@ -204,6 +207,7 @@ STRINGS = {
             "• Подтягивание — 1 XP\n"
             "• Отжимание на брусьях — 0.75 XP\n"
             "• Отжимание — 0.5 XP\n"
+            "• Приседание — 0.25 XP\n"
             "• Каждый день стрика — +50 XP\n"
             "Рейтинг недели и «Кочка недели» считаются по XP за неделю.\n\n"
             "📈 *Статистика и история*\n\n"
@@ -457,9 +461,11 @@ STRINGS = {
         "ex_pullups": "Pull-ups",
         "ex_pushups": "Push-ups",
         "ex_dips": "Dips",
+        "ex_squats": "Squats",
         "ex_gen_pullups": "pull-ups",
         "ex_gen_pushups": "push-ups",
         "ex_gen_dips": "dips",
+        "ex_gen_squats": "squats",
         "train_pick_exercise": "🏋️ What are we training today?",
         "ex_setup_prompt": (
             "First time! 💪 How many {ex} can you do *in one set* at your max?\n"
@@ -469,7 +475,7 @@ STRINGS = {
         # Start
         "welcome": (
             "💪 *Pullup Pro*\n\n"
-            "Hey! I'm your personal coach for pull-ups, push-ups and dips. "
+            "Hey! I'm your personal coach for pull-ups, push-ups, dips and squats. "
             "I'll help you track progress, adapt your training plan, and stay motivated.\n"
             "The bot is completely free. Forever.\n\n"
             "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
@@ -479,7 +485,7 @@ STRINGS = {
         ),
         "about": (
             "ℹ️ *About — 1/3*\n\n"
-            "💪 Pullup Pro — your personal coach for pull-ups, push-ups and dips.\n\n"
+            "💪 Pullup Pro — your personal coach for pull-ups, push-ups, dips and squats.\n\n"
             "The bot builds your plan, tracks progress, and automatically adapts load to you.\n\n"
             "🔄 *7-day wave cycle:*\n"
             "Medium → Light → Heavy → Rest → Density → Light → Rest\n\n"
@@ -513,6 +519,7 @@ STRINGS = {
             "+1 XP per pull-up\n"
             "+0.75 XP per dip\n"
             "+0.5 XP per push-up\n"
+            "+0.25 XP per squat\n"
             "+50 XP for every consecutive streak day\n\n"
             "🏅 *Ranks (CS:GO style):*\n"
             "`Silver I                 0 XP`\n"
@@ -548,8 +555,8 @@ STRINGS = {
         "btn_guide_extra": "More →",
         "guide_intro": (
             "📖 *Beginner's Guide*\n\n"
-            "The bot helps you progress systematically in three exercises: "
-            "pull-ups, push-ups and dips. "
+            "The bot helps you progress systematically in four exercises: "
+            "pull-ups, push-ups, dips and squats. "
             "It builds your plan, tracks progress, and automatically adapts load to you.\n\n"
             "🤖 Includes built-in *Turnikmen AI* — ask anything about your training or the bot."
         ),
@@ -558,8 +565,8 @@ STRINGS = {
             "1. Tap «💪 Join Turnikmen»\n"
             "2. Enter your name\n"
             "3. Enter your max pullups in one set\n\n"
-            "_Push-ups and dips get set up later — the bot asks for your max "
-            "the first time you pick that exercise._"
+            "_The other exercises get set up later — the bot asks for your max "
+            "the first time you pick them._"
         ),
         "guide_step2": (
             "📅 *Step 2 — Your Daily Plan*\n\n"
@@ -575,7 +582,7 @@ STRINGS = {
         "guide_step3": (
             "🏋️ *Step 3 — Training*\n\n"
             "1. Tap «🏋️ Training»\n"
-            "2. Pick an exercise — pull-ups, push-ups or dips\n"
+            "2. Pick an exercise — pull-ups, push-ups, dips or squats\n"
             "3. Do sets — tap the numbers or «✏️ Enter Manually»\n"
             "4. Tap «✅ Finish Training» when done\n\n"
             "Want more? Tap «Training» again and pick another exercise."
@@ -624,6 +631,7 @@ STRINGS = {
             "• Pull-up — 1 XP\n"
             "• Dip — 0.75 XP\n"
             "• Push-up — 0.5 XP\n"
+            "• Squat — 0.25 XP\n"
             "• Each streak day — +50 XP\n"
             "The weekly leaderboard and Beast of the Week are ranked by weekly XP.\n\n"
             "📈 *Stats & History*\n\n"

@@ -64,7 +64,7 @@ def test_progress_bar_over_100():
 
 def _user(**kw):
     base = {"base_pullups": 100, "base_pushups": 0, "base_dips": 0,
-            "program_day": 0, "program_type": "standard"}
+            "base_squats": 0, "program_day": 0, "program_type": "standard"}
     base.update(kw)
     return base
 
@@ -145,6 +145,10 @@ def test_xp_for_dips():
 
 def test_xp_for_pushups():
     assert xp_for("pushups", 100) == 50
+
+
+def test_xp_for_squats():
+    assert xp_for("squats", 100) == 25
 
 
 def test_xp_for_rounding():

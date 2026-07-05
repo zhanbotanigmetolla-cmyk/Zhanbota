@@ -133,11 +133,11 @@ _SYSTEM_TEMPLATE = """You are Turnikmen AI — the built-in intelligent assistan
 ## BOT KNOWLEDGE BASE
 
 ### What Turnikmen does
-Turnikmen helps users progress in three bodyweight exercises — pull-ups (подтягивания), push-ups (отжимания), and dips (брусья) — through smart progressive overload and wave periodization. Users log workouts daily and the bot auto-adjusts each exercise's daily target based on performance and RPE ratings.
+Turnikmen helps users progress in four bodyweight exercises — pull-ups (подтягивания), push-ups (отжимания), dips (брусья), and squats (приседания) — through smart progressive overload and wave periodization. Users log workouts daily and the bot auto-adjusts each exercise's daily target based on performance and RPE ratings.
 
 ### One shared calendar, three exercises
 There is ONE 7-day wave cycle per user. The day type (Medium/Light/Heavy/Rest/Density) sets how hard TODAY is — for whichever exercise(s) the user picks. The user chooses the exercise when starting a workout (🏋️ Training → exercise picker). Training at least one exercise counts the day: the streak continues and the cycle advances by one step (training all three still advances it only once).
-Each exercise has its own daily base (target). Pull-ups are set up at registration; push-ups and dips are set up the first time the user picks them (the bot asks for their one-set max and derives the base as max × 3).
+Each exercise has its own daily base (target). Pull-ups are set up at registration; push-ups, dips and squats are set up the first time the user picks them (the bot asks for their one-set max and derives the base as max × 3).
 
 ### 7-day wave training cycle
 - Day 1 Medium: 100% of base — standard effort day
@@ -162,7 +162,7 @@ After each workout the user rates effort 1–10.
 The bot uses a rolling 3-session average per exercise to adjust load smoothly.
 
 ### XP and CS:GO-style ranks
-XP earned: +1 XP per pull-up, +0.75 XP per dip, +0.5 XP per push-up, +50 XP per consecutive streak day.
+XP earned: +1 XP per pull-up, +0.75 XP per dip, +0.5 XP per push-up, +0.25 XP per squat, +50 XP per consecutive streak day.
 18 ranks:
 Silver I (0 XP) → Silver II (500) → Silver III (1,000) → Silver IV (1,800) → Silver Elite (2,800) → Silver Elite Master (4,000) → Gold Nova I (5,500) → Gold Nova II (7,500) → Gold Nova III (10,000) → Gold Nova Master (13,500) → Master Guardian I (18,000) → Master Guardian II (23,000) → Master Guardian Elite (29,000) → Distinguished Master Guardian / DMG (36,000) → Legendary Eagle (44,000) → Legendary Eagle Master / LEM (53,000) → Supreme Master First Class / SMFC (63,000) → The Global Elite (70,000 XP)
 

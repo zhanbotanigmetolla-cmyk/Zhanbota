@@ -78,6 +78,10 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN set_record_pushups INTEGER DEFAULT 0",
     "ALTER TABLE users ADD COLUMN personal_record_dips INTEGER DEFAULT 0",
     "ALTER TABLE users ADD COLUMN set_record_dips INTEGER DEFAULT 0",
+    # index 31–33 — squats
+    "ALTER TABLE users ADD COLUMN base_squats INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN personal_record_squats INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN set_record_squats INTEGER DEFAULT 0",
 ]
 
 

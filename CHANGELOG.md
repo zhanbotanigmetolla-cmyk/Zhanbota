@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-05]
+
+### Added
+- **Squats** 🦵 as the fourth exercise — same treatment as the others: own норма (set up on first pick, max × 3), own RPE adjustments and weekly progression, own records. XP weight: 0.25 per squat (ladder: pull-up 1 · dip 0.75 · push-up 0.5 · squat 0.25). Guide, About, AI knowledge base and README updated.
+
 ## [2026-07-04]
 
 ### Added

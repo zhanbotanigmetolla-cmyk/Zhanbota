@@ -34,8 +34,10 @@ async def test_workouts_has_exercise_column(test_db):
 async def test_users_have_multi_exercise_columns(test_db):
     async with test_db.execute("PRAGMA table_info(users)") as cur:
         cols = [r[1] for r in await cur.fetchall()]
-    for col in ["base_pushups", "base_dips", "personal_record_pushups",
-                "set_record_pushups", "personal_record_dips", "set_record_dips"]:
+    for col in ["base_pushups", "base_dips", "base_squats",
+                "personal_record_pushups", "set_record_pushups",
+                "personal_record_dips", "set_record_dips",
+                "personal_record_squats", "set_record_squats"]:
         assert col in cols, col
 
 

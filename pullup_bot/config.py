@@ -67,20 +67,22 @@ WAVE = PROGRAMS["standard"]
 
 # ── Exercises ────────────────────────────────────────────────────────────────
 # Every workout row is tagged with one of these (or 'rest' for rest-day rows).
-EXERCISES = ["pullups", "pushups", "dips"]
+EXERCISES = ["pullups", "pushups", "dips", "squats"]
 
 EXERCISE_EMOJI = {
     "pullups": "🆙",
     "pushups": "💪",
     "dips": "⏸️",
+    "squats": "🦵",
 }
 
-# XP per rep — push-ups/dips are easier per rep than pull-ups, so they earn
-# proportionally less to keep ranks comparable across exercises.
+# XP per rep — easier-per-rep exercises earn proportionally less
+# to keep ranks comparable across exercises.
 XP_PER_REP = {
     "pullups": 1.0,
     "dips": 0.75,
     "pushups": 0.5,
+    "squats": 0.25,
 }
 
 # users-table column that stores the daily base for each exercise
@@ -88,6 +90,7 @@ BASE_COLS = {
     "pullups": "base_pullups",
     "pushups": "base_pushups",
     "dips": "base_dips",
+    "squats": "base_squats",
 }
 
 # users-table columns for records (best day total / best single set)
@@ -95,11 +98,13 @@ PR_COLS = {
     "pullups": "personal_record",
     "pushups": "personal_record_pushups",
     "dips": "personal_record_dips",
+    "squats": "personal_record_squats",
 }
 SET_RECORD_COLS = {
     "pullups": "set_record",
     "pushups": "set_record_pushups",
     "dips": "set_record_dips",
+    "squats": "set_record_squats",
 }
 
 # SQL expression converting a workouts row to XP (for weekly leaderboards)
@@ -108,6 +113,7 @@ XP_CASE_SQL = (
     "WHEN 'pullups' THEN completed "
     "WHEN 'dips' THEN completed * 0.75 "
     "WHEN 'pushups' THEN completed * 0.5 "
+    "WHEN 'squats' THEN completed * 0.25 "
     "ELSE 0 END"
 )
 
