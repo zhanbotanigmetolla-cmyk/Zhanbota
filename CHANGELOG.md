@@ -6,6 +6,13 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ## [2026-07-05]
 
+### Fixed
+- **Set record no longer sticks after undo/cancel.** Logging a set that beat your per-set record used to keep the record even if you undid the set or cancelled the whole workout. Now the record rolls back to its correct value in both cases.
+- **Freeze tokens are no longer charged for backfilled days.** Streak gap-bridging counted a day as "missed" even when a workout was later added for it via «Редактировать день»; days with logged reps now bridge for free, like rest days.
+- **Deleted accounts clean up greeting links.** All deletion paths (self-delete, admin delete, inactivity cleanup) now also remove `welcome_greetings` rows, so a re-registered user can be greeted again.
+- **Admin error alerts respect Telegram's 4096-char limit** — long user messages inside the alert used to make the alert itself fail to send.
+- **Bug-report approve/reject buttons work on reports containing `<`** — the status edit was silently failing on unescaped HTML.
+
 ### Added
 - **Squats** 🦵 as the fourth exercise — same treatment as the others: own норма (set up on first pick, max × 3), own RPE adjustments and weekly progression, own records. XP weight: 0.25 per squat (ladder: pull-up 1 · dip 0.75 · push-up 0.5 · squat 0.25). Guide, About, AI knowledge base and README updated.
 

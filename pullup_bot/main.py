@@ -51,7 +51,7 @@ async def errors_handler(event: types.ErrorEvent) -> bool:
         f"🚨 Ошибка бота\n{context}\n"
         f"{type(exc).__name__}: {exc}\n\n"
         f"{tb[-800:] if len(tb) > 800 else tb}"
-    )
+    )[:4000]  # Telegram message hard limit is 4096 chars
     try:
         await bot.send_message(ADMIN_TG_ID, alert)
     except Exception as e:

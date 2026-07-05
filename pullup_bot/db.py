@@ -410,7 +410,8 @@ async def update_streak(tg_id: int, today: str = None):
         if gap_days:
             placeholders = ",".join("?" * len(gap_days))
             async with conn.execute(
-                f"SELECT date FROM workouts WHERE user_id=? AND date IN ({placeholders}) AND planned=0",
+                f"SELECT date FROM workouts WHERE user_id=? AND date IN ({placeholders}) "
+                "AND (planned=0 OR completed>0)",
                 [user["id"]] + gap_days,
             ) as cur:
                 rest_rows = await cur.fetchall()
@@ -645,6 +646,8 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
             await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
             await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
                                (user_id, user_id))
+            await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
+                               (tg_id, tg_id))
             await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
         if permanent_ban:
             await conn.execute(

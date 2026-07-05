@@ -10,8 +10,8 @@ from ..services.xp import day_type_for, display, md_escape, user_base
 from . import monitoring
 
 
-async def _delete_user(conn, user_id: int):
-    """Delete all data for a user by their DB id."""
+async def _delete_user(conn, user_id: int, tg_id: int = 0):
+    """Delete all data for a user by their DB id (tg_id cleans up greeting links)."""
     await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
     await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?", (user_id, user_id))
     await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
@@ -19,6 +19,9 @@ async def _delete_user(conn, user_id: int):
     await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
     await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
                        (user_id, user_id))
+    if tg_id:
+        await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
+                           (tg_id, tg_id))
     await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     await conn.commit()
 
@@ -88,7 +91,7 @@ async def daily_reminder(bot):
                         (date.today() - date.fromisoformat(last)).days >= 7)
             if inactive:
                 logger.info(f"[reminder] blocked+inactive 7d, removing user {user['tg_id']}")
-                await _delete_user(conn, user["id"])
+                await _delete_user(conn, user["id"], user["tg_id"])
             else:
                 logger.info(f"[reminder] user {user['tg_id']} blocked the bot but still active")
         except Exception as e:
@@ -359,7 +362,7 @@ async def auto_cleanup_inactive(bot):
     deleted = 0
     for user in stale:
         logger.info(f"[cleanup] deleting inactive 30d user {user['tg_id']}")
-        await _delete_user(conn, user["id"])
+        await _delete_user(conn, user["id"], user["tg_id"])
         deleted += 1
 
     # Step 2: warn accounts inactive 27–29 days (warning not yet sent, skip logged-out)

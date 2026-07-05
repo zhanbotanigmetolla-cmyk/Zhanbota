@@ -134,6 +134,8 @@ async def delete_account_confirm(message: types.Message, state: FSMContext):
         await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user["id"],))
         await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
                            (user["id"], user["id"]))
+        await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
+                           (message.from_user.id, message.from_user.id))
         await conn.execute("DELETE FROM users WHERE id=?", (user["id"],))
         await conn.commit()
     from aiogram.types import ReplyKeyboardRemove

@@ -322,7 +322,8 @@ async def _begin_training(message, state, user, lang, today_str, exercise, day_t
     await state.set_state(Training.active)
     await state.update_data(date=today_str, exercise=exercise, planned=planned,
                             sets=session_sets, done_before=done_before, lang=lang,
-                            was_rest_override=was_rest_override)
+                            was_rest_override=was_rest_override,
+                            orig_set_record=user[SET_RECORD_COLS[exercise]] or 0)
 
     day_display = day_name(day_type, lang)
     density_note = ("\n\n" + t("density_hint", lang)) if day_type == "Плотность" else ""
@@ -373,6 +374,21 @@ async def undo_set(message: types.Message, state: FSMContext):
         return
     sets.pop()
     await state.update_data(sets=sets)
+    # If the undone set was a session PR, roll the set record back to what it
+    # should be without it (pre-session record vs remaining session sets).
+    orig_record = data.get("orig_set_record")
+    if orig_record is not None:
+        exercise = data.get("exercise", "pullups")
+        desired = max([orig_record] + sets)
+        user = await get_user(message.from_user.id)
+        rec_col = SET_RECORD_COLS[exercise]
+        if user and (user[rec_col] or 0) > desired:
+            conn = await get_db()
+            await conn.execute(f"UPDATE users SET {rec_col}=? WHERE tg_id=?",
+                               (desired, message.from_user.id))
+            await conn.commit()
+        session_pr = max(sets) if sets and max(sets) > orig_record else None
+        await state.update_data(session_set_pr=session_pr)
     await _training_status(message, state)
 
 
@@ -413,6 +429,15 @@ async def _cleanup_cancelled_workout(tg_id: int, state_data: dict):
     user = await get_user(tg_id)
     if not user:
         return
+    # Roll back any set record earned by the now-cancelled session's sets
+    orig_record = state_data.get("orig_set_record")
+    if orig_record is not None:
+        rec_col = SET_RECORD_COLS[exercise]
+        if (user[rec_col] or 0) > orig_record:
+            conn = await get_db()
+            await conn.execute(f"UPDATE users SET {rec_col}=? WHERE tg_id=?",
+                               (orig_record, tg_id))
+            await conn.commit()
     if done_before == 0:
         # No prior progress — delete the ghost record entirely
         conn = await get_db()
