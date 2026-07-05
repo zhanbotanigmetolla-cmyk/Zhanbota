@@ -133,7 +133,7 @@ async def bug_report_decision(callback: types.CallbackQuery):
         try:
             await callback.message.edit_reply_markup(reply_markup=None)
             await callback.message.edit_text(
-                callback.message.text + "\n\n✅ <b>Принято</b>",
+                html.escape(callback.message.text or "") + "\n\n✅ <b>Принято</b>",
                 parse_mode="HTML"
             )
         except TelegramBadRequest:
@@ -147,7 +147,7 @@ async def bug_report_decision(callback: types.CallbackQuery):
         try:
             await callback.message.edit_reply_markup(reply_markup=None)
             await callback.message.edit_text(
-                callback.message.text + "\n\n❌ <b>Отклонено</b>",
+                html.escape(callback.message.text or "") + "\n\n❌ <b>Отклонено</b>",
                 parse_mode="HTML"
             )
         except TelegramBadRequest:

@@ -20,8 +20,21 @@ def test_t_unknown_key_returns_key():
 
 
 def test_t_kwargs():
-    result = t("train_goal", "en", planned=100)
+    result = t("train_goal", "en", planned=100, ex="pull-ups")
     assert "100" in result
+    assert "pull-ups" in result
+
+
+def test_ru_en_key_parity():
+    from pullup_bot.i18n import STRINGS
+    assert set(STRINGS["ru"]) == set(STRINGS["en"])
+
+
+def test_exercise_names_defined():
+    for ex in ["pullups", "pushups", "dips", "squats"]:
+        for lang in ["ru", "en"]:
+            assert t(f"ex_{ex}", lang) != f"ex_{ex}"
+            assert t(f"ex_gen_{ex}", lang) != f"ex_gen_{ex}"
 
 
 def test_t_kwargs_ru():

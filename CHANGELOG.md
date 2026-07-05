@@ -4,6 +4,35 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-05]
+
+### Fixed
+- **Set record no longer sticks after undo/cancel.** Logging a set that beat your per-set record used to keep the record even if you undid the set or cancelled the whole workout. Now the record rolls back to its correct value in both cases.
+- **Freeze tokens are no longer charged for backfilled days.** Streak gap-bridging counted a day as "missed" even when a workout was later added for it via «Редактировать день»; days with logged reps now bridge for free, like rest days.
+- **Deleted accounts clean up greeting links.** All deletion paths (self-delete, admin delete, inactivity cleanup) now also remove `welcome_greetings` rows, so a re-registered user can be greeted again.
+- **Admin error alerts respect Telegram's 4096-char limit** — long user messages inside the alert used to make the alert itself fail to send.
+- **Bug-report approve/reject buttons work on reports containing `<`** — the status edit was silently failing on unescaped HTML.
+
+### Added
+- **Squats** 🦵 as the fourth exercise — same treatment as the others: own норма (set up on first pick, max × 3), own RPE adjustments and weekly progression, own records. XP weight: 0.25 per squat (ladder: pull-up 1 · dip 0.75 · push-up 0.5 · squat 0.25). Guide, About, AI knowledge base and README updated.
+
+## [2026-07-04]
+
+### Added
+- **Three exercises: pull-ups, push-ups, dips.** The Training button now opens a picker («Что тренируем сегодня?») with per-exercise targets shown right on the buttons. One shared 7-day calendar: the day type (Средний/Лёгкий/Тяжёлый/Отдых/Плотность) applies to whichever exercise you pick; training at least one exercise per day keeps the streak and advances the cycle once.
+- Each exercise has its own daily норма, its own RPE-based adjustments, weekly +5% progression, and its own records (best day / best set). Push-ups and dips are set up lazily — the bot asks for your one-set max the first time you pick them (base = max × 3).
+- XP weights per rep: pull-up 1 · dip 0.75 · push-up 0.5 (+50/streak day unchanged). Existing XP untouched.
+- Weekly leaderboard and 👑 Кочка недели now rank by **weekly XP across all exercises** instead of pull-up count.
+- Stats, History, Analytics, weekly summaries, morning reminders, friends list, AI coach context, and CSV export all show per-exercise data.
+
+### Changed
+- Database: `workouts` table rebuilt with an `exercise` column (`UNIQUE(user_id, date, exercise)`); legacy rows migrated as pull-ups, rest days as day-level rest markers. New per-exercise base/record columns on `users`.
+- Guide («Как начать») and «О боте» rewritten to match actual behavior: correct wave percentages (Лёгкий ~50–60%, Тяжёлый 115%), freeze tokens described as automatic, three programs mentioned, new XP rules documented.
+
+### Removed
+- Extra-activity feature (бег/зал plan reduction) and the notes-adding step in «Редактировать день» — removed entirely per owner decision; old saved notes still display in history. Break reduction after 3+/7+ days off stays.
+- A dozen dead i18n strings and orphaned flows (interactive freeze prompt, old registration questions, unused chart helper).
+
 ## [2026-07-03]
 
 ### Fixed

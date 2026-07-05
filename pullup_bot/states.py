@@ -20,6 +20,8 @@ class Reg(StatesGroup):
 
 
 class Training(StatesGroup):
+    pick_exercise = State()
+    setup_base = State()
     active = State()
     rest_day = State()
     cancel_confirm = State()
@@ -37,12 +39,9 @@ class Settings(StatesGroup):
 
 class EditDay(StatesGroup):
     pick_date     = State()
+    pick_exercise = State()
     pick_done     = State()
     pick_rpe      = State()
-    confirm_extras = State()
-    activity      = State()
-    act_mins      = State()
-    notes         = State()
 
 
 class SkipReason(StatesGroup):
@@ -55,6 +54,7 @@ class SetNotify(StatesGroup):
 
 
 class SetBase(StatesGroup):
+    pick_exercise = State()
     enter_base = State()
 
 

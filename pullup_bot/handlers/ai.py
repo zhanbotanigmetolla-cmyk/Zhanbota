@@ -4,11 +4,11 @@ import random
 from aiogram import Router, types as aiogram_types
 from aiogram.fsm.context import FSMContext
 
-from ..config import logger
+from ..config import EXERCISES, PR_COLS, SET_RECORD_COLS, logger
 from ..db import get_db, get_user, log_ai_usage
 from ..i18n import t, text_filter
 from ..keyboards import ai_chat_kb, back_only_kb, main_kb
-from ..services.xp import display, level_info, planned_for_day
+from ..services.xp import day_type_for, display, level_info, user_base
 from ..services.gemini import get_manager, RATE_LIMIT_DAILY, RATE_LIMIT_MINUTE
 from ..states import AIChat
 
@@ -133,32 +133,36 @@ _SYSTEM_TEMPLATE = """You are Turnikmen AI — the built-in intelligent assistan
 ## BOT KNOWLEDGE BASE
 
 ### What Turnikmen does
-Turnikmen helps users systematically increase their pullup count through smart progressive overload and wave periodization. Users log workouts daily and the bot auto-adjusts their training plan based on performance and RPE ratings.
+Turnikmen helps users progress in four bodyweight exercises — pull-ups (подтягивания), push-ups (отжимания), dips (брусья), and squats (приседания) — through smart progressive overload and wave periodization. Users log workouts daily and the bot auto-adjusts each exercise's daily target based on performance and RPE ratings.
+
+### One shared calendar, three exercises
+There is ONE 7-day wave cycle per user. The day type (Medium/Light/Heavy/Rest/Density) sets how hard TODAY is — for whichever exercise(s) the user picks. The user chooses the exercise when starting a workout (🏋️ Training → exercise picker). Training at least one exercise counts the day: the streak continues and the cycle advances by one step (training all three still advances it only once).
+Each exercise has its own daily base (target). Pull-ups are set up at registration; push-ups, dips and squats are set up the first time the user picks them (the bot asks for their one-set max and derives the base as max × 3).
 
 ### 7-day wave training cycle
-Every user follows a repeating weekly pattern based on their personal daily base pullup count:
 - Day 1 Medium: 100% of base — standard effort day
 - Day 2 Light: 50% of base — active recovery
 - Day 3 Heavy: 115% of base — push day
-- Day 4 Rest: 0 pullups — mandatory recovery
+- Day 4 Rest: recovery day for everything
 - Day 5 Density: 100% spread across many short sets throughout the day
 - Day 6 Light: 50% of base — easy day
-- Day 7 Rest: 0 pullups — mandatory recovery
+- Day 7 Rest: recovery day for everything
+(The Beginner program is 3 training days/week, Advanced is 6 — selectable in Settings → Program.)
 
-### Automatic progression rules
-- Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥80% across the last 5 real training sessions (and avg RPE < 7)
-- RPE too high (−5% base): triggers when the 3-session rolling avg RPE ≥8.5
-- RPE high (−2% base): triggers when the 3-session rolling avg RPE is between 7.0 and 8.5
-- RPE trending easy (+3% base): triggers when 3-session rolling avg RPE ≤5.5 AND all sessions fully completed
-- Extra activity reduction: logging running/cardio/gym after training reduces tomorrow's load proportionally
+### Automatic progression rules (per exercise, independent)
+- Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥80% across that exercise's last 5 sessions (and avg RPE < 7)
+- RPE too high (−5% base): triggers when the exercise's 3-session rolling avg RPE ≥8.5
+- RPE high (−2% base): triggers when the rolling avg RPE is between 7.0 and 8.5
+- RPE trending easy (+3% base): triggers when rolling avg RPE ≤5.5 AND all sessions fully completed
+- After a 3–6 day break the first session's plan is reduced 25%; after 7+ days, 40%
 
 ### RPE — Rate of Perceived Exertion
 After each workout the user rates effort 1–10.
 1–3 = very easy, 4–6 = moderate, 7–8 = hard, 9–10 = near maximum / failure.
-The bot uses a rolling 3-session average to adjust load smoothly.
+The bot uses a rolling 3-session average per exercise to adjust load smoothly.
 
 ### XP and CS:GO-style ranks
-XP earned: +1 XP per pullup completed, +50 XP per consecutive streak day.
+XP earned: +1 XP per pull-up, +0.75 XP per dip, +0.5 XP per push-up, +0.25 XP per squat, +50 XP per consecutive streak day.
 18 ranks:
 Silver I (0 XP) → Silver II (500) → Silver III (1,000) → Silver IV (1,800) → Silver Elite (2,800) → Silver Elite Master (4,000) → Gold Nova I (5,500) → Gold Nova II (7,500) → Gold Nova III (10,000) → Gold Nova Master (13,500) → Master Guardian I (18,000) → Master Guardian II (23,000) → Master Guardian Elite (29,000) → Distinguished Master Guardian / DMG (36,000) → Legendary Eagle (44,000) → Legendary Eagle Master / LEM (53,000) → Supreme Master First Class / SMFC (63,000) → The Global Elite (70,000 XP)
 
@@ -169,11 +173,11 @@ Silver I (0 XP) → Silver II (500) → Silver III (1,000) → Silver IV (1,800)
 - Earn: every 7-day streak milestone, on each rank-up, on a new personal record; max 5
 
 ### Кочка недели / Beast of the Week
-Every Monday 08:00 the user with the most pullups in the past 7 days is crowned champion. 👑 badge in stats and leaderboard until next Monday.
+Every Monday 08:00 the user with the most XP earned in the past 7 days (all exercises, using the XP weights) is crowned champion. 👑 badge in stats and leaderboard until next Monday.
 
 ### Friends vs Leaderboard
-- Friends (👥): everyone's today status — target, done so far, streak. Live daily view.
-- Leaderboard (🏆): weekly ranking by total pullups. Competitive weekly scoreboard.
+- Friends (👥): everyone's today status — per-exercise progress, streak. Live daily view.
+- Leaderboard (🏆): weekly ranking by XP earned across all exercises.
 
 ### Navigation & UI — Main menu buttons
 After logging in the user sees these buttons:
@@ -190,10 +194,12 @@ After logging in the user sees these buttons:
 ### Navigation & UI — Settings menu
 Opened via ⚙️ Настройки / Settings:
 - 🔔 Время уведомлений / Notification Time — set daily reminder time, format HH:MM (e.g. 08:00)
-- 📊 Изменить базу / Change Base — update the daily pullup target (the number the wave cycle is based on)
+- 📊 Изменить базу / Change Base — pick an exercise, then update its daily target (the number the wave cycle multiplies)
 - ✏️ Изменить имя / Change Name — change the display name shown in the friends list and leaderboard
-- 📝 Редактировать день / Edit Day — edit any past workout: enter date as DD.MM, then corrected reps, RPE, activity, notes; entering 0 reps deletes the record
+- 📝 Редактировать день / Edit Day — edit any past workout: enter date as DD.MM, pick the exercise, then corrected reps and RPE; entering 0 reps deletes that record
 - 📅 Причина пропуска / Skip Reason — log a reason for a missed day (illness, travel, etc.) which can restore the streak
+- 🔧 Программа / Program — switch between Standard (5x/week), Beginner (3x/week), Advanced (6x/week)
+- 📤 Экспорт / Export — download the full workout history as CSV
 - 🚪 Выйти из системы / Log Out — pauses the bot; data and streak are preserved
 - 🌐 Язык / Language — switch interface language between Russian and English
 - 🗑 Удалить аккаунт / Delete Account — permanently erases all data
@@ -230,30 +236,56 @@ def _user_data_block(user, workouts) -> str:
     lvl, lname, to_nxt, _ = level_info(user["xp"] or 0)
     lang_label = "Russian" if lang == "ru" else "English"
 
-    # Use today's actual DB row if it exists (program_day may already be advanced
-    # past a rest day that was just acknowledged, making planned_for_day lie).
+    bases_line = "  |  ".join(
+        f"{ex}: {user_base(user, ex)}/day"
+        for ex in EXERCISES if user_base(user, ex) > 0) or "pullups not set"
+    records_line = "  |  ".join(
+        f"{ex}: day {user[PR_COLS[ex]] or 0} / set {user[SET_RECORD_COLS[ex]] or 0}"
+        for ex in EXERCISES
+        if (user[PR_COLS[ex]] or 0) > 0 or (user[SET_RECORD_COLS[ex]] or 0) > 0) or "—"
+
+    # Use today's actual DB rows if they exist (program_day may already be advanced
+    # past a rest day that was just acknowledged, making the cycle lookup lie).
     today_str = str(_date.today())
-    today_row = next((r for r in workouts if r["date"] == today_str), None)
-    if today_row:
-        today_type = today_row["day_type"] or "?"
-        today_summary = f"{today_type} — {today_row['completed']}/{today_row['planned']} pullups (done/planned)"
+    today_rows = [r for r in workouts if r["date"] == today_str]
+    today_training = [r for r in today_rows if r["exercise"] != "rest"]
+    if today_training:
+        today_type = today_training[0]["day_type"] or "?"
+        cells = ", ".join(f"{r['exercise']} {r['completed']}/{r['planned']}"
+                          for r in today_training)
+        today_summary = f"{today_type} — {cells} (done/planned)"
+    elif today_rows:
+        today_summary = "Rest day (acknowledged)"
     else:
-        today_plan, today_type = planned_for_day(user)
-        today_summary = f"{today_type} — {today_plan} pullups planned"
+        today_type, coeff = day_type_for(user)
+        if coeff == 0:
+            today_summary = f"{today_type} (rest day)"
+        else:
+            cells = ", ".join(f"{ex} {int(user_base(user, ex) * coeff)}"
+                              for ex in EXERCISES if user_base(user, ex) > 0)
+            today_summary = f"{today_type} — planned: {cells}"
 
     # Tomorrow: mirror stats.py — program_day advances exactly when last_workout is set
     # to today, so that (not the mere existence of a row) decides the offset.
     pd_offset = -1 if user["last_workout"] == today_str else 0
     next_user = {**dict(user), "program_day": ((user["program_day"] or 0) + 1 + pd_offset) % 7}
-    next_plan, next_type = planned_for_day(next_user)
+    next_type, next_coeff = day_type_for(next_user)
+    if next_coeff == 0:
+        tomorrow_summary = f"{next_type} (rest day)"
+    else:
+        cells = ", ".join(f"{ex} {int(user_base(user, ex) * next_coeff)}"
+                          for ex in EXERCISES if user_base(user, ex) > 0)
+        tomorrow_summary = f"{next_type} — planned: {cells}"
 
     history_lines = []
     for r in workouts:
         d = r['date']  # YYYY-MM-DD → DD.MM
         date_fmt = f"{d[8:10]}.{d[5:7]}"
-        line = f"  {date_fmt}  {(r['day_type'] or '?'):10s}  {r['completed']}/{r['planned']}  RPE={r['rpe'] or '—'}"
-        if r["extra_activity"]:
-            line += f"  activity={r['extra_activity']}"
+        if r["exercise"] == "rest":
+            history_lines.append(f"  {date_fmt}  rest day")
+            continue
+        line = (f"  {date_fmt}  {(r['day_type'] or '?'):10s}  {r['exercise']:8s}  "
+                f"{r['completed']}/{r['planned']}  RPE={r['rpe'] or '—'}")
         if r["notes"]:
             line += f"  note: {r['notes']}"
         history_lines.append(line)
@@ -261,11 +293,12 @@ def _user_data_block(user, workouts) -> str:
     return (
         f"Name: {display(user)}\n"
         f"Rank: {lname}  ({user['xp'] or 0} XP — {to_nxt} XP to next rank)\n"
-        f"Streak: {user['streak'] or 0} days  |  Freeze tokens: {user['freeze_tokens'] or 0}  |  Personal record: {user['personal_record'] or 0} pullups\n"
-        f"Daily base: {user['base_pullups']} pullups/day\n"
+        f"Streak: {user['streak'] or 0} days  |  Freeze tokens: {user['freeze_tokens'] or 0}\n"
+        f"Daily bases: {bases_line}\n"
+        f"Records (best day / best set): {records_line}\n"
         f"Today ({today_str}): {today_summary}\n"
-        f"Tomorrow: {next_type} — {next_plan} pullups planned\n\n"
-        f"Last {len(workouts)} workouts (newest first):\n"
+        f"Tomorrow: {tomorrow_summary}\n\n"
+        f"Last {len(workouts)} workout records (newest first):\n"
         + ("\n".join(history_lines) if history_lines else "  No workouts yet.") + "\n\n"
         f"Preferred language: {lang_label}"
     )
@@ -332,8 +365,8 @@ async def ai_chat_start(message: aiogram_types.Message, state: FSMContext):
 
     conn = await get_db()
     async with conn.execute(
-        "SELECT date, completed, planned, rpe, day_type, extra_activity, notes FROM workouts "
-        "WHERE user_id=? ORDER BY date DESC LIMIT 14",
+        "SELECT date, exercise, completed, planned, rpe, day_type, notes FROM workouts "
+        "WHERE user_id=? ORDER BY date DESC, exercise ASC LIMIT 21",
         (user["id"],),
     ) as cur:
         workouts = await cur.fetchall()
