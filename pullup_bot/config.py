@@ -147,6 +147,10 @@ LEVEL_NAMES = [
 
 START_MENU_LABEL = "/start"
 
+# Telegram message effect IDs (Bot API 7.4+, private chats only)
+EFFECT_FIRE = "5104841245755180586"      # 🔥
+EFFECT_CONFETTI = "5046509860389126442"  # 🎉
+
 
 def is_admin_id(tg_id: int) -> bool:
     """Return True if the given Telegram ID matches the configured admin."""

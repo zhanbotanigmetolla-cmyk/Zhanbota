@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 from aiogram import Router, types
 from aiogram.exceptions import TelegramForbiddenError
+from aiogram.filters import Command
 from aiogram.types import KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.fsm.context import FSMContext
@@ -157,6 +158,7 @@ async def friends_menu(message: types.Message, state: FSMContext):
     await _show_friends_page(message, state, user, 0)
 
 
+@router.message(Command("top"))
 @router.message(text_filter("btn_leaderboard"))
 async def leaderboard(message: types.Message):
     """Show the weekly leaderboard ranked by XP earned over the last 7 days (all exercises)."""
@@ -189,6 +191,19 @@ async def leaderboard(message: types.Message):
         weekly_rows = await cur.fetchall()
     weekly_map = {r["user_id"]: int(round(r["week_xp"])) for r in weekly_rows}
 
+    # Previous week's standings (days 8–14 ago) for ▲/▼ movement markers
+    two_weeks_ago = (date.today() - timedelta(days=14)).isoformat()
+    async with conn.execute(
+        f"SELECT user_id, COALESCE(SUM({XP_CASE_SQL}), 0) as week_xp "
+        "FROM workouts WHERE date>=? AND date<? GROUP BY user_id",
+        (two_weeks_ago, week_ago)
+    ) as cur:
+        prev_rows = await cur.fetchall()
+    prev_sorted = sorted(
+        ((r["user_id"], int(round(r["week_xp"]))) for r in prev_rows if r["week_xp"] > 0),
+        key=lambda x: x[1], reverse=True)
+    prev_pos = {uid: i + 1 for i, (uid, _) in enumerate(prev_sorted)}
+
     entries = []
     for u in all_users:
         week_xp = weekly_map.get(u["id"], 0)
@@ -203,7 +218,16 @@ async def leaderboard(message: types.Message):
         medal = medals[i] if i < 3 else f"{i+1}."
         you = t("leaderboard_you_marker", lang) if u["tg_id"] == message.from_user.id else ""
         crown = " 👑" if u["is_weekly_champ"] else ""
-        text += f"{medal} *{md_escape(display(u))}*{crown} — {week_xp} XP | 🔥{u['streak']}{you}\n"
+        prev = prev_pos.get(u["id"])
+        if prev is None:
+            delta = " 🆕"
+        elif prev > i + 1:
+            delta = f" ▲{prev - (i + 1)}"
+        elif prev < i + 1:
+            delta = f" ▼{(i + 1) - prev}"
+        else:
+            delta = ""
+        text += f"{medal} *{md_escape(display(u))}*{crown} — {week_xp} XP | 🔥{u['streak']}{delta}{you}\n"
 
     await message.answer(text, parse_mode="Markdown", reply_markup=main_kb(lang))
 

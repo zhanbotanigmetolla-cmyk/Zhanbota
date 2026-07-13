@@ -11,7 +11,6 @@ STRINGS = {
         "btn_settings": "⚙️ Настройки",
         "btn_bug": "🐛 Сообщить о баге",
         "btn_back": "◀️ Назад",
-        "btn_entrance": "◀️ Назад",
         # Buttons - landing
         "btn_login": "💪 Войти в Турникмен",
         "btn_about": "ℹ️ О боте",
@@ -21,6 +20,10 @@ STRINGS = {
         "btn_finish": "✅ Завершить тренировку",
         "btn_cancel_train": "🚫 Отменить тренировку",
         "btn_skip": "⏭️ Пропустить",
+        # Rest timer
+        "btn_rest_fmt": "⏱ {sec} сек",
+        "rest_timer_toast": "⏱ Отдых {sec} сек — таймер запущен",
+        "rest_timer_done": "✅ Отдых окончен — следующий подход! 💪",
         # Buttons - settings
         "btn_notify_time": "🔔 Время уведомлений",
         "btn_change_base": "📊 Изменить базу",
@@ -353,6 +356,7 @@ STRINGS = {
         "reminder_rest": "😴 Сегодня день отдыха. Восстанавливайся!",
         "reminder_train": "🔔 Не забудь про тренировку!\n📋 {day_type} день:\n{plans}\n{status}",
         "reminder_not_started": "⏳ Ещё не начинал",
+        "btn_reminder_start": "▶️ Начать тренировку",
         # Language
         "lang_prompt": "🌐 Выбери язык / Choose language:",
         "lang_ok": "✅ Язык: Русский 🇷🇺",
@@ -417,6 +421,9 @@ STRINGS = {
         "history_monthly_row": "`{month}  {totals}  {days}д`",
         "btn_history_monthly": "📅 По месяцам",
         "btn_history_weekly": "📅 По неделям",
+        "heatmap_legend": "🟩 план · 🟨 частично · ⬜ нет данных · 😴 отдых",
+        "month_names": ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+                        "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
         # Advanced analytics
         "btn_analytics": "📈 Подробно",
         "analytics_title": "📈 *Аналитика*",
@@ -436,7 +443,6 @@ STRINGS = {
         "btn_settings": "⚙️ Settings",
         "btn_bug": "🐛 Report a Bug",
         "btn_back": "◀️ Back",
-        "btn_entrance": "◀️ Back",
         # Buttons - landing
         "btn_login": "💪 Join Pullup Pro",
         "btn_about": "ℹ️ About",
@@ -446,6 +452,10 @@ STRINGS = {
         "btn_finish": "✅ Finish Training",
         "btn_cancel_train": "🚫 Cancel Training",
         "btn_skip": "⏭️ Skip",
+        # Rest timer
+        "btn_rest_fmt": "⏱ {sec}s",
+        "rest_timer_toast": "⏱ Resting {sec}s — timer started",
+        "rest_timer_done": "✅ Rest over — next set! 💪",
         # Buttons - settings
         "btn_notify_time": "🔔 Notification Time",
         "btn_change_base": "📊 Change Base",
@@ -777,6 +787,7 @@ STRINGS = {
         "reminder_rest": "😴 Today is a rest day. Recover!",
         "reminder_train": "🔔 Don't forget your workout!\n📋 {day_type} day:\n{plans}\n{status}",
         "reminder_not_started": "⏳ Haven't started yet",
+        "btn_reminder_start": "▶️ Start training",
         # Language
         "lang_prompt": "🌐 Выбери язык / Choose language:",
         "lang_ok": "✅ Language: English 🇬🇧",
@@ -841,6 +852,9 @@ STRINGS = {
         "history_monthly_row": "`{month}  {totals}  {days}d`",
         "btn_history_monthly": "📅 By Month",
         "btn_history_weekly": "📅 By Week",
+        "heatmap_legend": "🟩 hit · 🟨 partial · ⬜ no data · 😴 rest",
+        "month_names": ["January", "February", "March", "April", "May", "June",
+                        "July", "August", "September", "October", "November", "December"],
         # Advanced analytics
         "btn_analytics": "📈 Analytics",
         "analytics_title": "📈 *Analytics*",

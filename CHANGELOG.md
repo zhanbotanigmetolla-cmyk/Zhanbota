@@ -4,6 +4,25 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-13]
+
+### Added
+- **Command menu.** The bot now registers /train, /stats, /history, /top, /help and /cancel (RU + EN descriptions), so typing `/` or tapping the Menu button shows real actions instead of nothing.
+- **«▶️ Начать тренировку» button on the morning reminder.** One tap goes straight from the notification to the exercise picker — no digging for the keyboard.
+- **Rest timer between sets.** The live training status now carries ⏱ 60/90/120-сек inline buttons; the bot pings «Отдых окончен — следующий подход!» when time is up. Starting a new timer replaces the old one; the ping is skipped if the session already ended.
+- **Live training status.** During a session the bot keeps a single up-to-date progress message (the previous one is deleted on each set) instead of posting a new status per set — a 6-set workout no longer leaves 6 near-identical messages. The status is removed once the summary arrives.
+- **Month heatmap in history.** «По месяцам» now opens with an emoji calendar of the current month (🟩 план · 🟨 частично · ⬜ нет данных · 😴 отдых), one row per Mon–Sun week.
+- **Leaderboard movement markers.** Weekly leaderboard shows ▲/▼ position changes vs the previous week and 🆕 for newcomers.
+- **Celebration effects.** Workout summaries fire Telegram message effects: 🎉 on a personal record or rank-up (and on the weekly champ announcement for the winner), 🔥 on hitting the daily target. Falls back to a plain message on older aiogram/Telegram.
+
+### Changed
+- **Stats is one message again.** The «📈» placeholder message is gone — the Analytics button is attached directly to the stats message, and «◀️ К статистике» swaps the analytics view back in place.
+- **Guide and About moved into Settings** so logged-in users can reach them without the landing screen.
+- **/start for an active user opens the main menu** instead of the landing screen with a «Войти» button.
+
+### Fixed
+- **«◀️ Назад» no longer drops logged-in users onto the landing screen.** The main-menu «Назад» button (btn_entrance) shared its text with every other Back button and its handler shadowed the real one, so any stateless «Назад» tap showed the welcome/landing screen. The button and handler are removed; Back now returns to the main menu.
+
 ## [2026-07-05]
 
 ### Fixed

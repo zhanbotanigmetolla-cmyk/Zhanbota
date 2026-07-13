@@ -1,10 +1,11 @@
 from datetime import date, timedelta
 
 from aiogram import F, Router, types
+from aiogram.filters import Command
 
 from ..db import get_db, get_user
 from ..i18n import t, text_filter, day_name
-from ..keyboards import main_kb, stats_analytics_kb, stats_back_kb
+from ..keyboards import stats_analytics_kb, stats_back_kb
 from ..config import (EXERCISES, EXERCISE_EMOJI, LEVEL_NAMES,
                       LEVEL_THRESHOLDS, PR_COLS, PROGRAMS, SET_RECORD_COLS,
                       XP_CASE_SQL)
@@ -19,15 +20,22 @@ def _ex_tag(ex: str) -> str:
     return EXERCISE_EMOJI[ex]
 
 
+@router.message(Command("stats"))
 @router.message(text_filter("btn_stats"))
 async def show_stats(message: types.Message):
-    """Show the user's full stats: rank, XP bar, streak, per-exercise summary, last/next 7-day schedule."""
+    """Show the user's full stats with the analytics button attached inline."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
         return
-
     lang = user["lang"] or "ru"
+    text = await _build_stats_text(user, lang)
+    await message.answer(text, parse_mode="Markdown",
+                         reply_markup=stats_analytics_kb(lang))
+
+
+async def _build_stats_text(user, lang: str) -> str:
+    """Build the full stats message: rank, XP bar, streak, per-exercise summary, last/next 7 days."""
     today = date.today()
     today_str = today.isoformat()
     week_ago = (today - timedelta(days=7)).isoformat()
@@ -194,7 +202,7 @@ async def show_stats(message: types.Message):
         history_header = "📋 *Last 7 days:*"
         schedule_header = "📅 *Next 7 days:*"
 
-    await message.answer(
+    return (
         f"📊 *{md_escape(display(user))}*\n"
         f"{champ_line}"
         f"{level_line}\n"
@@ -202,10 +210,8 @@ async def show_stats(message: types.Message):
         f"{today_line}\n"
         + "\n".join(ex_lines) + "\n\n"
         f"{history_header}\n{history}\n"
-        f"{schedule_header}\n{schedule}",
-        parse_mode="Markdown",
-        reply_markup=main_kb(lang))
-    await message.answer("📈", reply_markup=stats_analytics_kb(lang))
+        f"{schedule_header}\n{schedule}"
+    )
 
 
 WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
@@ -305,8 +311,13 @@ async def stats_analytics_view(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "stats_back")
 async def stats_analytics_back(callback: types.CallbackQuery):
-    """Restore the analytics placeholder message to its button form."""
+    """Swap the analytics view back to the full stats message in place."""
     user = await get_user(callback.from_user.id)
-    lang = (user["lang"] or "ru") if user else "ru"
-    await callback.message.edit_text("📈", reply_markup=stats_analytics_kb(lang))
+    if not user:
+        await callback.answer()
+        return
+    lang = user["lang"] or "ru"
+    text = await _build_stats_text(user, lang)
+    await callback.message.edit_text(text, parse_mode="Markdown",
+                                     reply_markup=stats_analytics_kb(lang))
     await callback.answer()

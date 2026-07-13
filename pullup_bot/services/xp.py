@@ -1,4 +1,34 @@
+import inspect
+
 from ..config import BASE_COLS, LEVEL_NAMES, LEVEL_THRESHOLDS, PROGRAMS
+
+# message_effect_id needs aiogram >= 3.7 (Bot API 7.4); older versions get plain sends
+try:
+    from aiogram.types import Message as _AiogramMessage
+    _EFFECTS_SUPPORTED = (
+        "message_effect_id" in inspect.signature(_AiogramMessage.answer).parameters)
+except Exception:
+    _EFFECTS_SUPPORTED = False
+
+
+async def answer_with_effect(message, text: str, effect_id: str, **kwargs):
+    """message.answer with a message effect; falls back to a plain send on any failure."""
+    if _EFFECTS_SUPPORTED:
+        try:
+            return await message.answer(text, message_effect_id=effect_id, **kwargs)
+        except Exception:
+            pass  # effect rejected (group chat, stale ID) — deliver without it
+    return await message.answer(text, **kwargs)
+
+
+async def send_with_effect(bot, chat_id: int, text: str, effect_id: str, **kwargs):
+    """bot.send_message with a message effect; falls back to a plain send on any failure."""
+    if _EFFECTS_SUPPORTED:
+        try:
+            return await bot.send_message(chat_id, text, message_effect_id=effect_id, **kwargs)
+        except Exception:
+            pass
+    return await bot.send_message(chat_id, text, **kwargs)
 
 
 def display(user) -> str:

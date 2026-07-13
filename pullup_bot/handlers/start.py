@@ -34,13 +34,12 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
     await message.answer(t("cancelled", lang), reply_markup=kb)
 
 
-@router.message(StateFilter(None), text_filter("btn_entrance"))
-async def entrance_handler(message: types.Message, state: FSMContext):
-    """Clear state and return to the landing/welcome screen."""
-    await state.clear()
-    user = await get_user(message.from_user.id)
-    lang = (user["lang"] or "ru") if user else "ru"
-    await message.answer(t("welcome", lang), parse_mode="Markdown", reply_markup=landing_kb(lang))
+async def _home_kb(tg_id: int, lang: str):
+    """Main menu keyboard for active users, landing keyboard for guests/logged-out."""
+    user = await get_user(tg_id)
+    if user and not user["is_logged_out"]:
+        return main_kb(lang)
+    return landing_kb(lang)
 
 
 @router.message(StateFilter(None), text_filter("btn_back"))
@@ -60,7 +59,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
     """Handle /start: send the welcome screen for existing users or the language picker for new ones."""
     await state.clear()
     user = await get_user(message.from_user.id)
-    if user:
+    if user and not user["is_logged_out"]:
+        # Active user — straight to the main menu, no landing detour
+        lang = user["lang"] or "ru"
+        await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+    elif user:
         lang = user["lang"] or "ru"
         await message.answer(t("welcome", lang), parse_mode="Markdown",
                              reply_markup=landing_kb(lang))
@@ -119,7 +122,7 @@ async def about_page3(message: types.Message, state: FSMContext):
     lang = data.get("about_lang", "ru")
     await state.clear()
     await message.answer(t("about_page3", lang), parse_mode="Markdown",
-                         reply_markup=landing_kb(lang))
+                         reply_markup=await _home_kb(message.from_user.id, lang))
 
 
 @router.message(StateFilter(About.page2, About.page3), text_filter("btn_back"))
@@ -128,7 +131,8 @@ async def about_back(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("about_lang", "ru")
     await state.clear()
-    await message.answer(t("main_menu", lang), reply_markup=landing_kb(lang))
+    await message.answer(t("main_menu", lang),
+                         reply_markup=await _home_kb(message.from_user.id, lang))
 
 
 @router.message(text_filter("btn_guide"))
@@ -190,7 +194,7 @@ async def guide_extra(message: types.Message, state: FSMContext):
     lang = data.get("guide_lang", "ru")
     await state.clear()
     await message.answer(t("guide_extra", lang), parse_mode="Markdown",
-                         reply_markup=landing_kb(lang))
+                         reply_markup=await _home_kb(message.from_user.id, lang))
 
 
 @router.message(StateFilter(Guide.step1, Guide.step2, Guide.step3, Guide.step4, Guide.extra),
@@ -200,7 +204,8 @@ async def guide_back(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.clear()
-    await message.answer(t("main_menu", lang), reply_markup=landing_kb(lang))
+    await message.answer(t("main_menu", lang),
+                         reply_markup=await _home_kb(message.from_user.id, lang))
 
 
 @router.message(text_filter("btn_login"))
