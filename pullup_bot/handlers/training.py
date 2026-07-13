@@ -88,7 +88,8 @@ async def start_training(message: types.Message, state: FSMContext):
 async def reminder_train_cb(callback: types.CallbackQuery, state: FSMContext):
     """Start today's training straight from the inline button on the morning reminder."""
     await callback.answer()
-    if callback.message:
+    # Buttons on messages older than 48h arrive as InaccessibleMessage (no .answer())
+    if isinstance(callback.message, types.Message):
         await _start_training_flow(callback.from_user.id, callback.message, state)
 
 
