@@ -19,6 +19,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 - **Stats is one message again.** The «📈» placeholder message is gone — the Analytics button is attached directly to the stats message, and «◀️ К статистике» swaps the analytics view back in place.
 - **Guide and About moved into Settings** so logged-in users can reach them without the landing screen.
 - **/start for an active user opens the main menu** instead of the landing screen with a «Войти» button.
+- **«О боте» page 1 now carries the welcome intro** (greeting, «бот полностью бесплатный», Турникмен AI teaser, contact @zhanbota102) — the welcome screen was the only place with the contact line, and logged-in users no longer pass through it. Also fixed a stale «все три» → «все четыре» after squats were added.
 
 ### Fixed
 - **«◀️ Назад» no longer drops logged-in users onto the landing screen.** The main-menu «Назад» button (btn_entrance) shared its text with every other Back button and its handler shadowed the real one, so any stateless «Назад» tap showed the welcome/landing screen. The button and handler are removed; Back now returns to the main menu.

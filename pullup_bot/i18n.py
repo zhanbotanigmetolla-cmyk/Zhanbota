@@ -63,17 +63,22 @@ STRINGS = {
         ),
         "about": (
             "ℹ️ *О боте — 1/3*\n\n"
-            "💪 Турникмен — персональный тренер по подтягиваниям, отжиманиям, брусьям и приседаниям.\n\n"
-            "Бот строит план, отслеживает прогресс и адаптирует нагрузку под тебя автоматически.\n\n"
+            "💪 Привет! Я — Турникмен, твой персональный тренер по подтягиваниям, отжиманиям, "
+            "брусьям и приседаниям. Помогу следить за прогрессом, адаптировать план тренировок "
+            "и не терять мотивацию.\n\n"
+            "Бот полностью бесплатный. Навсегда.\n\n"
+            "🤖 Включает *Турникмен AI* — персональный ИИ-тренер на базе Google Gemini 3 Flash. "
+            "Знает всю историю твоих тренировок, отвечает на любые вопросы.\n\n"
             "🔄 *7-дневный волновой цикл:*\n"
             "Средний → Лёгкий → Тяжёлый → Отдых → Плотность → Лёгкий → Отдых\n\n"
             "Тип дня один для всех упражнений: он задаёт, насколько тяжело сегодня. "
-            "А какое упражнение делать — выбираешь ты: одно, два или все три. "
+            "А какое упражнение делать — выбираешь ты: одно, два или все четыре. "
             "День засчитан, если сделал хотя бы одно.\n\n"
             "📈 *Автоматическая прогрессия:*\n"
             "У каждого упражнения своя норма. Стабильно выполняешь цикл — норма +5%.\n"
             "Высокий RPE → нагрузка снижается. Низкий RPE → нагрузка повышается.\n\n"
-            "_Программу можно сменить в Настройках: Стандарт (5х/нед), Новичок (3х/нед), Продвинутый (6х/нед)._"
+            "_Программу можно сменить в Настройках: Стандарт (5х/нед), Новичок (3х/нед), Продвинутый (6х/нед)._\n\n"
+            "📩 По вопросам о боте: @zhanbota102"
         ),
         "about_page2": (
             "ℹ️ *О боте — 2/3*\n\n"
@@ -495,17 +500,21 @@ STRINGS = {
         ),
         "about": (
             "ℹ️ *About — 1/3*\n\n"
-            "💪 Pullup Pro — your personal coach for pull-ups, push-ups, dips and squats.\n\n"
-            "The bot builds your plan, tracks progress, and automatically adapts load to you.\n\n"
+            "💪 Hey! I'm Pullup Pro — your personal coach for pull-ups, push-ups, dips and squats. "
+            "I'll help you track progress, adapt your training plan, and stay motivated.\n\n"
+            "The bot is completely free. Forever.\n\n"
+            "🤖 Includes *Turnikmen AI* — a personal AI coach powered by Google Gemini 3 Flash. "
+            "It knows your full training history and answers any question.\n\n"
             "🔄 *7-day wave cycle:*\n"
             "Medium → Light → Heavy → Rest → Density → Light → Rest\n\n"
             "The day type is shared by all exercises: it sets how hard today is. "
-            "Which exercise to do is up to you — one, two, or all three. "
+            "Which exercise to do is up to you — one, two, or all four. "
             "The day counts as long as you do at least one.\n\n"
             "📈 *Automatic progression:*\n"
             "Each exercise has its own daily target. Complete cycles consistently — target +5%.\n"
             "High RPE → load decreases. Low RPE → load increases.\n\n"
-            "_You can switch programs in Settings: Standard (5x/week), Beginner (3x/week), Advanced (6x/week)._"
+            "_You can switch programs in Settings: Standard (5x/week), Beginner (3x/week), Advanced (6x/week)._\n\n"
+            "📩 Questions about the bot: @zhanbota102"
         ),
         "about_page2": (
             "ℹ️ *About — 2/3*\n\n"
