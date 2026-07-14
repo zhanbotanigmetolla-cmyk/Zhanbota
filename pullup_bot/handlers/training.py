@@ -408,17 +408,16 @@ _rest_tasks: dict[int, asyncio.Task] = {}
 
 async def _rest_timer_ping(bot, chat_id: int, uid: int, seconds: int, lang: str):
     """Show a live countdown message for the rest interval, then ping the user
-    if they are still mid-session. Updates every 5s to stay within Telegram
-    edit rate limits."""
+    if they are still mid-session. Ticks every second; a throttled edit is
+    skipped so the countdown just jumps to the current value on the next tick."""
     countdown_msg = None
     try:
         countdown_msg = await bot.send_message(
             chat_id, t("rest_timer_running", lang, sec=seconds))
         remaining = seconds
         while remaining > 0:
-            step = min(5, remaining)
-            await asyncio.sleep(step)
-            remaining -= step
+            await asyncio.sleep(1)
+            remaining -= 1
             if remaining > 0:
                 try:
                     await countdown_msg.edit_text(

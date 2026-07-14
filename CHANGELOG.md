@@ -7,7 +7,7 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-07-14]
 
 ### Added
-- **Live countdown for the rest timer (#70).** Starting a 60/90/120-сек timer now posts a «⏳ Отдых: осталось N сек» message that updates every 5 seconds, then is replaced by the «Отдых окончен» ping. Restarting the timer removes the stale countdown.
+- **Live countdown for the rest timer (#70).** Starting a 60/90/120-сек timer now posts a «⏳ Отдых: осталось N сек» message that updates every second, then is replaced by the «Отдых окончен» ping. Restarting the timer removes the stale countdown.
 
 ### Changed
 - **Density day rep buttons start lower (#71).** The quick-rep keyboard on Плотность days now targets ~15–20 short sets (e.g. target 70 → buttons 1–10 instead of 5–14), matching the day's «many short sets» intent. Applies to all exercises.
