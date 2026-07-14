@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-14]
+
+### Fixed
+- **Rest timer no longer spams «Отдых окончен» after rapid presses (#69).** When a running timer was replaced, the cancelled task's cleanup removed the *new* timer from the tracking dict, so the next press couldn't cancel it — mashing 90/120-сек left several live timers that each fired «time's up». Cleanup now removes its own entry only.
+
 ## [2026-07-13]
 
 ### Added

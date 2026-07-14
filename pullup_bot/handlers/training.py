@@ -418,7 +418,11 @@ async def _rest_timer_ping(bot, chat_id: int, uid: int, seconds: int, lang: str)
     except Exception as e:
         logger.debug(f"[rest_timer] {uid}: {e}")
     finally:
-        _rest_tasks.pop(uid, None)
+        # Only remove our own entry: if this task was cancelled because the
+        # user restarted the timer, _rest_tasks[uid] already holds the new
+        # task — popping it would orphan that timer and let duplicates pile up.
+        if _rest_tasks.get(uid) is asyncio.current_task():
+            _rest_tasks.pop(uid, None)
 
 
 @router.callback_query(F.data.startswith("rest:"))
