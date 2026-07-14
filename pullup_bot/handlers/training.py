@@ -338,14 +338,15 @@ async def _begin_training(message, state, user, lang, today_str, exercise, day_t
     if break_note:
         await message.answer(break_note, parse_mode="Markdown")
 
+    is_density = day_type == "Плотность"
     await state.set_state(Training.active)
     await state.update_data(date=today_str, exercise=exercise, planned=planned,
                             sets=session_sets, done_before=done_before, lang=lang,
-                            was_rest_override=was_rest_override,
+                            was_rest_override=was_rest_override, is_density=is_density,
                             orig_set_record=user[SET_RECORD_COLS[exercise]] or 0)
 
     day_display = day_name(day_type, lang)
-    density_note = ("\n\n" + t("density_hint", lang)) if day_type == "Плотность" else ""
+    density_note = ("\n\n" + t("density_hint", lang)) if is_density else ""
     hint = "\n_Нажми на число или введи вручную:_" if lang == "ru" else "\n_Tap a number or enter manually:_"
     await message.answer(
         f"🟢 *{day_display}* — {ex_label(exercise, lang)}\n\n"
@@ -353,7 +354,8 @@ async def _begin_training(message, state, user, lang, today_str, exercise, day_t
         f"{t('train_done_today', lang, done=done_today)}\n"
         f"{t('train_done_now', lang, done=0)}"
         f"{density_note}{hint}",
-        parse_mode="Markdown", reply_markup=training_kb(session_sets, planned, lang))
+        parse_mode="Markdown",
+        reply_markup=training_kb(session_sets, planned, lang, density=is_density))
 
 
 async def _training_status(message: types.Message, state: FSMContext):
@@ -405,16 +407,41 @@ _rest_tasks: dict[int, asyncio.Task] = {}
 
 
 async def _rest_timer_ping(bot, chat_id: int, uid: int, seconds: int, lang: str):
-    """Sleep out the rest interval, then ping the user if they are still mid-session."""
+    """Show a live countdown message for the rest interval, then ping the user
+    if they are still mid-session. Updates every 5s to stay within Telegram
+    edit rate limits."""
+    countdown_msg = None
     try:
-        await asyncio.sleep(seconds)
+        countdown_msg = await bot.send_message(
+            chat_id, t("rest_timer_running", lang, sec=seconds))
+        remaining = seconds
+        while remaining > 0:
+            step = min(5, remaining)
+            await asyncio.sleep(step)
+            remaining -= step
+            if remaining > 0:
+                try:
+                    await countdown_msg.edit_text(
+                        t("rest_timer_running", lang, sec=remaining))
+                except Exception:
+                    pass  # edit throttled or message gone — countdown continues silently
+        try:
+            await countdown_msg.delete()
+            countdown_msg = None
+        except Exception:
+            pass
         from ..main import dp  # local import: main.py imports this module at startup
         key = StorageKey(bot_id=bot.id, chat_id=chat_id, user_id=uid)
         current = await dp.storage.get_state(key)
         if current == Training.active.state:
             await bot.send_message(chat_id, t("rest_timer_done", lang))
     except asyncio.CancelledError:
-        pass
+        # user restarted the timer — remove the stale countdown message
+        if countdown_msg:
+            try:
+                await bot.delete_message(chat_id, countdown_msg.message_id)
+            except Exception:
+                pass
     except Exception as e:
         logger.debug(f"[rest_timer] {uid}: {e}")
     finally:
@@ -505,7 +532,9 @@ async def rpe_back(message: types.Message, state: FSMContext):
     sets = data.get("sets", [])
     planned = data.get("planned", 0)
     await state.set_state(Training.active)
-    await message.answer(t("train_lets_go", lang), reply_markup=training_kb(sets, planned, lang))
+    await message.answer(t("train_lets_go", lang),
+                         reply_markup=training_kb(sets, planned, lang,
+                                                  density=data.get("is_density", False)))
 
 
 async def _cleanup_cancelled_workout(tg_id: int, state_data: dict):
@@ -578,7 +607,9 @@ async def cancel_back_msg(message: types.Message, state: FSMContext):
     sets = data.get("sets", [])
     planned = data.get("planned", 0)
     await state.set_state(Training.active)
-    await message.answer(t("train_lets_go", lang), reply_markup=training_kb(sets, planned, lang))
+    await message.answer(t("train_lets_go", lang),
+                         reply_markup=training_kb(sets, planned, lang,
+                                                  density=data.get("is_density", False)))
 
 
 @router.message(Training.active, F.text.regexp(r"^\s*\d+\s*$"))

@@ -84,17 +84,24 @@ def program_select_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-def smart_set_buttons(planned: int) -> list:
-    """Generate 10 consecutive rep-count button values starting near the per-set target."""
-    base = 7 if planned <= 0 else max(3, planned // 10)
+def smart_set_buttons(planned: int, density: bool = False) -> list:
+    """Generate 10 consecutive rep-count button values starting near the per-set target.
+
+    On density days the volume is meant to be spread over many short sets,
+    so the buttons start much lower (target split into ~15-20 sets)."""
+    if density:
+        base = 4 if planned <= 0 else max(2, planned // 18)
+    else:
+        base = 7 if planned <= 0 else max(3, planned // 10)
     start = max(1, base - 2)
     return list(range(start, start + 10))
 
 
-def training_kb(sets: list, planned: int = 0, lang: str = "ru") -> ReplyKeyboardMarkup:
+def training_kb(sets: list, planned: int = 0, lang: str = "ru",
+                density: bool = False) -> ReplyKeyboardMarkup:
     """Return the active training keyboard with smart rep buttons plus Undo/Manual/Finish/Cancel."""
     b = ReplyKeyboardBuilder()
-    for n in smart_set_buttons(planned):
+    for n in smart_set_buttons(planned, density):
         b.button(text=str(n))
     b.adjust(5)
     b.row(KeyboardButton(text=t("btn_undo", lang)),

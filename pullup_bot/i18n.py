@@ -23,6 +23,7 @@ STRINGS = {
         # Rest timer
         "btn_rest_fmt": "⏱ {sec} сек",
         "rest_timer_toast": "⏱ Отдых {sec} сек — таймер запущен",
+        "rest_timer_running": "⏳ Отдых: осталось {sec} сек",
         "rest_timer_done": "✅ Отдых окончен — следующий подход! 💪",
         # Buttons - settings
         "btn_notify_time": "🔔 Время уведомлений",
@@ -460,6 +461,7 @@ STRINGS = {
         # Rest timer
         "btn_rest_fmt": "⏱ {sec}s",
         "rest_timer_toast": "⏱ Resting {sec}s — timer started",
+        "rest_timer_running": "⏳ Rest: {sec}s left",
         "rest_timer_done": "✅ Rest over — next set! 💪",
         # Buttons - settings
         "btn_notify_time": "🔔 Notification Time",
