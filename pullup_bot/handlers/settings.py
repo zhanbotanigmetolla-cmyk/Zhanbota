@@ -7,11 +7,11 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile
 
-from ..db import (add_xp, get_db, get_lang, get_today_workout, get_user,
-                  upsert_workout)
+from ..db import (add_xp, clear_rest_row, get_day_rows, get_db, get_lang,
+                  get_user, get_workout, mark_rest_day, upsert_workout)
 from ..i18n import t, text_filter
 from ..keyboards import (LANG_BACK_BILINGUAL, LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
-                         activity_reply_kb, back_only_kb, delete_confirm_kb, edit_extras_kb,
+                         back_only_kb, delete_confirm_kb, exercise_picker_kb,
                          landing_kb, lang_kb, logout_confirm_kb, main_kb, parse_rpe,
                          program_select_kb, rpe_menu_kb, settings_kb, skip_reason_kb)
 from aiogram.filters import StateFilter
@@ -20,24 +20,38 @@ from ..states import (DeleteAccount, EditDay, Logout, SelectProgram, SetBase, Se
 
 _INPUT_STATES = (
     SetNotify.enter_time,
+    SetBase.pick_exercise,
     SetBase.enter_base,
     SetName.enter_name,
     SkipReason.pick_date, SkipReason.enter_reason,
 )
 # EditDay states are intentionally excluded — each step has its own back handler
-from ..services.xp import level_info
-from ..config import XP_PER_PULLUP
-
-_EDIT_ACTIVITY_MAP = {
-    "🏃 Бег/Кардио": "бег", "🏃 Running/Cardio": "бег",
-    "🏋️ Зал": "зал", "🏋️ Gym": "зал",
-    "🏃+🏋️ Кардио+Зал": "бег+зал", "🏃+🏋️ Cardio+Gym": "бег+зал",
-    "⏭️ Пропустить": "skip", "⏭️ Skip": "skip",
-}
+from ..services.xp import level_info, user_base
+from ..config import BASE_COLS, EXERCISES, EXERCISE_EMOJI, xp_for
 from .admin import _is_admin
-from .training import sync_max_streak
+from .training import ex_label, sync_max_streak
 
 router = Router()
+
+
+def _bases_block(user, lang: str) -> str:
+    """Render the per-exercise daily targets for the settings screen."""
+    lines = []
+    for ex in EXERCISES:
+        b = user_base(user, ex)
+        lines.append(f"  {EXERCISE_EMOJI[ex]} {t('ex_' + ex, lang)}: {b if b > 0 else '—'}")
+    return "\n".join(lines)
+
+
+async def _send_settings(message, user, lang: str, is_admin: bool = False):
+    """Send the settings screen with current values."""
+    await message.answer(
+        t("settings_title", lang,
+          bases=_bases_block(user, lang),
+          notify=user["notify_time"], freeze=user["freeze_tokens"]),
+        parse_mode="Markdown",
+        reply_markup=settings_kb(lang, is_admin=is_admin,
+                                 notify_workouts=bool(user["notify_workouts"])))
 
 
 @router.message(StateFilter(*_INPUT_STATES), text_filter("btn_back"))
@@ -58,19 +72,14 @@ async def settings_back(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_settings"))
 async def settings_menu(message: types.Message, state: FSMContext):
-    """Show the settings panel with the user's current base, notify time, and freeze tokens."""
+    """Show the settings panel with the user's current targets, notify time, and freeze tokens."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
     await state.set_state(Settings.viewing)
-    await message.answer(
-        t("settings_title", lang,
-          base=user["base_pullups"],
-          notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message),
-                                                         notify_workouts=bool(user["notify_workouts"])))
+    await _send_settings(message, user, lang, is_admin=_is_admin(message))
 
 
 @router.message(text_filter("btn_logout"))
@@ -125,6 +134,8 @@ async def delete_account_confirm(message: types.Message, state: FSMContext):
         await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user["id"],))
         await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
                            (user["id"], user["id"]))
+        await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
+                           (message.from_user.id, message.from_user.id))
         await conn.execute("DELETE FROM users WHERE id=?", (user["id"],))
         await conn.commit()
     from aiogram.types import ReplyKeyboardRemove
@@ -141,12 +152,7 @@ async def delete_account_cancel(message: types.Message, state: FSMContext):
     if not user:
         await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
         return
-    await message.answer(
-        t("settings_title", lang,
-          base=user["base_pullups"],
-          notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown", reply_markup=settings_kb(lang,
-                                                       notify_workouts=bool(user["notify_workouts"])))
+    await _send_settings(message, user, lang)
 
 
 @router.message(text_filter("btn_notify_time"))
@@ -161,15 +167,45 @@ async def set_notify_msg(message: types.Message, state: FSMContext):
 
 @router.message(text_filter("btn_change_base"))
 async def set_base_start_msg(message: types.Message, state: FSMContext):
-    """Prompt the user to enter a new daily pullup base value."""
+    """Ask which exercise's daily target to change."""
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
-    await message.answer(t("set_base_prompt", lang, base=user["base_pullups"]),
-                         parse_mode="Markdown")
+    labels = {}
+    for ex in EXERCISES:
+        b = user_base(user, ex)
+        label = f"{ex_label(ex, lang)} · {b if b > 0 else '—'}"
+        labels[label] = ex
+    await state.set_state(SetBase.pick_exercise)
+    await state.update_data(base_label_map=labels)
+    await message.answer(t("set_base_pick", lang),
+                         reply_markup=exercise_picker_kb(list(labels.keys()), lang))
+
+
+@router.message(SetBase.pick_exercise)
+async def set_base_pick_exercise(message: types.Message, state: FSMContext):
+    """Store the chosen exercise and prompt for its new daily target."""
+    user = await get_user(message.from_user.id)
+    if not user:
+        await state.clear()
+        await message.answer(t("register_first", "ru"))
+        return
+    lang = user["lang"] or "ru"
+    data = await state.get_data()
+    labels = data.get("base_label_map", {})
+    exercise = labels.get((message.text or "").strip())
+    if not exercise:
+        await message.answer(t("set_base_pick", lang),
+                             reply_markup=exercise_picker_kb(list(labels.keys()), lang))
+        return
+    await state.update_data(base_exercise=exercise)
     await state.set_state(SetBase.enter_base)
+    await message.answer(
+        t("set_base_prompt", lang, base=user_base(user, exercise),
+          ex=t(f"ex_gen_{exercise}", lang)),
+        parse_mode="Markdown", reply_markup=back_only_kb(lang))
 
 
 @router.message(text_filter("btn_change_name"))
@@ -208,20 +244,40 @@ async def edit_date_back(message: types.Message, state: FSMContext):
     user = await get_user(message.from_user.id)
     lang = (user["lang"] or "ru") if user else "ru"
     await state.set_state(Settings.viewing)
-    await message.answer(
-        t("settings_title", lang,
-          base=user["base_pullups"],
-          notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown", reply_markup=settings_kb(lang, is_admin=_is_admin(message),
-                                                         notify_workouts=bool(user["notify_workouts"])))
+    await _send_settings(message, user, lang, is_admin=_is_admin(message))
 
 
-@router.message(EditDay.pick_done, text_filter("btn_back"))
-async def edit_done_back(message: types.Message, state: FSMContext):
+async def _edit_prompt_exercise(message, state: FSMContext, user, lang: str):
+    """Show the exercise picker for the edit-day flow, marking exercises with records."""
+    data = await state.get_data()
+    d = data.get("edit_date")
+    labels = {}
+    for ex in EXERCISES:
+        row = await get_workout(user["id"], d, ex) if d else None
+        label = ex_label(ex, lang)
+        if row:
+            label += f" · {row['completed']}/{row['planned']}"
+        labels[label] = ex
+    await state.update_data(edit_label_map=labels)
+    await state.set_state(EditDay.pick_exercise)
+    await message.answer(t("edit_pick_exercise", lang),
+                         reply_markup=exercise_picker_kb(list(labels.keys()), lang))
+
+
+@router.message(EditDay.pick_exercise, text_filter("btn_back"))
+async def edit_exercise_back(message: types.Message, state: FSMContext):
     """Go back to the date-input step of the edit-day flow."""
     lang = await get_lang(message.from_user.id)
     await state.set_state(EditDay.pick_date)
     await message.answer(t("edit_date_prompt", lang), parse_mode="Markdown")
+
+
+@router.message(EditDay.pick_done, text_filter("btn_back"))
+async def edit_done_back(message: types.Message, state: FSMContext):
+    """Go back to the exercise picker of the edit-day flow."""
+    user = await get_user(message.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    await _edit_prompt_exercise(message, state, user, lang)
 
 
 @router.message(EditDay.pick_rpe, text_filter("btn_back"))
@@ -230,6 +286,7 @@ async def edit_rpe_back(message: types.Message, state: FSMContext):
     lang = await get_lang(message.from_user.id)
     data = await state.get_data()
     d = data.get("edit_date", "")
+    exercise = data.get("edit_exercise", "pullups")
     try:
         from datetime import date as _date
         date_display = _date.fromisoformat(d).strftime("%d.%m")
@@ -237,7 +294,7 @@ async def edit_rpe_back(message: types.Message, state: FSMContext):
         date_display = "??"
     await state.set_state(EditDay.pick_done)
     await message.answer(
-        t("edit_done_prompt", lang, date=date_display),
+        t("edit_done_prompt", lang, date=date_display, ex=t(f"ex_gen_{exercise}", lang)),
         parse_mode="Markdown", reply_markup=back_only_kb(lang))
 
 
@@ -274,12 +331,10 @@ async def language_back(message: types.Message, state: FSMContext):
     lang = await get_lang(message.from_user.id)
     user = await get_user(message.from_user.id)
     await state.clear()
-    await message.answer(
-        t("settings_title", lang,
-          base=user["base_pullups"],
-          notify=user["notify_time"], freeze=user["freeze_tokens"]),
-        parse_mode="Markdown", reply_markup=settings_kb(lang,
-                                                       notify_workouts=bool(user["notify_workouts"]) if user else False))
+    if not user:
+        await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+        return
+    await _send_settings(message, user, lang)
 
 
 @router.message(Settings.pick_lang, F.text.in_({LANG_RU_BTN, LANG_EN_BTN, LANG_TOGGLE_BTN}))
@@ -344,8 +399,10 @@ async def save_notify_time(message: types.Message, state: FSMContext):
 
 @router.message(SetBase.enter_base)
 async def set_base_save(message: types.Message, state: FSMContext):
-    """Validate (1–500) and persist the new daily pullup base."""
+    """Validate (1–500) and persist the new daily target for the chosen exercise."""
     lang = await get_lang(message.from_user.id)
+    data = await state.get_data()
+    exercise = data.get("base_exercise", "pullups")
     if not message.text:
         await message.answer(t("set_base_range", lang))
         return
@@ -359,10 +416,12 @@ async def set_base_save(message: types.Message, state: FSMContext):
             await message.answer(t("set_base_range", lang))
             return
         conn = await get_db()
-        await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?",
+        await conn.execute(f"UPDATE users SET {BASE_COLS[exercise]}=? WHERE tg_id=?",
                            (base, message.from_user.id))
         await conn.commit()
-        await message.answer(t("set_base_ok", lang, base=base), parse_mode="Markdown")
+        await message.answer(
+            t("set_base_ok", lang, base=base, ex=t(f"ex_gen_{exercise}", lang)),
+            parse_mode="Markdown")
         await state.clear()
         await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
     except ValueError:
@@ -379,9 +438,10 @@ async def edit_day_start(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.pick_date)
 async def edit_pick_date(message: types.Message, state: FSMContext):
-    """Parse and store the target date (DD.MM), then prompt for the new rep count."""
-    lang = await get_lang(message.from_user.id)
-    if not message.text:
+    """Parse and store the target date (DD.MM), then ask which exercise to edit."""
+    user = await get_user(message.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    if not message.text or not user:
         await message.answer(t("edit_date_bad", lang))
         return
     try:
@@ -390,12 +450,75 @@ async def edit_pick_date(message: types.Message, state: FSMContext):
         if d > date.today():
             d = date(date.today().year - 1, month, day)
         await state.update_data(edit_date=d.isoformat())
-        await message.answer(
-            t("edit_done_prompt", lang, date=message.text.strip()),
-            parse_mode="Markdown", reply_markup=back_only_kb(lang))
-        await state.set_state(EditDay.pick_done)
+        await _edit_prompt_exercise(message, state, user, lang)
     except Exception:
         await message.answer(t("edit_date_bad", lang))
+
+
+@router.message(EditDay.pick_exercise)
+async def edit_pick_exercise(message: types.Message, state: FSMContext):
+    """Resolve the chosen exercise and prompt for the corrected rep count."""
+    user = await get_user(message.from_user.id)
+    lang = (user["lang"] or "ru") if user else "ru"
+    data = await state.get_data()
+    labels = data.get("edit_label_map", {})
+    exercise = labels.get((message.text or "").strip())
+    if not exercise:
+        await message.answer(t("edit_pick_exercise", lang),
+                             reply_markup=exercise_picker_kb(list(labels.keys()), lang))
+        return
+    d = data.get("edit_date", "")
+    try:
+        date_display = date.fromisoformat(d).strftime("%d.%m")
+    except Exception:
+        date_display = "??"
+    await state.update_data(edit_exercise=exercise)
+    await state.set_state(EditDay.pick_done)
+    await message.answer(
+        t("edit_done_prompt", lang, date=date_display, ex=t(f"ex_gen_{exercise}", lang)),
+        parse_mode="Markdown", reply_markup=back_only_kb(lang))
+
+
+async def _delete_exercise_record(message, state, user, lang, d: str, exercise: str):
+    """Delete one exercise's record for a date, refund its XP, and fix day-level counters."""
+    existing = await get_workout(user["id"], d, exercise)
+    conn = await get_db()
+    if existing:
+        old_completed = existing["completed"] or 0
+        await conn.execute(
+            "DELETE FROM workouts WHERE user_id=? AND date=? AND exercise=?",
+            (user["id"], d, exercise))
+        await conn.commit()
+        if old_completed > 0:
+            await add_xp(message.from_user.id, -xp_for(exercise, old_completed))
+        # If this was today's only training record, revert program_day and last_workout
+        # (program_day was already incremented when the day was acknowledged)
+        if d == date.today().isoformat():
+            remaining = await get_day_rows(user["id"], d)
+            still_trained = any(r["exercise"] != "rest" and (r["completed"] or 0) > 0
+                                for r in remaining)
+            if not still_trained and user["last_workout"] == d:
+                # program_day is a monotonic counter (only planned_for_day applies % 7),
+                # so just step it back — wrapping with % 7 would corrupt the position
+                new_pd = max(0, (user["program_day"] or 0) - 1)
+                async with conn.execute(
+                    "SELECT date FROM workouts WHERE user_id=? AND date<? "
+                    "ORDER BY date DESC LIMIT 1",
+                    (user["id"], d)
+                ) as cur:
+                    prev_row = await cur.fetchone()
+                last_workout = prev_row[0] if prev_row else None
+                await conn.execute(
+                    "UPDATE users SET program_day=?, last_workout=? WHERE id=?",
+                    (new_pd, last_workout, user["id"])
+                )
+                await conn.commit()
+    date_display = date.fromisoformat(d).strftime("%d.%m.%Y")
+    await message.answer(
+        t("edit_deleted", lang, date=date_display, ex=t(f"ex_gen_{exercise}", lang)),
+        parse_mode="Markdown")
+    await state.clear()
+    await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
 
 
 @router.message(EditDay.pick_done)
@@ -408,42 +531,15 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
     try:
         done = int(message.text.strip())
         if done == 0:
-            # Delete the workout record entirely
             data = await state.get_data()
             d = data.get("edit_date")
+            exercise = data.get("edit_exercise", "pullups")
             if not d:
                 await message.answer(t("edit_no_date", lang))
                 await state.clear()
                 return
             user = await get_user(message.from_user.id)
-            existing = await get_today_workout(user["id"], d)
-            if existing:
-                old_completed = existing["completed"] or 0
-                conn = await get_db()
-                await conn.execute("DELETE FROM workouts WHERE user_id=? AND date=?",
-                                   (user["id"], d))
-                await conn.commit()
-                if old_completed > 0:
-                    await add_xp(message.from_user.id, -old_completed * XP_PER_PULLUP)
-                # If deleting today's record, revert program_day and last_workout
-                # (program_day was already incremented when the day was acknowledged)
-                if d == date.today().isoformat():
-                    new_pd = ((user["program_day"] or 0) - 1) % 7
-                    async with conn.execute(
-                        "SELECT date FROM workouts WHERE user_id=? ORDER BY date DESC LIMIT 1",
-                        (user["id"],)
-                    ) as cur:
-                        prev_row = await cur.fetchone()
-                    last_workout = prev_row[0] if prev_row else None
-                    await conn.execute(
-                        "UPDATE users SET program_day=?, last_workout=? WHERE id=?",
-                        (new_pd, last_workout, user["id"])
-                    )
-                    await conn.commit()
-            date_display = date.fromisoformat(d).strftime("%d.%m.%Y")
-            await message.answer(t("edit_deleted", lang, date=date_display), parse_mode="Markdown")
-            await state.clear()
-            await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+            await _delete_exercise_record(message, state, user, lang, d, exercise)
             return
         await state.update_data(edit_done=done)
         await message.answer(t("edit_rpe_prompt", lang), reply_markup=rpe_menu_kb(lang))
@@ -454,151 +550,55 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
 
 @router.message(EditDay.pick_rpe)
 async def edit_pick_rpe(message: types.Message, state: FSMContext):
-    """Parse the RPE selection and advance to the extras-prompt step."""
+    """Parse the RPE selection and save the edited record."""
     rpe = parse_rpe(message.text or "")
     lang = await get_lang(message.from_user.id)
     if rpe is None:
         await message.answer(t("train_rpe_invalid", lang), reply_markup=rpe_menu_kb(lang))
         return
     await state.update_data(edit_rpe=rpe)
-    await message.answer(t("edit_ask_extras", lang), reply_markup=edit_extras_kb(lang))
-    await state.set_state(EditDay.confirm_extras)
+    await _save_edit(message, state)
 
 
-async def _save_edit(message: types.Message, state: FSMContext,
-                     activity: str = "", act_mins: int = 0, notes: str = ""):
+async def _save_edit(message: types.Message, state: FSMContext):
     """Persist the edited workout row, adjust XP for the diff, and confirm to the user."""
     data = await state.get_data()
     user = await get_user(message.from_user.id)
     lang = user["lang"] or "ru" if user else "ru"
     d = data.get("edit_date")
+    exercise = data.get("edit_exercise", "pullups")
     done = data.get("edit_done", 0)
     rpe = data.get("edit_rpe", 0)
     if not d:
         await message.answer(t("edit_no_date", lang))
         await state.clear()
         return
-    existing = await get_today_workout(user["id"], d)
-    if existing:
-        planned = existing["planned"] if existing["planned"] is not None else user["base_pullups"]
+    existing = await get_workout(user["id"], d, exercise)
+    fallback_planned = user_base(user, exercise) or done
+    if existing and (existing["planned"] or 0) > 0:
+        planned = existing["planned"]
         day_type = existing["day_type"] or "Средний"
     else:
-        planned = user["base_pullups"]
-        day_type = "Средний"
+        # New record (or a zero-planned leftover) — logging reps makes it a
+        # training day, so history doesn't show "😴 50/0"
+        day_rows = await get_day_rows(user["id"], d)
+        day_type = next((r["day_type"] for r in day_rows
+                         if r["exercise"] != "rest" and r["day_type"]), "Средний")
+        planned = fallback_planned
     old = existing["completed"] if existing else 0
-    xp_diff = (done - old) * XP_PER_PULLUP
-    await upsert_workout(user["id"], d, completed=done, planned=planned, day_type=day_type,
-                         rpe=rpe, extra_activity=activity, extra_minutes=act_mins, notes=notes)
+    xp_diff = xp_for(exercise, done) - xp_for(exercise, old)
+    await upsert_workout(user["id"], d, exercise, completed=done, planned=planned,
+                         day_type=day_type, rpe=rpe)
+    # The day now has real training — the rest marker no longer applies
+    await clear_rest_row(user["id"], d)
     if xp_diff != 0:
         await add_xp(message.from_user.id, xp_diff)
     await message.answer(
-        t("edit_ok", lang, date=date.fromisoformat(d).strftime("%d.%m.%Y"), done=done, rpe=rpe),
+        t("edit_ok", lang, date=date.fromisoformat(d).strftime("%d.%m.%Y"),
+          done=done, rpe=rpe, ex=t(f"ex_gen_{exercise}", lang)),
         parse_mode="Markdown")
     await state.clear()
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
-
-
-@router.message(EditDay.confirm_extras, text_filter("btn_no_save"))
-async def edit_extras_no(message: types.Message, state: FSMContext):
-    """Save the edited workout without adding extra-activity data."""
-    await _save_edit(message, state)
-
-
-@router.message(EditDay.confirm_extras, text_filter("btn_yes_add"))
-async def edit_extras_yes(message: types.Message, state: FSMContext):
-    """Enter the extra-activity sub-flow when editing a workout."""
-    lang = await get_lang(message.from_user.id)
-    await state.set_state(EditDay.activity)
-    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
-                         reply_markup=activity_reply_kb(lang))
-
-
-@router.message(text_filter("btn_back"), EditDay.confirm_extras)
-async def edit_confirm_extras_back(message: types.Message, state: FSMContext):
-    """Go back to RPE selection from the extras-prompt step."""
-    lang = await get_lang(message.from_user.id)
-    await state.set_state(EditDay.pick_rpe)
-    await message.answer(t("edit_rpe_prompt", lang), reply_markup=rpe_menu_kb(lang))
-
-
-@router.message(text_filter("btn_back"), EditDay.activity)
-async def edit_activity_back(message: types.Message, state: FSMContext):
-    """Go back to the extras-prompt step from activity-type selection."""
-    lang = await get_lang(message.from_user.id)
-    await state.set_state(EditDay.confirm_extras)
-    await message.answer(t("edit_ask_extras", lang), reply_markup=edit_extras_kb(lang))
-
-
-@router.message(EditDay.activity)
-async def edit_set_activity(message: types.Message, state: FSMContext):
-    """Record the extra-activity type for the edited workout."""
-    lang = await get_lang(message.from_user.id)
-    act_val = _EDIT_ACTIVITY_MAP.get(message.text or "", "skip")
-    if act_val == "skip":
-        await state.update_data(edit_activity="", edit_act_mins=0)
-        await _prompt_edit_notes(message, state, lang)
-    else:
-        await state.update_data(edit_activity=act_val)
-        await message.answer(t("train_how_long", lang, act=act_val), parse_mode="Markdown",
-                             reply_markup=back_only_kb(lang))
-        await state.set_state(EditDay.act_mins)
-
-
-async def _prompt_edit_notes(message, state, lang):
-    """Send the notes prompt with a Skip button and advance to the notes step of the edit flow."""
-    from aiogram.types import KeyboardButton
-    from aiogram.utils.keyboard import ReplyKeyboardBuilder
-    b = ReplyKeyboardBuilder()
-    b.row(KeyboardButton(text=t("train_skip_notes", lang)))
-    b.row(KeyboardButton(text=t("btn_back", lang)))
-    await message.answer(t("train_notes_prompt", lang), parse_mode="Markdown",
-                         reply_markup=b.as_markup(resize_keyboard=True, one_time_keyboard=True))
-    await state.set_state(EditDay.notes)
-
-
-@router.message(text_filter("btn_back"), EditDay.act_mins)
-async def edit_act_mins_back(message: types.Message, state: FSMContext):
-    """Go back from activity-duration input to activity-type selection."""
-    lang = await get_lang(message.from_user.id)
-    await state.set_state(EditDay.activity)
-    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
-                         reply_markup=activity_reply_kb(lang))
-
-
-@router.message(EditDay.act_mins)
-async def edit_set_act_mins(message: types.Message, state: FSMContext):
-    """Parse and store the extra-activity duration in minutes, then advance to notes."""
-    lang = await get_lang(message.from_user.id)
-    if not message.text:
-        await message.answer(t("train_enter_mins", lang))
-        return
-    try:
-        mins = int(message.text.strip())
-        await state.update_data(edit_act_mins=mins)
-        await _prompt_edit_notes(message, state, lang)
-    except ValueError:
-        await message.answer(t("train_enter_mins", lang))
-
-
-@router.message(text_filter("btn_back"), EditDay.notes)
-async def edit_notes_back(message: types.Message, state: FSMContext):
-    """Go back from the notes step to activity-type selection."""
-    lang = await get_lang(message.from_user.id)
-    await state.set_state(EditDay.activity)
-    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
-                         reply_markup=activity_reply_kb(lang))
-
-
-@router.message(EditDay.notes)
-async def edit_enter_notes(message: types.Message, state: FSMContext):
-    """Accept or skip the optional note and save the edited workout."""
-    lang = await get_lang(message.from_user.id)
-    skip_text = t("train_skip_notes", lang)
-    notes = "" if (message.text or "").strip() == skip_text else (message.text or "").strip()
-    data = await state.get_data()
-    activity = data.get("edit_activity", "")
-    act_mins = data.get("edit_act_mins", 0)
-    await _save_edit(message, state, activity=activity, act_mins=act_mins, notes=notes)
 
 
 
@@ -649,6 +649,13 @@ async def skip_reason_save(message: types.Message, state: FSMContext):
         await conn.execute("UPDATE users SET streak = streak + 1 WHERE id=?", (user["id"],))
     await conn.commit()
     await sync_max_streak(message.from_user.id)
+
+    # Mark the skipped day as a rest row so stats shows 😴 instead of ❌.
+    # Only add the marker if the user didn't actually log any reps that day.
+    day_rows = await get_day_rows(user["id"], d)
+    if not any((r["completed"] or 0) > 0 for r in day_rows):
+        await mark_rest_day(user["id"], d)
+
     await message.answer(
         t("skip_ok", lang, date=date.fromisoformat(d).strftime("%d.%m.%Y"), reason=reason),
         parse_mode="Markdown")
@@ -693,15 +700,7 @@ async def program_select_back(message: types.Message, state: FSMContext):
     user = await get_user(message.from_user.id)
     lang = (user["lang"] or "ru") if user else "ru"
     await state.set_state(Settings.viewing)
-    await message.answer(
-        t("settings_title", lang,
-          base=user["base_pullups"],
-          notify=user["notify_time"],
-          freeze=user["freeze_tokens"]),
-        parse_mode="Markdown",
-        reply_markup=settings_kb(lang, is_admin=_is_admin(message),
-                                 notify_workouts=bool(user["notify_workouts"])),
-    )
+    await _send_settings(message, user, lang, is_admin=_is_admin(message))
 
 
 @router.message(SelectProgram.pick)
@@ -741,9 +740,9 @@ async def export_data(message: types.Message):
     lang = user["lang"] or "ru"
     conn = await get_db()
     async with conn.execute(
-        """SELECT date, day_type, planned, completed, sets_json,
-                  rpe, extra_activity, extra_minutes, notes
-           FROM workouts WHERE user_id=? ORDER BY date ASC""",
+        """SELECT date, exercise, day_type, planned, completed, sets_json,
+                  rpe, notes
+           FROM workouts WHERE user_id=? ORDER BY date ASC, exercise ASC""",
         (user["id"],)
     ) as cur:
         rows = await cur.fetchall()
@@ -754,14 +753,13 @@ async def export_data(message: types.Message):
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["Date", "Day Type", "Planned", "Completed", "Sets",
-                     "RPE", "Extra Activity", "Extra Minutes", "Notes", "Completion%"])
+    writer.writerow(["Date", "Exercise", "Day Type", "Planned", "Completed", "Sets",
+                     "RPE", "Notes", "Completion%"])
     for r in rows:
         pct = int(r["completed"] / r["planned"] * 100) if r["planned"] else 0
         writer.writerow([
-            r["date"], r["day_type"], r["planned"], r["completed"],
-            r["sets_json"], r["rpe"],
-            r["extra_activity"], r["extra_minutes"], r["notes"], pct,
+            r["date"], r["exercise"], r["day_type"], r["planned"], r["completed"],
+            r["sets_json"], r["rpe"], r["notes"], pct,
         ])
 
     # utf-8-sig adds BOM so Excel opens Cyrillic correctly

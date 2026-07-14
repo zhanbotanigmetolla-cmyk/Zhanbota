@@ -31,12 +31,12 @@ async def test_db():
 async def insert_test_user(conn, tg_id=12345, base=100, lang="ru", **kw):
     """Helper to insert a user for tests."""
     defaults = dict(username="test", first_name="Test", start_day=1,
-                    weight_kg=80.0, lang=lang, base_pullups=base)
+                    lang=lang, base_pullups=base)
     defaults.update(kw)
     await conn.execute(
         "INSERT INTO users (tg_id, username, first_name, base_pullups, "
-        "start_day, weight_kg, lang) VALUES (?,?,?,?,?,?,?)",
+        "start_day, lang) VALUES (?,?,?,?,?,?)",
         (tg_id, defaults["username"], defaults["first_name"],
          defaults["base_pullups"], defaults["start_day"],
-         defaults["weight_kg"], defaults["lang"]))
+         defaults["lang"]))
     await conn.commit()

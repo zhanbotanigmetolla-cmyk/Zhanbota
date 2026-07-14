@@ -5,12 +5,12 @@ import traceback
 from aiogram import Bot, Dispatcher, types
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, is_admin_id, logger
+from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, is_admin_user, logger
 from .db import close_db, get_user, init_db, is_muted, is_permanently_banned
 from .handlers import register_all
 from .storage import SqliteStorage
 from .services.scheduler import (auto_acknowledge_rest_days, auto_cleanup_inactive,
-                                  daily_health_summary, daily_reminder,
+                                  daily_health_summary, daily_reminder, daily_xp_decay,
                                   db_integrity_check, watchdog_health_check,
                                   weekly_summary)
 from .services import monitoring
@@ -51,7 +51,7 @@ async def errors_handler(event: types.ErrorEvent) -> bool:
         f"🚨 Ошибка бота\n{context}\n"
         f"{type(exc).__name__}: {exc}\n\n"
         f"{tb[-800:] if len(tb) > 800 else tb}"
-    )
+    )[:4000]  # Telegram message hard limit is 4096 chars
     try:
         await bot.send_message(ADMIN_TG_ID, alert)
     except Exception as e:
@@ -74,7 +74,7 @@ async def _check_ban_and_mute(uid: int) -> str | None:
 async def ban_check_middleware(handler, event: types.Message, data):
     """Drop messages from banned users; silently ignore messages from muted users."""
     uid = event.from_user.id if event.from_user else None
-    if uid and not is_admin_id(uid):
+    if uid and not is_admin_user(uid, event.from_user.username):
         try:
             reason = await _check_ban_and_mute(uid)
             if reason == "banned":
@@ -91,7 +91,7 @@ async def ban_check_middleware(handler, event: types.Message, data):
 async def ban_check_cb_middleware(handler, event: types.CallbackQuery, data):
     """Alert banned/muted users on callback queries and suppress the event."""
     uid = event.from_user.id if event.from_user else None
-    if uid and not is_admin_id(uid):
+    if uid and not is_admin_user(uid, event.from_user.username):
         try:
             reason = await _check_ban_and_mute(uid)
             if reason == "banned":
@@ -110,8 +110,19 @@ async def maintenance_middleware(handler, event: types.Message, data):
     """Block non-admin messages while maintenance mode is active."""
     if g.maintenance_mode:
         uid = event.from_user.id if event.from_user else None
-        if uid and not is_admin_id(uid):
+        if uid and not is_admin_user(uid, event.from_user.username):
             await event.answer("🔧 Бот на техническом обслуживании. Скоро вернёмся!")
+            return
+    return await handler(event, data)
+
+
+@dp.callback_query.middleware()
+async def maintenance_cb_middleware(handler, event: types.CallbackQuery, data):
+    """Block non-admin callback queries while maintenance mode is active."""
+    if g.maintenance_mode:
+        uid = event.from_user.id if event.from_user else None
+        if uid and not is_admin_user(uid, event.from_user.username):
+            await event.answer("🔧 Бот на техническом обслуживании. Скоро вернёмся!", show_alert=True)
             return
     return await handler(event, data)
 
@@ -142,16 +153,46 @@ async def callback_logging_middleware(handler, event: types.CallbackQuery, data)
 register_all(dp)
 
 
+async def _set_bot_commands():
+    """Register the command menu (shown when typing / and under the Menu button)."""
+    ru = [
+        types.BotCommand(command="train", description="🏋️ Начать тренировку"),
+        types.BotCommand(command="stats", description="📊 Моя статистика"),
+        types.BotCommand(command="history", description="📋 История тренировок"),
+        types.BotCommand(command="top", description="🏆 Рейтинг недели"),
+        types.BotCommand(command="help", description="ℹ️ Помощь"),
+        types.BotCommand(command="cancel", description="❌ Отменить действие"),
+    ]
+    en = [
+        types.BotCommand(command="train", description="🏋️ Start training"),
+        types.BotCommand(command="stats", description="📊 My statistics"),
+        types.BotCommand(command="history", description="📋 Workout history"),
+        types.BotCommand(command="top", description="🏆 Weekly leaderboard"),
+        types.BotCommand(command="help", description="ℹ️ Help"),
+        types.BotCommand(command="cancel", description="❌ Cancel action"),
+    ]
+    try:
+        await bot.set_my_commands(ru)
+        await bot.set_my_commands(en, language_code="en")
+    except Exception as e:
+        logger.warning(f"[startup] set_my_commands failed: {e}")
+
+
 async def main():
     """Initialize the DB, register scheduled jobs, and start polling or webhook mode."""
     await init_db()
     await bot.delete_webhook(drop_pending_updates=True)
+    await _set_bot_commands()
 
-    scheduler.add_job(daily_reminder, "interval", minutes=1, args=[bot])
+    # Cron at second 0 of every minute so each HH:MM is matched exactly once;
+    # grace period lets a late tick still fire instead of silently skipping a minute
+    scheduler.add_job(daily_reminder, "cron", minute="*", args=[bot],
+                      misfire_grace_time=30)
     scheduler.add_job(daily_health_summary, "cron", hour=8, minute=0, args=[bot])
     scheduler.add_job(db_integrity_check, "cron", hour=3, minute=0, args=[bot])
     scheduler.add_job(weekly_summary, "cron", day_of_week="mon", hour=8, minute=0, args=[bot])
     scheduler.add_job(auto_cleanup_inactive, "cron", hour=4, minute=0, args=[bot])
+    scheduler.add_job(daily_xp_decay, "cron", hour=10, minute=0, args=[bot])
     scheduler.add_job(watchdog_health_check, "interval", minutes=5, args=[bot])
     scheduler.add_job(auto_acknowledge_rest_days, "cron", hour=23, minute=55, args=[bot])
     scheduler.start()

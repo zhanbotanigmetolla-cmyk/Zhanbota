@@ -4,6 +4,133 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-14]
+
+### Added
+- **Live countdown for the rest timer (#70).** Starting a 60/90/120-сек timer now posts a «⏳ Отдых: осталось N сек» message that updates every second, then is replaced by the «Отдых окончен» ping. Restarting the timer removes the stale countdown.
+
+### Changed
+- **Density day rep buttons start lower (#71).** The quick-rep keyboard on Плотность days now targets ~15–20 short sets (e.g. target 70 → buttons 1–10 instead of 5–14), matching the day's «many short sets» intent. Applies to all exercises.
+
+### Fixed
+- **Rest timer no longer spams «Отдых окончен» after rapid presses (#69).** When a running timer was replaced, the cancelled task's cleanup removed the *new* timer from the tracking dict, so the next press couldn't cancel it — mashing 90/120-сек left several live timers that each fired «time's up». Cleanup now removes its own entry only.
+
+## [2026-07-13]
+
+### Added
+- **Command menu.** The bot now registers /train, /stats, /history, /top, /help and /cancel (RU + EN descriptions), so typing `/` or tapping the Menu button shows real actions instead of nothing.
+- **«▶️ Начать тренировку» button on the morning reminder.** One tap goes straight from the notification to the exercise picker — no digging for the keyboard.
+- **Rest timer between sets.** The live training status now carries ⏱ 60/90/120-сек inline buttons; the bot pings «Отдых окончен — следующий подход!» when time is up. Starting a new timer replaces the old one; the ping is skipped if the session already ended.
+- **Live training status.** During a session the bot keeps a single up-to-date progress message (the previous one is deleted on each set) instead of posting a new status per set — a 6-set workout no longer leaves 6 near-identical messages. The status is removed once the summary arrives.
+- **Month heatmap in history.** «По месяцам» now opens with an emoji calendar of the current month (🟩 план · 🟨 частично · ⬜ нет данных · 😴 отдых), one row per Mon–Sun week.
+- **Leaderboard movement markers.** Weekly leaderboard shows ▲/▼ position changes vs the previous week and 🆕 for newcomers.
+- **Celebration effects.** Workout summaries fire Telegram message effects: 🎉 on a personal record or rank-up (and on the weekly champ announcement for the winner), 🔥 on hitting the daily target. Falls back to a plain message on older aiogram/Telegram.
+
+### Changed
+- **Stats is one message again.** The «📈» placeholder message is gone — the Analytics button is attached directly to the stats message, and «◀️ К статистике» swaps the analytics view back in place.
+- **Guide and About moved into Settings** so logged-in users can reach them without the landing screen.
+- **/start for an active user opens the main menu** instead of the landing screen with a «Войти» button.
+- **«О боте» page 1 now carries the welcome intro** (greeting, «бот полностью бесплатный», Турникмен AI teaser, contact @zhanbota102) — the welcome screen was the only place with the contact line, and logged-in users no longer pass through it. Also fixed a stale «все три» → «все четыре» after squats were added.
+
+### Fixed
+- **«◀️ Назад» no longer drops logged-in users onto the landing screen.** The main-menu «Назад» button (btn_entrance) shared its text with every other Back button and its handler shadowed the real one, so any stateless «Назад» tap showed the welcome/landing screen. The button and handler are removed; Back now returns to the main menu.
+
+## [2026-07-05]
+
+### Fixed
+- **Set record no longer sticks after undo/cancel.** Logging a set that beat your per-set record used to keep the record even if you undid the set or cancelled the whole workout. Now the record rolls back to its correct value in both cases.
+- **Freeze tokens are no longer charged for backfilled days.** Streak gap-bridging counted a day as "missed" even when a workout was later added for it via «Редактировать день»; days with logged reps now bridge for free, like rest days.
+- **Deleted accounts clean up greeting links.** All deletion paths (self-delete, admin delete, inactivity cleanup) now also remove `welcome_greetings` rows, so a re-registered user can be greeted again.
+- **Admin error alerts respect Telegram's 4096-char limit** — long user messages inside the alert used to make the alert itself fail to send.
+- **Bug-report approve/reject buttons work on reports containing `<`** — the status edit was silently failing on unescaped HTML.
+
+### Added
+- **Squats** 🦵 as the fourth exercise — same treatment as the others: own норма (set up on first pick, max × 3), own RPE adjustments and weekly progression, own records. XP weight: 0.25 per squat (ladder: pull-up 1 · dip 0.75 · push-up 0.5 · squat 0.25). Guide, About, AI knowledge base and README updated.
+
+## [2026-07-04]
+
+### Added
+- **Three exercises: pull-ups, push-ups, dips.** The Training button now opens a picker («Что тренируем сегодня?») with per-exercise targets shown right on the buttons. One shared 7-day calendar: the day type (Средний/Лёгкий/Тяжёлый/Отдых/Плотность) applies to whichever exercise you pick; training at least one exercise per day keeps the streak and advances the cycle once.
+- Each exercise has its own daily норма, its own RPE-based adjustments, weekly +5% progression, and its own records (best day / best set). Push-ups and dips are set up lazily — the bot asks for your one-set max the first time you pick them (base = max × 3).
+- XP weights per rep: pull-up 1 · dip 0.75 · push-up 0.5 (+50/streak day unchanged). Existing XP untouched.
+- Weekly leaderboard and 👑 Кочка недели now rank by **weekly XP across all exercises** instead of pull-up count.
+- Stats, History, Analytics, weekly summaries, morning reminders, friends list, AI coach context, and CSV export all show per-exercise data.
+
+### Changed
+- Database: `workouts` table rebuilt with an `exercise` column (`UNIQUE(user_id, date, exercise)`); legacy rows migrated as pull-ups, rest days as day-level rest markers. New per-exercise base/record columns on `users`.
+- Guide («Как начать») and «О боте» rewritten to match actual behavior: correct wave percentages (Лёгкий ~50–60%, Тяжёлый 115%), freeze tokens described as automatic, three programs mentioned, new XP rules documented.
+
+### Removed
+- Extra-activity feature (бег/зал plan reduction) and the notes-adding step in «Редактировать день» — removed entirely per owner decision; old saved notes still display in history. Break reduction after 3+/7+ days off stays.
+- A dozen dead i18n strings and orphaned flows (interactive freeze prompt, old registration questions, unused chart helper).
+
+## [2026-07-03]
+
+### Fixed
+- Second audit pass — remaining issues fixed:
+  - Editing a stored rest day to add reps kept the row as `planned=0 / Отдых`, so history showed "😴 50/0" and the session never counted toward progression (same class of bug as the rest-day-override fix) — now converted to a training day.
+  - Finishing a training session overwrote `extra_activity` / `extra_minutes` / `notes` with empty values (the flow no longer collects them), erasing data added via "Edit Day". Those columns are no longer touched by the training save.
+  - Admin exemption unified: ban/mute and maintenance middlewares checked only the admin Telegram ID while the admin panel also accepted the admin username — both now use one shared `is_admin_user()` check.
+  - Maintenance mode now also blocks inline-button (callback) presses, not just messages.
+  - Morning reminders moved from a 1-minute interval to a cron tick with a 30s grace period — a slow tick can no longer silently skip a minute (and its reminders).
+  - Per-user duplicate-message locks no longer evict a lock that is currently held.
+
+## [2026-07-02]
+
+### Fixed
+- Full project audit. Bugs found and fixed:
+  - Deleting today's workout via "Edit Day" corrupted the program cycle position: `program_day` was wrapped with `% 7` even though it's a monotonic counter (e.g. day 22 → 0 instead of 21), silently shifting the whole future schedule.
+  - "Next 7 days" schedule in Stats (and the AI's view of tomorrow) was off by one whenever a workout row existed but the day wasn't finished yet — the offset now keys off `last_workout == today` (the moment `program_day` actually advances) instead of the row's existence.
+  - Training on a rest day ("Train anyway") saved the workout against a `planned=0 / Отдых` row, so history showed things like "😴 50/0" and the session never counted toward RPE/weekly progression. The override is now persisted as a real training day (cancelling still restores the rest row).
+  - The 23:55 auto-rest job could overwrite today's workout row for a user mid rest-day-override session; it now skips users who already have real activity recorded today.
+  - Base-change validation message claimed "1 to 2000" while the code accepts 1–500.
+  - Guide and AI system prompt described outdated RPE progression rules (≤6.5 for +3%, no −2% zone) — aligned with the actual code (≤5.5 / 5.5–7.0 / 7.0–8.5 −2% / ≥8.5 −5%).
+  - Admin panel: user names and search queries are now HTML-escaped — a user named e.g. `<b>` made the profile view silently fail to render.
+  - Gemini fallback per-user cooldown dict grew without bound — expired entries are now pruned.
+  - `.gitignore` contained corrupted UTF-16 garbage lines, so `bot.log` and DB backups weren't actually ignored — rewritten clean.
+  - Test suite repaired: 8 tests were stale (old rank names, old XP thresholds, missing `program_type` field) — updated to match current config; added coverage for beginner/unknown program types. 80/80 passing.
+
+## [2026-07-01]
+
+### Fixed
+- Skip reason (overtraining/illness/etc.) now writes a rest-day row to the workouts table, so stats shows 😴 instead of ❌ and the training screen no longer says "didn't complete plan" after a skip.
+
+## [2026-06-25]
+
+### Changed
+- Post-training flow simplified: removed the extra-activity (cardio/gym) question and notes step. Only RPE rating remains — tap a number and you're done.
+- Streaks are now protected silently: if you miss a training day, a freeze token is auto-spent without any prompt. No more streak resets that happen without the user knowing.
+- Rest days on the "Keep resting" screen no longer ask about freeze tokens — the system handles it automatically on the next training day.
+
+### Fixed
+- Streak bug: if a training day was skipped and the next day was a scheduled rest day, the streak would silently reset the day after. Now `update_streak` checks rest-day records in the workout history and only spends tokens for genuinely missed training days.
+- Restored streaks for 3 users whose streaks were incorrectly reset by the rest-day bug.
+
+### Added
+- Stats screen now shows longest streak ever: "🔥 Streak: X days (best: Y)" alongside current streak.
+
+## [2026-05-08]
+
+### Changed
+- Training session rep buttons now show 10 consecutive numbers (e.g. 8–17) instead of spaced-out values. Range is still anchored to the user's per-set target so relevant counts are always visible.
+
+## [2026-05-07]
+
+### Added
+- XP decay system: after 7 days of inactivity, XP decreases daily (0.5%→1%→1.5% per day as absence grows). Floor: can lose at most one rank per absence. Notifies user on first decay day and on rank loss.
+
+### Changed
+- Slowed down base progression: weekly +5% bump now blocked if avg RPE of last 5 workouts is ≥ 7.0 (high effort = no auto-advance)
+- Lowered RPE threshold for base growth from ≤ 6.5 to ≤ 5.5 — base now only grows via RPE path when training feels easy
+- Filled the RPE dead zone: added −2% base zone for avg RPE 7.0–8.4 (previously no change at all in that wide range)
+
+## [2026-05-04]
+
+### Fixed
+- Fixed `IntegrityError: UNIQUE constraint failed: workouts.user_id, workouts.date` crash when tapping Training — replaced the SELECT-then-INSERT pattern with an atomic `INSERT … ON CONFLICT DO UPDATE` to eliminate the race condition.
+- Removed dead `weight_kg` field: it was never collected during registration, always defaulted to 80, and was only feeding a wrong value into the AI context. Cleaned up the DB schema, states, i18n strings, AI prompt, scheduler, and tests. Added DB migration (index 24) to drop the column from existing databases.
+- Removed stale body-weight instruction from `ai_system_prompt` in both locales — the prompt no longer supplies weight data, so telling the model to "consider body weight" was misleading.
+
 ## [2026-05-02]
 
 ### Added

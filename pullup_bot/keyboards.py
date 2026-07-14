@@ -17,7 +17,7 @@ def main_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b.row(KeyboardButton(text=t("btn_stats", lang)), KeyboardButton(text=t("btn_history", lang)))
     b.row(KeyboardButton(text=t("btn_friends", lang)), KeyboardButton(text=t("btn_ai", lang)))
     b.row(KeyboardButton(text=t("btn_settings", lang)), KeyboardButton(text=t("btn_bug", lang)))
-    b.row(KeyboardButton(text=t("btn_leaderboard", lang)), KeyboardButton(text=t("btn_entrance", lang)))
+    b.row(KeyboardButton(text=t("btn_leaderboard", lang)))
     return b.as_markup(resize_keyboard=True, persistent=True)
 
 
@@ -65,6 +65,7 @@ def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool 
     b.row(KeyboardButton(text=t("btn_program", lang)), KeyboardButton(text=t("btn_export", lang)))
     nw_key = "btn_notify_workouts_on" if notify_workouts else "btn_notify_workouts_off"
     b.row(KeyboardButton(text=t(nw_key, lang)))
+    b.row(KeyboardButton(text=t("btn_guide", lang)), KeyboardButton(text=t("btn_about", lang)))
     b.row(KeyboardButton(text=t("btn_logout", lang)), KeyboardButton(text=t("btn_language", lang)))
     b.row(KeyboardButton(text=t("btn_delete_account", lang)))
     if is_admin:
@@ -83,20 +84,24 @@ def program_select_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-def smart_set_buttons(planned: int) -> list:
-    """Generate 10 sensible rep-count button values centered around 10% of the planned target."""
-    base = 7 if planned <= 0 else max(3, planned // 10)
-    start = max(4, base - 2)
-    row1 = list(range(start, start + 5))
-    r2 = start + 5
-    row2 = [r2, r2 + 1, r2 + 4, r2 + 7, r2 + 10]
-    return row1 + row2
+def smart_set_buttons(planned: int, density: bool = False) -> list:
+    """Generate 10 consecutive rep-count button values starting near the per-set target.
+
+    On density days the volume is meant to be spread over many short sets,
+    so the buttons start much lower (target split into ~15-20 sets)."""
+    if density:
+        base = 4 if planned <= 0 else max(2, planned // 18)
+    else:
+        base = 7 if planned <= 0 else max(3, planned // 10)
+    start = max(1, base - 2)
+    return list(range(start, start + 10))
 
 
-def training_kb(sets: list, planned: int = 0, lang: str = "ru") -> ReplyKeyboardMarkup:
+def training_kb(sets: list, planned: int = 0, lang: str = "ru",
+                density: bool = False) -> ReplyKeyboardMarkup:
     """Return the active training keyboard with smart rep buttons plus Undo/Manual/Finish/Cancel."""
     b = ReplyKeyboardBuilder()
-    for n in smart_set_buttons(planned):
+    for n in smart_set_buttons(planned, density):
         b.button(text=str(n))
     b.adjust(5)
     b.row(KeyboardButton(text=t("btn_undo", lang)),
@@ -144,6 +149,15 @@ def rest_day_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     return b.as_markup(resize_keyboard=True)
 
 
+def exercise_picker_kb(labels: list, lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return a one-button-per-row exercise picker with a Back button at the bottom."""
+    b = ReplyKeyboardBuilder()
+    for label in labels:
+        b.row(KeyboardButton(text=label))
+    b.row(KeyboardButton(text=t("btn_back", lang)))
+    return b.as_markup(resize_keyboard=True)
+
+
 def cancel_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     """Return the training cancel confirmation keyboard: Yes cancel / Continue."""
     b = ReplyKeyboardBuilder()
@@ -157,14 +171,6 @@ def delete_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("delete_confirm_yes", lang)),
           KeyboardButton(text=t("delete_confirm_no", lang)))
-    return b.as_markup(resize_keyboard=True)
-
-
-def freeze_confirm_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
-    """Return the streak-freeze spend confirmation keyboard: Use token / Skip."""
-    b = ReplyKeyboardBuilder()
-    b.row(KeyboardButton(text=t("freeze_yes_btn", lang)),
-          KeyboardButton(text=t("freeze_no_btn", lang)))
     return b.as_markup(resize_keyboard=True)
 
 
@@ -184,27 +190,6 @@ def skip_reason_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
         b.button(text=t(key, lang))
     b.adjust(2)
     return b.as_markup(resize_keyboard=True)
-
-
-def activity_reply_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
-    """Return the extra-activity selection keyboard (run/gym/both/skip) after a workout."""
-    b = ReplyKeyboardBuilder()
-    if lang == "en":
-        b.row(KeyboardButton(text="🏃 Running/Cardio"), KeyboardButton(text="🏋️ Gym"))
-        b.row(KeyboardButton(text="🏃+🏋️ Cardio+Gym"), KeyboardButton(text="⏭️ Skip"))
-    else:
-        b.row(KeyboardButton(text="🏃 Бег/Кардио"), KeyboardButton(text="🏋️ Зал"))
-        b.row(KeyboardButton(text="🏃+🏋️ Кардио+Зал"), KeyboardButton(text="⏭️ Пропустить"))
-    b.row(KeyboardButton(text=t("btn_back", lang)))
-    return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
-
-
-def edit_extras_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
-    """Return the edit-day extras prompt keyboard: Add extras / Save without."""
-    b = ReplyKeyboardBuilder()
-    b.row(KeyboardButton(text=t("btn_yes_add", lang)),
-          KeyboardButton(text=t("btn_no_save", lang)))
-    return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
 def ai_chat_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
@@ -237,6 +222,25 @@ def history_nav_kb(offset: int, lang: str = "ru", monthly: bool = False) -> Inli
     else:
         b.button(text=t("btn_history_weekly", lang), callback_data="hist_mode_weekly")
         b.adjust(1)
+    return b.as_markup()
+
+
+REST_TIMER_CHOICES = [60, 90, 120]
+
+
+def rest_timer_kb(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Return the inline rest-timer buttons shown under the live training status."""
+    b = InlineKeyboardBuilder()
+    for sec in REST_TIMER_CHOICES:
+        b.button(text=t("btn_rest_fmt", lang, sec=sec), callback_data=f"rest:{sec}")
+    b.adjust(3)
+    return b.as_markup()
+
+
+def reminder_train_kb(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Return the inline 'Start training' button attached to the morning reminder."""
+    b = InlineKeyboardBuilder()
+    b.button(text=t("btn_reminder_start", lang), callback_data="reminder_train")
     return b.as_markup()
 
 
