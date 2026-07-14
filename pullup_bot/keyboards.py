@@ -17,7 +17,7 @@ def main_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b.row(KeyboardButton(text=t("btn_stats", lang)), KeyboardButton(text=t("btn_history", lang)))
     b.row(KeyboardButton(text=t("btn_friends", lang)), KeyboardButton(text=t("btn_ai", lang)))
     b.row(KeyboardButton(text=t("btn_settings", lang)), KeyboardButton(text=t("btn_bug", lang)))
-    b.row(KeyboardButton(text=t("btn_leaderboard", lang)), KeyboardButton(text=t("btn_entrance", lang)))
+    b.row(KeyboardButton(text=t("btn_leaderboard", lang)))
     return b.as_markup(resize_keyboard=True, persistent=True)
 
 
@@ -65,6 +65,7 @@ def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool 
     b.row(KeyboardButton(text=t("btn_program", lang)), KeyboardButton(text=t("btn_export", lang)))
     nw_key = "btn_notify_workouts_on" if notify_workouts else "btn_notify_workouts_off"
     b.row(KeyboardButton(text=t(nw_key, lang)))
+    b.row(KeyboardButton(text=t("btn_guide", lang)), KeyboardButton(text=t("btn_about", lang)))
     b.row(KeyboardButton(text=t("btn_logout", lang)), KeyboardButton(text=t("btn_language", lang)))
     b.row(KeyboardButton(text=t("btn_delete_account", lang)))
     if is_admin:
@@ -214,6 +215,25 @@ def history_nav_kb(offset: int, lang: str = "ru", monthly: bool = False) -> Inli
     else:
         b.button(text=t("btn_history_weekly", lang), callback_data="hist_mode_weekly")
         b.adjust(1)
+    return b.as_markup()
+
+
+REST_TIMER_CHOICES = [60, 90, 120]
+
+
+def rest_timer_kb(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Return the inline rest-timer buttons shown under the live training status."""
+    b = InlineKeyboardBuilder()
+    for sec in REST_TIMER_CHOICES:
+        b.button(text=t("btn_rest_fmt", lang, sec=sec), callback_data=f"rest:{sec}")
+    b.adjust(3)
+    return b.as_markup()
+
+
+def reminder_train_kb(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Return the inline 'Start training' button attached to the morning reminder."""
+    b = InlineKeyboardBuilder()
+    b.button(text=t("btn_reminder_start", lang), callback_data="reminder_train")
     return b.as_markup()
 
 

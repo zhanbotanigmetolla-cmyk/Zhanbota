@@ -1,11 +1,13 @@
+import calendar
 from datetime import date, timedelta
 
 from aiogram import F, Router, types
+from aiogram.filters import Command
 
 from ..config import EXERCISES, EXERCISE_EMOJI
 from ..db import get_db, get_user
 from ..i18n import t, text_filter, day_name
-from ..keyboards import history_nav_kb, main_kb
+from ..keyboards import history_nav_kb
 
 
 router = Router()
@@ -102,6 +104,35 @@ async def _show_week(target, user, offset: int, edit: bool = False):
         await target.answer(text, parse_mode="Markdown", reply_markup=kb)
 
 
+def _day_cell(day_rows: list) -> str:
+    """Emoji status for one calendar day: hit / partial / no data / rest."""
+    training = [r for r in day_rows if r["exercise"] != "rest"]
+    if training:
+        targets = [r for r in training if (r["planned"] or 0) > 0]
+        done_any = any((r["completed"] or 0) > 0 for r in training)
+        if targets and all((r["completed"] or 0) >= r["planned"] for r in targets):
+            return "🟩"
+        return "🟨" if done_any else "⬜"
+    if day_rows:
+        return "😴"
+    return "⬜"
+
+
+def _month_heatmap(rows_by_date: dict, year: int, month: int, lang: str) -> str:
+    """Emoji calendar for one month: one row per Mon–Sun week, up to today."""
+    today = date.today()
+    days_in_month = calendar.monthrange(year, month)[1]
+    last_shown = today.day if (year, month) == (today.year, today.month) else days_in_month
+    first_wd = date(year, month, 1).weekday()  # 0 = Monday
+    cells = ["▫️"] * first_wd  # out-of-month padding so weeks stay aligned
+    for day in range(1, last_shown + 1):
+        ds = date(year, month, day).isoformat()
+        cells.append(_day_cell(rows_by_date.get(ds, [])))
+    lines = ["".join(cells[i:i + 7]) for i in range(0, len(cells), 7)]
+    month_label = t("month_names", lang)[month - 1]
+    return f"*{month_label} {year}*\n" + "\n".join(lines)
+
+
 async def _show_monthly(target, user, edit: bool = False):
     """Fetch and display the monthly history summary (last 12 months)."""
     lang = user["lang"] or "ru"
@@ -128,12 +159,25 @@ async def _show_monthly(target, user, edit: bool = False):
     if not rows:
         text = t("history_no_data", lang)
     else:
+        # Current-month emoji calendar at the top
+        today = date.today()
+        month_start = today.replace(day=1).isoformat()
+        async with conn.execute(
+            "SELECT * FROM workouts WHERE user_id=? AND date>=? ORDER BY date ASC",
+            (user["id"], month_start)
+        ) as cur:
+            month_rows = await cur.fetchall()
+        heatmap_by_date: dict = {}
+        for r in month_rows:
+            heatmap_by_date.setdefault(r["date"], []).append(r)
+        heatmap = _month_heatmap(heatmap_by_date, today.year, today.month, lang)
+
         months: dict = {}
         for r in rows:
             months.setdefault(r["month"], {})[r["exercise"]] = (
                 r["total_completed"] or 0, r["total_planned"] or 0)
-        lines = [t("history_monthly_title", lang)]
-        lines.append("")
+        lines = [t("history_monthly_title", lang), "", heatmap,
+                 f"_{t('heatmap_legend', lang)}_", ""]
         for month in sorted(months, reverse=True)[:12]:
             lines.append(t("history_monthly_row", lang,
                            month=month, totals=_ex_totals_line(months[month]),
@@ -147,6 +191,7 @@ async def _show_monthly(target, user, edit: bool = False):
         await target.answer(text, parse_mode="Markdown", reply_markup=kb)
 
 
+@router.message(Command("history"))
 @router.message(text_filter("btn_history"))
 async def show_history(message: types.Message):
     """Show the current week's workout history when the user taps the History button."""

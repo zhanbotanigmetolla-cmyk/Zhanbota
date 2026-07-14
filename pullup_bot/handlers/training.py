@@ -3,18 +3,22 @@ import json
 from datetime import date
 
 from aiogram import F, Router, types
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
 
-from ..config import (BASE_COLS, EXERCISES, EXERCISE_EMOJI, PR_COLS, PROGRAMS,
-                      SET_RECORD_COLS, logger, xp_for)
+from ..config import (BASE_COLS, EFFECT_CONFETTI, EFFECT_FIRE, EXERCISES,
+                      EXERCISE_EMOJI, PR_COLS, PROGRAMS, SET_RECORD_COLS,
+                      logger, xp_for)
 from ..db import (add_xp, clear_rest_row, get_db, get_day_rows, get_user,
                   get_workout, mark_rest_day, update_streak, upsert_workout)
 from ..i18n import t, text_filter, day_name
-from ..keyboards import (cancel_confirm_kb, exercise_picker_kb, main_kb,
-                         parse_rpe, rest_day_kb, rpe_menu_kb, training_kb)
+from ..keyboards import (REST_TIMER_CHOICES, cancel_confirm_kb,
+                         exercise_picker_kb, main_kb, parse_rpe, rest_day_kb,
+                         rest_timer_kb, rpe_menu_kb, training_kb)
 from ..states import Training
-from ..services.xp import (day_type_for, display, level_info, md_escape,
-                           progress_bar, user_base)
+from ..services.xp import (answer_with_effect, day_type_for, display,
+                           level_info, md_escape, progress_bar, user_base)
 
 router = Router()
 
@@ -73,10 +77,25 @@ def _days_since_last(user) -> int:
         return 999
 
 
+@router.message(Command("train"))
 @router.message(text_filter("btn_train"))
 async def start_training(message: types.Message, state: FSMContext):
-    """Handle the Train button: resolve today's day type, then show the exercise picker."""
-    user = await get_user(message.from_user.id)
+    """Handle the Train button or /train command."""
+    await _start_training_flow(message.from_user.id, message, state)
+
+
+@router.callback_query(F.data == "reminder_train")
+async def reminder_train_cb(callback: types.CallbackQuery, state: FSMContext):
+    """Start today's training straight from the inline button on the morning reminder."""
+    await callback.answer()
+    # Buttons on messages older than 48h arrive as InaccessibleMessage (no .answer())
+    if isinstance(callback.message, types.Message):
+        await _start_training_flow(callback.from_user.id, callback.message, state)
+
+
+async def _start_training_flow(uid: int, message: types.Message, state: FSMContext):
+    """Resolve today's day type, then show the exercise picker (or the rest-day prompt)."""
+    user = await get_user(uid)
     if not user:
         await message.answer(t("register_first", "ru"))
         return
@@ -110,8 +129,8 @@ async def start_training(message: types.Message, state: FSMContext):
         await conn.commit()
         await clear_rest_row(user["id"], today_str)
         if new_pd % 7 == 0:
-            await _run_cycle_progressions(message.from_user.id, user["id"])
-        user = await get_user(message.from_user.id)
+            await _run_cycle_progressions(uid, user["id"])
+        user = await get_user(uid)
         day_type = day_type_for(user)[0]
 
     # Rest day (normal case)
@@ -338,7 +357,8 @@ async def _begin_training(message, state, user, lang, today_str, exercise, day_t
 
 
 async def _training_status(message: types.Message, state: FSMContext):
-    """Send an updated progress summary (sets, total reps, progress bar) during an active session."""
+    """Refresh the live progress message: the previous status is deleted and a new
+    one is sent, so the chat keeps a single up-to-date status with rest-timer buttons."""
     data = await state.get_data()
     sets = data.get("sets", [])
     lang = data.get("lang", "ru")
@@ -353,14 +373,82 @@ async def _training_status(message: types.Message, state: FSMContext):
     sets_line = f"Подходов: {len(sets)}" if lang == "ru" else f"Sets: {len(sets)}"
     sets_display = ", ".join(str(s) for s in sets) if sets else "—"
     last_line = f"Подходы: {sets_display}" if lang == "ru" else f"Sets: {sets_display}"
-    await message.answer(
+    old_id = data.get("status_msg_id")
+    if old_id:
+        try:
+            await message.bot.delete_message(message.chat.id, old_id)
+        except Exception:
+            pass  # already gone or too old — a leftover status is harmless
+    new_msg = await message.answer(
         f"{t('train_in_progress', lang)}\n\n"
         f"{t('train_done_now', lang, done=done_now)}\n"
         f"✅ {today_line}\n"
         f"[{bar}] {pd}\n"
         f"📦 {sets_line}\n"
         f"{last_line}",
-        parse_mode="Markdown", reply_markup=training_kb(sets, planned, lang))
+        parse_mode="Markdown", reply_markup=rest_timer_kb(lang))
+    await state.update_data(status_msg_id=new_msg.message_id)
+
+
+async def _delete_status_message(message: types.Message, data: dict):
+    """Remove the live status message once the session ends — the summary supersedes it."""
+    mid = data.get("status_msg_id")
+    if mid:
+        try:
+            await message.bot.delete_message(message.chat.id, mid)
+        except Exception:
+            pass
+
+
+# One live rest timer per user; starting a new one replaces the previous.
+_rest_tasks: dict[int, asyncio.Task] = {}
+
+
+async def _rest_timer_ping(bot, chat_id: int, uid: int, seconds: int, lang: str):
+    """Sleep out the rest interval, then ping the user if they are still mid-session."""
+    try:
+        await asyncio.sleep(seconds)
+        from ..main import dp  # local import: main.py imports this module at startup
+        key = StorageKey(bot_id=bot.id, chat_id=chat_id, user_id=uid)
+        current = await dp.storage.get_state(key)
+        if current == Training.active.state:
+            await bot.send_message(chat_id, t("rest_timer_done", lang))
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.debug(f"[rest_timer] {uid}: {e}")
+    finally:
+        # Only remove our own entry: if this task was cancelled because the
+        # user restarted the timer, _rest_tasks[uid] already holds the new
+        # task — popping it would orphan that timer and let duplicates pile up.
+        if _rest_tasks.get(uid) is asyncio.current_task():
+            _rest_tasks.pop(uid, None)
+
+
+@router.callback_query(F.data.startswith("rest:"))
+async def rest_timer_start(callback: types.CallbackQuery, state: FSMContext):
+    """Start (or restart) a rest countdown from the buttons under the live status."""
+    try:
+        seconds = int((callback.data or "").split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer()
+        return
+    if seconds not in REST_TIMER_CHOICES or not callback.message:
+        await callback.answer()
+        return
+    current = await state.get_state()
+    if current != Training.active:
+        await callback.answer()  # stale button from an already-finished session
+        return
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    uid = callback.from_user.id
+    old = _rest_tasks.get(uid)
+    if old and not old.done():
+        old.cancel()
+    _rest_tasks[uid] = asyncio.create_task(
+        _rest_timer_ping(callback.bot, callback.message.chat.id, uid, seconds, lang))
+    await callback.answer(t("rest_timer_toast", lang, sec=seconds))
 
 
 @router.message(text_filter("btn_undo"), Training.active)
@@ -461,6 +549,7 @@ async def cancel_training_btn(message: types.Message, state: FSMContext):
     done = sum(sets)
     if done == 0:
         await _cleanup_cancelled_workout(message.from_user.id, data)
+        await _delete_status_message(message, data)
         await state.clear()
         await message.answer(t("train_cancelled", lang), reply_markup=main_kb(lang))
         return
@@ -476,6 +565,7 @@ async def cancel_confirm(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
     await _cleanup_cancelled_workout(message.from_user.id, data)
+    await _delete_status_message(message, data)
     await state.clear()
     await message.answer(t("train_cancelled", lang), reply_markup=main_kb(lang))
 
@@ -524,9 +614,10 @@ async def custom_set_input(message: types.Message, state: FSMContext):
             await conn.execute(f"UPDATE users SET {rec_col}=? WHERE tg_id=?", (reps, uid))
             await conn.commit()
             await state.update_data(session_set_pr=reps)
-            await message.answer(
+            await answer_with_effect(
+                message,
                 t("set_pr_congrats", lang, reps=reps, ex=t(f"ex_gen_{exercise}", lang)),
-                parse_mode="Markdown")
+                EFFECT_CONFETTI, parse_mode="Markdown")
 
 
 @router.message(Training.rpe)
@@ -780,7 +871,16 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
                    "Consider lowering your target in ⚙️ Settings → Change Base.")
             summary += rec
 
-    await msg.answer(summary, parse_mode="Markdown", reply_markup=main_kb(lang))
+    await _delete_status_message(msg, data)
+    # Celebration effect: confetti for records/rank-ups, fire for hitting the target
+    if pr_broken or level_up:
+        await answer_with_effect(msg, summary, EFFECT_CONFETTI,
+                                 parse_mode="Markdown", reply_markup=main_kb(lang))
+    elif planned > 0 and done >= planned:
+        await answer_with_effect(msg, summary, EFFECT_FIRE,
+                                 parse_mode="Markdown", reply_markup=main_kb(lang))
+    else:
+        await msg.answer(summary, parse_mode="Markdown", reply_markup=main_kb(lang))
     session_set_pr = data.get("session_set_pr")
     await _notify_friends(tg_id, exercise, done, planned, len(sets), lang,
                           set_pr=session_set_pr)

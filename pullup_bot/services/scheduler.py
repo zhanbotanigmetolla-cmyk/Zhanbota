@@ -2,11 +2,13 @@ from datetime import date, datetime, timedelta, timezone
 
 from aiogram.exceptions import TelegramForbiddenError
 
-from ..config import (ADMIN_TG_ID, EXERCISES, EXERCISE_EMOJI,
+from ..config import (ADMIN_TG_ID, EFFECT_CONFETTI, EXERCISES, EXERCISE_EMOJI,
                       TZ_OFFSET_HOURS, XP_CASE_SQL, logger, xp_for)
 from ..db import get_db, get_day_rows, mark_rest_day
 from ..i18n import t, day_name
-from ..services.xp import day_type_for, display, md_escape, user_base
+from ..keyboards import reminder_train_kb
+from ..services.xp import (day_type_for, display, md_escape, send_with_effect,
+                           user_base)
 from . import monitoring
 
 
@@ -68,6 +70,7 @@ async def daily_reminder(bot):
                     async with conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)) as cur:
                         user = await cur.fetchone()
                     day_type = day_type_for(user)[0]
+        kb = None
         if day_type == "Отдых":
             msg = t("reminder_rest", lang)
         else:
@@ -81,10 +84,12 @@ async def daily_reminder(bot):
                     day_type=day_name(day_type, lang),
                     plans="\n".join(plan_lines),
                     status=t("reminder_not_started", lang))
+            kb = reminder_train_kb(lang)
         notify_time = user["notify_time"] or "09:00"
         silent = notify_time >= "22:00" or notify_time < "08:00"
         try:
-            await bot.send_message(user["tg_id"], msg, disable_notification=silent)
+            await bot.send_message(user["tg_id"], msg, disable_notification=silent,
+                                   reply_markup=kb)
         except TelegramForbiddenError:
             last = user["last_workout"]
             inactive = (not last or
@@ -158,7 +163,11 @@ async def _announce_weekly_champ(bot, conn, users):
                 f"{suffix}"
             )
         try:
-            await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
+            if is_winner:
+                await send_with_effect(bot, user["tg_id"], msg, EFFECT_CONFETTI,
+                                       parse_mode="Markdown")
+            else:
+                await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
         except Exception as e:
             logger.warning(f"[weekly_champ] {user['tg_id']}: {e}")
 

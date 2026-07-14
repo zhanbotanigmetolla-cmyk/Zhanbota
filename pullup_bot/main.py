@@ -153,10 +153,36 @@ async def callback_logging_middleware(handler, event: types.CallbackQuery, data)
 register_all(dp)
 
 
+async def _set_bot_commands():
+    """Register the command menu (shown when typing / and under the Menu button)."""
+    ru = [
+        types.BotCommand(command="train", description="🏋️ Начать тренировку"),
+        types.BotCommand(command="stats", description="📊 Моя статистика"),
+        types.BotCommand(command="history", description="📋 История тренировок"),
+        types.BotCommand(command="top", description="🏆 Рейтинг недели"),
+        types.BotCommand(command="help", description="ℹ️ Помощь"),
+        types.BotCommand(command="cancel", description="❌ Отменить действие"),
+    ]
+    en = [
+        types.BotCommand(command="train", description="🏋️ Start training"),
+        types.BotCommand(command="stats", description="📊 My statistics"),
+        types.BotCommand(command="history", description="📋 Workout history"),
+        types.BotCommand(command="top", description="🏆 Weekly leaderboard"),
+        types.BotCommand(command="help", description="ℹ️ Help"),
+        types.BotCommand(command="cancel", description="❌ Cancel action"),
+    ]
+    try:
+        await bot.set_my_commands(ru)
+        await bot.set_my_commands(en, language_code="en")
+    except Exception as e:
+        logger.warning(f"[startup] set_my_commands failed: {e}")
+
+
 async def main():
     """Initialize the DB, register scheduled jobs, and start polling or webhook mode."""
     await init_db()
     await bot.delete_webhook(drop_pending_updates=True)
+    await _set_bot_commands()
 
     # Cron at second 0 of every minute so each HH:MM is matched exactly once;
     # grace period lets a late tick still fire instead of silently skipping a minute
