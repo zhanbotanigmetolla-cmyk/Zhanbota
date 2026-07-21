@@ -88,6 +88,50 @@ async def _build_stats_text(user, lang: str) -> str:
         d_, p_ = week_totals.get(r["exercise"], (0, 0))
         week_totals[r["exercise"]] = (d_ + (r["completed"] or 0), p_ + (r["planned"] or 0))
 
+    # Build a wave-index timeline from available records so we can infer,
+    # for the last 7 days, whether a date with no workout row at all was a
+    # scheduled rest day or a training day the user skipped entirely.
+    def _wave_idx(day_type: str, expected: int | None) -> int:
+        matches = [k for k, (n, _) in user_wave.items() if n == day_type]
+        if not matches:
+            return 0
+        if expected is not None and expected in matches:
+            return expected
+        return matches[0]
+
+    wave_after: dict = {}   # date_str → wave index AFTER that date's training
+    prev_after: int | None = None
+    for ds_r in sorted(rows_by_date):
+        first = rows_by_date[ds_r][0]
+        idx = _wave_idx(first["day_type"] or "", prev_after)
+        wave_after[ds_r] = (idx + 1) % 7
+        prev_after = wave_after[ds_r]
+
+    # date_str → inferred wave index, for last-7-days dates with no workout
+    # row at all (neither training nor an explicit rest marker).
+    missing_idx: dict = {}
+    for i in range(6, -1, -1):
+        ds = (today - timedelta(days=i)).isoformat()
+        if ds in rows_by_date:
+            continue
+        prev_ds = max((d for d in wave_after if d < ds), default=None)
+        if prev_ds is None:
+            continue
+        gap = (date.fromisoformat(ds) - date.fromisoformat(prev_ds)).days
+        missing_idx[ds] = (wave_after[prev_ds] + (gap - 1)) % 7
+
+    # A skipped (non-rest) day still had a plan — count it toward this
+    # week's planned total so "done/planned" reflects what was actually
+    # missed instead of quietly shrinking to match what was logged.
+    for idx in missing_idx.values():
+        coeff_missed = user_wave[idx][1]
+        if coeff_missed == 0:
+            continue
+        for ex in shown:
+            if user_base(user, ex) > 0:
+                d_, p_ = week_totals.get(ex, (0, 0))
+                week_totals[ex] = (d_, p_ + int(user_base(user, ex) * coeff_missed))
+
     today_word = "сегодня" if lang == "ru" else "today"
     week_word = "неделя" if lang == "ru" else "week"
     total_word = "всего" if lang == "ru" else "total"
@@ -108,24 +152,6 @@ async def _build_stats_text(user, lang: str) -> str:
         )
 
     # ── Last 7 days ──────────────────────────────────────────────────────────
-    # Build a wave-index timeline from available records so we can infer
-    # whether missing days were scheduled rest days.
-    def _wave_idx(day_type: str, expected: int | None) -> int:
-        matches = [k for k, (n, _) in user_wave.items() if n == day_type]
-        if not matches:
-            return 0
-        if expected is not None and expected in matches:
-            return expected
-        return matches[0]
-
-    wave_after: dict = {}   # date_str → wave index AFTER that date's training
-    prev_after: int | None = None
-    for ds_r in sorted(rows_by_date):
-        first = rows_by_date[ds_r][0]
-        idx = _wave_idx(first["day_type"] or "", prev_after)
-        wave_after[ds_r] = (idx + 1) % 7
-        prev_after = wave_after[ds_r]
-
     history = ""
     no_data_label = "нет тренировок" if lang == "ru" else "no workout"
     rest_label = day_name("Отдых", lang)
@@ -148,15 +174,9 @@ async def _build_stats_text(user, lang: str) -> str:
             else:
                 history += f"😴 {date_label} {rest_label}\n"
         else:
-            # Infer from the most recent previous record whether this was a rest day.
-            prev_ds = max((d for d in wave_after if d < ds), default=None)
-            if prev_ds:
-                gap = (d_obj - date.fromisoformat(prev_ds)).days
-                inferred_idx = (wave_after[prev_ds] + (gap - 1)) % 7
-                if user_wave[inferred_idx][1] == 0:
-                    history += f"😴 {date_label} {rest_label}\n"
-                else:
-                    history += f"—  {date_label} {no_data_label}\n"
+            inferred_idx = missing_idx.get(ds)
+            if inferred_idx is not None and user_wave[inferred_idx][1] == 0:
+                history += f"😴 {date_label} {rest_label}\n"
             else:
                 history += f"—  {date_label} {no_data_label}\n"
 
