@@ -4,6 +4,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-21]
+
+### Fixed
+- **Weekly «неделя done/planned» stat no longer hides skipped days (#72).** The week total in `/stats` only summed `planned`/`completed` from workout rows that actually existed — a day the user never opened the bot for had no row at all, so it silently dropped out of *both* sides of the ratio instead of just the numerator. A user who skipped most of the week would see e.g. «271/271» (looks like 100%) instead of «271/500». Now reuses the same wave-cycle inference already used for the «Последние 7 дней» history (which infers whether a missing day was a scheduled rest day) to also credit skipped *training* days toward the week's planned total.
+
 ## [2026-07-14]
 
 ### Added
