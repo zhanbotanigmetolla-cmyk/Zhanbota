@@ -21,9 +21,17 @@ from . import config, db
 
 log = logging.getLogger("fitness_mcp.server")
 
-mcp = FastMCP("fitness-mcp")
-
 MAX_LIMIT = 500
+
+# stateless_http keeps every request self-contained: no server-side session to
+# resume, so a restart can never leave a client wedged. Streamable HTTP mounts
+# at /mcp. SSE is deprecated and deliberately unused.
+mcp = FastMCP(
+    "fitness-mcp",
+    stateless_http=True,
+    host=os.environ.get("FITNESS_MCP_HOST", "127.0.0.1"),
+    port=int(os.environ.get("FITNESS_MCP_PORT", "8787")),
+)
 
 
 def _conn() -> sqlite3.Connection:
@@ -254,9 +262,15 @@ def main() -> None:
     transport = os.environ.get("FITNESS_MCP_TRANSPORT", "stdio")
     if transport == "stdio":
         mcp.run(transport="stdio")
+    elif transport == "streamable-http":
+        # Bound to loopback by default. Whatever exposes this — a Tailscale
+        # Funnel or a reverse proxy — is the only thing that should reach it,
+        # so the port itself is never open to the network.
+        log.info("serving streamable-http on %s:%s/mcp", mcp.settings.host, mcp.settings.port)
+        mcp.run(transport="streamable-http")
     else:
         raise SystemExit(
-            f"Unsupported transport {transport!r}. streamable-http lands in Task 2."
+            f"Unsupported transport {transport!r}: use 'stdio' or 'streamable-http'."
         )
 
 

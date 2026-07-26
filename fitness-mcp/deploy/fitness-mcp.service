@@ -1,0 +1,34 @@
+[Unit]
+Description=fitness-mcp (read-only MCP server over my training data)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/nigmetolla_zhanbota
+
+# Loopback only. Whatever publishes this (Tailscale Funnel) is the sole thing
+# that may reach it; the port is never exposed to the network directly.
+Environment=FITNESS_MCP_TRANSPORT=streamable-http
+Environment=FITNESS_MCP_HOST=127.0.0.1
+Environment=FITNESS_MCP_PORT=8787
+Environment=FITNESS_MCP_DB=/home/nigmetolla_zhanbota/data/fitness-mcp/fitness.db
+Environment=FITNESS_MCP_PULLUP_DB=/home/nigmetolla_zhanbota/data/pullup-bot/pullups.db
+# Optional; holds the shared secret once auth exists. '-' means "skip if absent".
+EnvironmentFile=-/home/nigmetolla_zhanbota/.env.fitness_mcp
+
+# Its own interpreter. Nothing is shared with the bot's .venv-pullup.
+ExecStart=/home/nigmetolla_zhanbota/.venv-fitness-mcp/bin/python -m fitness_mcp.server
+
+Restart=always
+RestartSec=10
+
+# The box has 1 GB and the bot is the priority. These caps mean a leak here
+# gets this service killed rather than the bot OOMed.
+MemoryHigh=150M
+MemoryMax=200M
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
