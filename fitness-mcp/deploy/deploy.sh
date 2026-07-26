@@ -10,19 +10,6 @@
 
 set -euo pipefail
 
-# Bash reads a script incrementally as it executes, and the git sync below
-# rewrites this very file. Editing a running script makes bash resume at a byte
-# offset into the new content, which silently skips whatever changed — that is
-# how the sync timer went missing on its first deploy. Re-exec from a copy so
-# the running text can never change underneath us.
-if [ -z "${FITNESS_MCP_DEPLOY_FROM_COPY:-}" ]; then
-    _self_copy="$(mktemp)"
-    cp "$0" "$_self_copy"
-    trap 'rm -f "$_self_copy"' EXIT
-    FITNESS_MCP_DEPLOY_FROM_COPY=1 bash "$_self_copy" "$@"
-    exit $?
-fi
-
 # Its own checkout, deliberately NOT ~/repo. The bot's ~/deploy.sh runs
 # `git pull origin main` in ~/repo, so leaving that clone parked on a feature
 # branch would turn the next bot deploy into a surprise merge.
@@ -32,16 +19,35 @@ VENV="$HOME/.venv-fitness-mcp"
 BRANCH="${1:-main}"
 DATA_DIR="$HOME/data/fitness-mcp"
 
-if [ ! -d "$REPO/.git" ]; then
-    echo "==> cloning into $REPO"
-    git clone "$REPO_URL" "$REPO"
+# This script lives in the repo it updates, which is a trap in two stages.
+#
+# Bash reads a script incrementally as it runs, so `git reset --hard` rewriting
+# this file mid-execution makes bash resume at a byte offset into the new
+# content and silently skip whatever moved. Re-running from a *copy* avoids the
+# corruption but still executes the pre-pull text, so a change to this file only
+# took effect on the deploy *after* the one that pulled it — which is how the
+# backup timer came to be missing even though the pull had succeeded.
+#
+# So: do the git sync first, then hand off to the freshly-pulled file with exec.
+# The new text is fully written before bash ever opens it.
+if [ -z "${FITNESS_MCP_DEPLOY_SYNCED:-}" ]; then
+    if [ ! -d "$REPO/.git" ]; then
+        echo "==> cloning into $REPO"
+        git clone "$REPO_URL" "$REPO"
+    fi
+
+    echo "==> syncing $REPO to $BRANCH"
+    cd "$REPO"
+    git fetch origin
+    git checkout "$BRANCH"
+    git reset --hard "origin/$BRANCH"
+
+    export FITNESS_MCP_DEPLOY_SYNCED=1
+    exec bash "$REPO/fitness-mcp/deploy/deploy.sh" "$@"
 fi
 
-echo "==> syncing $REPO to $BRANCH"
 cd "$REPO"
-git fetch origin
-git checkout "$BRANCH"
-git reset --hard "origin/$BRANCH"
+echo "==> deploying $(git rev-parse --short HEAD) on $BRANCH"
 
 echo "==> ensuring own venv (never shared with the bot)"
 if [ ! -d "$VENV" ]; then
