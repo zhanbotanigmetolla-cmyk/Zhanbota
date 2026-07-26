@@ -11,6 +11,9 @@ WorkingDirectory=/home/nigmetolla_zhanbota
 Environment=FITNESS_MCP_TRANSPORT=streamable-http
 Environment=FITNESS_MCP_HOST=127.0.0.1
 Environment=FITNESS_MCP_PORT=8787
+# Public name the Tailscale Funnel serves this under. Requests arrive with this
+# Host header, so it must be allowed or DNS-rebinding protection returns 421.
+Environment=FITNESS_MCP_PUBLIC_HOST=fitness-mcp.tail4ed987.ts.net
 Environment=FITNESS_MCP_DB=/home/nigmetolla_zhanbota/data/fitness-mcp/fitness.db
 Environment=FITNESS_MCP_PULLUP_DB=/home/nigmetolla_zhanbota/data/pullup-bot/pullups.db
 # Optional; holds the shared secret once auth exists. '-' means "skip if absent".

@@ -16,6 +16,7 @@ import sqlite3
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from . import config, db
 
@@ -23,14 +24,34 @@ log = logging.getLogger("fitness_mcp.server")
 
 MAX_LIMIT = 500
 
+_HOST = os.environ.get("FITNESS_MCP_HOST", "127.0.0.1")
+_PORT = int(os.environ.get("FITNESS_MCP_PORT", "8787"))
+
+# Public hostname(s) this is reachable under, comma separated. Requests arrive
+# through a reverse proxy (a Tailscale Funnel) carrying the public Host header,
+# not the loopback address the socket is bound to.
+_PUBLIC_HOSTS = [h.strip() for h in os.environ.get("FITNESS_MCP_PUBLIC_HOST", "").split(",") if h.strip()]
+
+# DNS rebinding protection stays ON. FastMCP's loopback default only trusts
+# localhost Host headers, which a proxied public request never has, so the
+# public name is added explicitly rather than by disabling the check.
+_transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", *_PUBLIC_HOSTS,
+                   *[f"{h}:*" for h in _PUBLIC_HOSTS]],
+    allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*",
+                     *[f"https://{h}" for h in _PUBLIC_HOSTS]],
+)
+
 # stateless_http keeps every request self-contained: no server-side session to
 # resume, so a restart can never leave a client wedged. Streamable HTTP mounts
 # at /mcp. SSE is deprecated and deliberately unused.
 mcp = FastMCP(
     "fitness-mcp",
     stateless_http=True,
-    host=os.environ.get("FITNESS_MCP_HOST", "127.0.0.1"),
-    port=int(os.environ.get("FITNESS_MCP_PORT", "8787")),
+    host=_HOST,
+    port=_PORT,
+    transport_security=_transport_security,
 )
 
 
