@@ -28,9 +28,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--verbose", action="store_true", help="Print every data-quality warning.",
     )
+    parser.add_argument(
+        "--dedupe", action="store_true",
+        help="After importing, merge activities recorded by two sources. Never "
+             "automatic: merging is the one step here that can lose information "
+             "if the heuristics are wrong.",
+    )
+    parser.add_argument(
+        "--dedupe-only", action="store_true", help="Run deduplication without importing.",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    if args.dedupe_only:
+        conn = db.connect(config.DB_PATH)
+        db.migrate(conn)
+        return _dedupe(conn)
 
     if args.source == "pullup_bot":
         adapter = PullupBotAdapter(
@@ -59,6 +73,25 @@ def main(argv: list[str] | None = None) -> int:
             log.warning("  %s", w)
         if not args.verbose and len(result.warnings) > len(shown):
             log.warning("  ... %d more (use --verbose)", len(result.warnings) - len(shown))
+
+    if args.dedupe:
+        return _dedupe(conn)
+    return 0
+
+
+def _dedupe(conn) -> int:
+    merged = db.deduplicate(conn)
+    if not merged:
+        log.info("deduplication: nothing to merge")
+        return 0
+    log.info("deduplication: merged %d activity/activities", len(merged))
+    for m in merged:
+        log.info(
+            "  kept #%d (%s), superseded #%d (%s), %ds apart",
+            m["keep_id"], m["keep_source"], m["supersede_id"],
+            m["supersede_source"], m["start_gap_s"],
+        )
+    log.info("superseded rows are kept; clear superseded_by to undo")
     return 0
 
 
