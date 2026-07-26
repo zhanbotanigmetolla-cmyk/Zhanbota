@@ -41,12 +41,17 @@ fi
 echo "==> data directory"
 mkdir -p "$DATA_DIR"
 
-echo "==> installing systemd user unit"
+echo "==> installing systemd user units"
 mkdir -p "$HOME/.config/systemd/user"
 cp "$REPO/fitness-mcp/deploy/fitness-mcp.service" "$HOME/.config/systemd/user/"
+cp "$REPO/fitness-mcp/deploy/fitness-mcp-sync.service" "$HOME/.config/systemd/user/"
+cp "$REPO/fitness-mcp/deploy/fitness-mcp-sync.timer" "$HOME/.config/systemd/user/"
 systemctl --user daemon-reload
 systemctl --user enable fitness-mcp.service
 systemctl --user restart fitness-mcp.service
+
+echo "==> enabling hourly sync from the bot database"
+systemctl --user enable --now fitness-mcp-sync.timer
 
 echo "==> linger (service must survive logout)"
 if ! loginctl show-user "$USER" 2>/dev/null | grep -q "Linger=yes"; then

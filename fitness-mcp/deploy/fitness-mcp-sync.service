@@ -1,0 +1,25 @@
+[Unit]
+Description=Import new pullup_bot workouts into fitness-mcp
+After=network.target
+
+[Service]
+Type=oneshot
+
+# The bot database is opened read-only in code (file:...?mode=ro). This job
+# only ever reads it; the bot's service is never touched.
+Environment=FITNESS_MCP_DB=/home/nigmetolla_zhanbota/data/fitness-mcp/fitness.db
+Environment=FITNESS_MCP_PULLUP_DB=/home/nigmetolla_zhanbota/data/pullup-bot/pullups.db
+# Holds FITNESS_MCP_OWNER_TG_ID. Kept out of git: ingest refuses to run without
+# it precisely so another user's data can never be imported by accident.
+EnvironmentFile=/home/nigmetolla_zhanbota/.env.fitness_mcp
+
+ExecStart=/home/nigmetolla_zhanbota/.venv-fitness-mcp/bin/python -m fitness_mcp.ingest_cli --source pullup_bot
+
+# Import is idempotent, so a failed run costs nothing and the next one catches
+# up. Deliberately no --dedupe: merging is the one step that can lose data if
+# the heuristics are wrong, so it stays manual.
+MemoryMax=200M
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
