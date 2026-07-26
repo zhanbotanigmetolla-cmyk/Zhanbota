@@ -309,6 +309,9 @@ def training_summary(
     sql = f"""
         SELECT {bucket} AS bucket,
                COUNT(*)                        AS sessions,
+               -- Distinct days, because several activities can share one day:
+               -- six cycling commutes is six sessions but one training day.
+               COUNT(DISTINCT w.local_date)    AS training_days,
                COALESCE(SUM(sw.reps), 0)       AS total_reps,
                COALESCE(SUM(w.duration_s), 0)  AS duration_s,
                COALESCE(SUM(w.distance_m), 0)  AS distance_m

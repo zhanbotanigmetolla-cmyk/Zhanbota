@@ -109,10 +109,17 @@ def training_summary(
       "week"  — bucket is that week's MONDAY, as YYYY-MM-DD
       "month" — bucket is YYYY-MM
 
-    Each bucket reports: sessions (number of training days), total_reps (the
-    volume measure for strength work), duration_s and distance_m (0 when the
-    source tracked neither, which is the case for all bot-sourced strength
-    work).
+    Each bucket reports:
+      sessions      — number of recorded activities
+      training_days — number of distinct days trained
+      total_reps    — volume measure for strength work
+      duration_s, distance_m — 0 when the source tracked neither, which is the
+                    case for all bot-sourced strength work
+
+    sessions and training_days differ, and the distinction matters: several
+    activities can fall on one day (six cycling commutes is six sessions but
+    one training day). Use training_days for "how often did I train" and
+    sessions for "how many activities are recorded".
 
     Buckets with no training are omitted entirely rather than returned as
     zeros, so a gap in the output means no training happened.

@@ -13,10 +13,11 @@ import sys
 from . import config, db
 from .ingest.base import run_adapter
 from .ingest.pullup_bot import PullupBotAdapter
+from .ingest.strava_export import StravaExportAdapter
 
 log = logging.getLogger("fitness_mcp.ingest_cli")
 
-ADAPTERS = {"pullup_bot"}
+ADAPTERS = {"pullup_bot", "strava_export"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,6 +38,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dedupe-only", action="store_true", help="Run deduplication without importing.",
     )
+    parser.add_argument(
+        "--archive", help="Path to the Strava bulk-export zip (source: strava_export).",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -50,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
         adapter = PullupBotAdapter(
             bot_db_path=str(config.PULLUP_BOT_DB), owner_tg_id=config.owner_tg_id()
         )
+    elif args.source == "strava_export":
+        adapter = StravaExportAdapter(archive_path=args.archive or str(config.STRAVA_ARCHIVE))
     else:  # pragma: no cover - argparse restricts this
         raise SystemExit(f"unknown source {args.source}")
 

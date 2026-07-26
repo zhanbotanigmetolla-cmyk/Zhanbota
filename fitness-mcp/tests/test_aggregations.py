@@ -95,6 +95,29 @@ def test_every_grouping_is_a_partition(seeded, group_by):
     assert sum(r["sessions"] for r in rows) == TOTAL_SESSIONS
 
 
+def test_sessions_and_training_days_differ_when_a_day_has_several_activities(seeded):
+    """Six cycling commutes is six sessions but one training day."""
+    for i in range(2):
+        add_workout(seeded, source="strava_export", source_id=f"ride{i}",
+                    local_date="2026-01-05", started_at=f"2026-01-05T0{7+i}:00:00Z",
+                    sport_type="cycling", duration_s=900, distance_m=4000.0)
+
+    day = next(r for r in db.training_summary(seeded, *RANGE, "day")
+               if r["bucket"] == "2026-01-05")
+    assert day["sessions"] == 3          # one strength session plus two rides
+    assert day["training_days"] == 1
+
+    week = next(r for r in db.training_summary(seeded, *RANGE, "week")
+                if r["bucket"] == "2026-01-05")
+    assert week["sessions"] == 5         # 3 on the 5th, plus the 7th and the 11th
+    assert week["training_days"] == 3
+
+
+def test_training_days_never_exceeds_sessions(seeded):
+    for r in db.training_summary(seeded, *RANGE, "month"):
+        assert r["training_days"] <= r["sessions"]
+
+
 def test_duration_is_not_multiplied_by_set_count(seeded):
     """Regression guard: joining sets to workouts directly fans out the rows."""
     week = next(r for r in db.training_summary(seeded, *RANGE, "week")

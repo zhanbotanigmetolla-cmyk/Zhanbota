@@ -166,16 +166,46 @@ Two different things:
   route around it: the gate is on the credentials, not on where the client
   runs. `ingest/strava.py` is a stub that documents the shape and refuses to
   run. It will fail at authorization, not at the code.
-* **Strava bulk export — free and planned.** *Settings → My Account → Download
-  or Delete Your Account → request archive* yields `activities.csv` plus
-  per-activity GPX/TCX/FIT. File-based: no API keys, no rate limits, nothing
-  that can start charging. `activities.csv` is the primary source; the
-  per-activity files are only needed for stream-level detail.
+* **Strava bulk export — built.** *Settings → My Account → Download or Delete
+  Your Account → request archive*. File-based: no API keys, no rate limits,
+  nothing that can start charging.
+
+```bash
+./.venv/Scripts/python.exe -m fitness_mcp.ingest_cli \
+    --source strava_export --archive path/to/export_<athlete>.zip
+```
+
+### What the real archive taught us
+
+Building against the actual file rather than the documented format changed the
+parser substantially. **The export is localized**: the account's Strava
+language decides the column headers, so a parser hard-coded to `Activity ID`
+imports zero rows from a Russian export *without erroring*. Columns are
+resolved through an alias table, and a missing required column is a loud
+failure — a silent empty import is the one outcome that must be impossible.
+
+Other things only the real file revealed:
+
+* Dates are localized too — `26 июл. 2026 г., 12:12:51`, with a narrow
+  no-break space (U+202F) before `г.`.
+* There are **two distance columns**: `Расстояние` is kilometres with a
+  *comma* decimal separator, `Дистанция` is metres with a dot. Only the metres
+  column is used.
+* There are **two duration columns**, elapsed and moving. `duration_s` is
+  elapsed; moving time survives in `raw_json`.
+* Timestamps are **UTC** despite the localized formatting. Verified against the
+  data rather than assumed: activities Strava auto-names *Ночной заезд* /
+  *Дневной* / *Вечерний* land in clean, non-overlapping local-hour bands after
+  UTC→Almaty conversion (morning 04–10, day 13–17, evening 18–20). Had the
+  values already been local, "evening" rides would sit at 13:00.
+
+The archive is read **straight out of the zip, never extracted**, and only
+`activities.csv` is touched. A Strava GDPR export also contains `logins.csv`,
+`contacts.csv` and `mobile_device_identifiers.csv`, none of which belong in
+this database — there is a test asserting none of it leaks into `raw_json`.
 
 ## Not built yet
 
-* **Strava bulk export importer** — waiting on the archive itself. Writing the
-  parser against the real file beats coding to a guess.
 * **Xiaomi export importer** — requested, ~15 working days. Format unknown
   until it lands. It carries sleep, resting HR and stress, which is what
   `recovery_metrics` and `daily_metrics` exist for.

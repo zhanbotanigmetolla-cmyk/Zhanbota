@@ -47,7 +47,29 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 - Strava split into two: the **API** stays unbuilt (paid subscription required since
   2026-06-30), but the free **bulk export** is now planned as a file importer.
 
+### Added
+- **Strava bulk-export importer** (`--source strava_export`). Imports the free GDPR
+  archive; the paid API stays unbuilt. Imported 129 activities spanning 2025-12-25 to
+  2026-07-26, verified against the CSV recomputed independently — distance, duration and
+  heart-rate counts all match exactly.
+- `training_summary` now reports `training_days` alongside `sessions`. The real data has
+  up to six cycling commutes in a single day, so "sessions" stopped meaning "days trained"
+  and the tool description had become wrong.
+
 ### Notes
+- The Strava export is **localized** — the real archive has Russian column headers
+  (`ID физической активности`, `Тип активности`) and Russian dates
+  (`26 июл. 2026 г.` with a narrow no-break space). A parser written against the
+  documented English names would have imported zero rows *without erroring*. Columns now
+  resolve through an alias table and a missing required column fails loudly.
+- Two traps the real file exposed: there are two distance columns (`Расстояние` in km with
+  a comma decimal, `Дистанция` in metres) and two duration columns (elapsed vs moving).
+  Timestamps are UTC despite the localized formatting — confirmed by checking that
+  Strava's auto-generated names (Утренний/Дневной/Вечерний/Ночной) fall in correct
+  local-hour bands after conversion to Almaty.
+- Only `activities.csv` is read, straight out of the zip without extracting. The archive
+  also contains `logins.csv`, `contacts.csv` and `mobile_device_identifiers.csv`; a test
+  asserts none of it reaches the database.
 - Verified GCP pricing rather than assuming: the VM's external IPv4 costs ~$3.65/month
   (SKU `C054-7F72-A02E`, $0.005/hr) and has since Feb 2024. It is a cost of running the
   bot — the VM needs outbound access to Telegram either way — and is not removed by

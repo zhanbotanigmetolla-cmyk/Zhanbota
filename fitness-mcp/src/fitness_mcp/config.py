@@ -37,6 +37,11 @@ DB_PATH = _path_env("FITNESS_MCP_DB", _PKG_ROOT / "var" / "fitness.db")
 # this server must never write to it.
 PULLUP_BOT_DB = _path_env("FITNESS_MCP_PULLUP_DB", _PKG_ROOT / "var" / "pullup_bot_snapshot.db")
 
+# Strava bulk-export archive (the GDPR zip, not the API). Read straight out of
+# the zip and never extracted — it also contains logins, contacts and device
+# identifiers that have no business in this database.
+STRAVA_ARCHIVE = _path_env("FITNESS_MCP_STRAVA_ARCHIVE", _PKG_ROOT / "var" / "strava_export.zip")
+
 
 def owner_tg_id() -> int:
     """Telegram user id whose training data belongs to the server operator.
