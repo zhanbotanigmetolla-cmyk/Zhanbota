@@ -10,6 +10,19 @@
 
 set -euo pipefail
 
+# Bash reads a script incrementally as it executes, and the git sync below
+# rewrites this very file. Editing a running script makes bash resume at a byte
+# offset into the new content, which silently skips whatever changed — that is
+# how the sync timer went missing on its first deploy. Re-exec from a copy so
+# the running text can never change underneath us.
+if [ -z "${FITNESS_MCP_DEPLOY_FROM_COPY:-}" ]; then
+    _self_copy="$(mktemp)"
+    cp "$0" "$_self_copy"
+    trap 'rm -f "$_self_copy"' EXIT
+    FITNESS_MCP_DEPLOY_FROM_COPY=1 bash "$_self_copy" "$@"
+    exit $?
+fi
+
 # Its own checkout, deliberately NOT ~/repo. The bot's ~/deploy.sh runs
 # `git pull origin main` in ~/repo, so leaving that clone parked on a feature
 # branch would turn the next bot deploy into a surprise merge.
