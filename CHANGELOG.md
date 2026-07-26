@@ -4,6 +4,36 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-26]
+
+### Added
+- **`fitness-mcp` (Phase 1, local only):** a new read-only MCP server in `fitness-mcp/`
+  that exposes my own training history to Claude. It owns its own SQLite database as
+  the source of truth, so imported history survives an upstream breaking, and keeps the
+  original payload in `raw_json` so a bad parse can be re-run rather than losing data.
+  Six read-only tools: `list_workouts`, `get_workout`, `training_summary`,
+  `exercise_history`, `personal_records`, `hr_distribution`. Wired into Claude Code
+  locally over stdio via `.mcp.json`. Not deployed and not network-reachable yet.
+- Pluggable ingest layer with a fail-soft runner: adapters only produce rows, the runner
+  owns the transaction, and a failing adapter leaves the database untouched instead of
+  propagating. Strava is a deliberate stub — Standard-tier API access has required a paid
+  subscription since 2026-06-30.
+- 44 tests, including hand-computed aggregation fixtures (Monday-aligned week buckets, a
+  week straddling a month boundary, and a guard against session duration being multiplied
+  by set count).
+
+### Notes
+- The bot is untouched: its database is opened read-only (`file:...?mode=ro`, asserted by
+  test), its systemd unit and venv are not modified, and `fitness-mcp` has its own venv.
+  A snapshot was taken first: `pullups.db.bak-2026-07-26`.
+- Ingest is scoped to a single owner id with no default, so the other 35 users in the bot
+  database cannot be imported by accident.
+- Surfaced a pre-existing data bug rather than silently resolving it: the `2026-04-05`
+  pull-up row has `completed=40` but sets summing to 80, and a UI button label
+  (`◀️ Назад`) leaked into `notes`.
+
+---
+
 ## [2026-05-02]
 
 ### Added
