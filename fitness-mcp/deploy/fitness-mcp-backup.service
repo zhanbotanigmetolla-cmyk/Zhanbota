@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily snapshot of the fitness-mcp database
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=FITNESS_MCP_DB=/home/nigmetolla_zhanbota/data/fitness-mcp/fitness.db
+ExecStart=/home/nigmetolla_zhanbota/.venv-fitness-mcp/bin/python -m fitness_mcp.backup --keep 7
+MemoryMax=100M
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
