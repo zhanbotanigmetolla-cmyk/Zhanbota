@@ -7,6 +7,31 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-07-27]
 
 ### Added
+- **Apple Health push ingest** — `POST /ingest/health`, authenticated by a shared secret
+  header, so workouts and wellness data arrive from the phone automatically. Apple Health
+  is the live source from 2026-07-27 onward; Xiaomi stays historical. The MCP tool surface
+  remains strictly read-only: this is a plain HTTP route, not a tool, so nothing a Claude
+  conversation does can reach it.
+- Idempotency keys on start time plus type rather than start plus duration plus type as
+  originally specified. Apple revises workout durations after a sync settles, so including
+  duration would have created a second row on re-send — exactly the duplication the key
+  exists to prevent. Duration is still stored.
+- Both English and Russian workout names and sleep values are accepted, since it is not
+  knowable in advance which language Shortcuts emits on a localized device.
+- **Daily database backups** (`fitness-mcp-backup.timer`, keeps 7) using SQLite's online
+  backup API. The bot's database had dated backups; the one that is now the source of
+  truth for all imported and merged data had none.
+- **Threat model** and a **one-page runbook** — both were owed and the threat model was
+  deferred while nothing was exposed.
+
+### Fixed
+- Connections now open with WAL and a 10-second busy timeout. There are two independent
+  writers — the hourly sync and the push endpoint — and a collision would otherwise fail
+  with "database is locked".
+- `parse_timestamp` returned datetimes in their original timezone instead of normalizing
+  to UTC. Caught by a test rather than in production.
+
+### Added
 - **Mi Fitness / Xiaomi export importer** (`--source xiaomi_export`). 238 workouts and 390
   days of wellness data, extending history back to 2025-06-27 — a year earlier than any
   other source. `recovery_metrics` and `daily_metrics` now return real data instead of

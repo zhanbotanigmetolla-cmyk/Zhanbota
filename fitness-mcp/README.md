@@ -256,6 +256,90 @@ about whether that time counts.
 Bot sessions never take part: they are `date_only`, and they hold rep-level
 data nothing else has.
 
+## Threat model
+
+Written now that there is something exposed. Previously this listened on
+nothing, so there was nothing to threaten.
+
+### What is exposed
+
+One public hostname, `fitness-mcp.<tailnet>.ts.net`, served by Tailscale
+Funnel. Two paths live under a 32-character random prefix:
+
+| Path | Access | Guarded by |
+|---|---|---|
+| `/<secret>/mcp` | Read every workout and health metric | the secret path only |
+| `/<secret>/ingest/health` | Write workouts and daily metrics | the secret path **and** a 40-char token header |
+
+TLS terminates **on the VM** — the Let's Encrypt certificate and key live in
+`/var/lib/tailscale/certs` on the machine, and Tailscale's relay forwards the
+encrypted stream. Tailscale is a routing dependency, not a party that can read
+the plaintext.
+
+### What actually protects the data
+
+**Read access rests entirely on the secret path.** That is a bearer token
+carried in a URL, which the MCP specification explicitly discourages, and it is
+worth being blunt about the consequences: anyone who obtains that URL can read
+thirteen months of workouts, sleep, resting heart rate and per-day stress. It
+cannot be revoked selectively, only rotated. It will appear in any proxy log,
+clipboard, or screenshot that ever touches it.
+
+This is accepted deliberately. The data is personal but not financial, not
+credentials, and not usable to impersonate anyone. The same posture would be
+**unacceptable** if this ever exposed anything with real blast radius.
+
+**Write access additionally needs the token**, compared with
+`hmac.compare_digest`, and rejections are logged. A leaked token allows
+injecting false workouts — annoying, correctable, and visible in the data. It
+does **not** allow reading anything, and there is no delete path.
+
+### What is deliberately out of reach
+
+* **The bot's database is opened read-only**, enforced by SQLite URI mode and
+  asserted by a test that the connection rejects `CREATE TABLE`. Full
+  compromise of this server cannot corrupt the bot's data.
+* **The MCP tool surface has no write path at all.** Ingest is a plain HTTP
+  route, so nothing a Claude conversation does can reach it.
+* **`MemoryMax=200M`** means a leak or a flood here gets this service killed
+  rather than the bot OOMed on a 1 GB box.
+* **No tool returns credentials, tokens, file paths or environment values.**
+
+### Known gaps, unmitigated
+
+* **No rate limiting.** Someone holding the secret path can scrape everything,
+  or hammer the box.
+* **No read audit trail.** If the path leaked you would not know.
+* **No alerting.** A failing sync or a burst of rejected writes lands in the
+  journal and nowhere else.
+* **No IP allowlist.** Funnel terminates at Tailscale, so the original client
+  address is not something the firewall can filter on.
+
+The cheapest real improvement is a bearer token on reads too, if the Claude
+connector UI exposes a request-headers field. That would move read access from
+"secret in a URL" to "secret in a header", which is the difference between
+leaking on a screenshot and not.
+
+## Recovering from an upstream format change
+
+The database is the source of truth, so a broken upstream costs no history.
+
+Adapters resolve columns through alias tables and **fail loudly** when a
+required one is missing — a silent zero-row import is the one outcome treated
+as unacceptable, because it looks like "no training" rather than "broken
+parser". Ingest runs inside a single transaction, so a failure leaves the
+database exactly as it was.
+
+Every row keeps its original upstream payload in `raw_json`. A parsing bug can
+therefore be fixed and re-run over stored data without needing a fresh export.
+
+If Xiaomi changes its export:
+
+1. The next manual import fails with the missing column named in the error.
+2. Nothing already imported is affected.
+3. Add the new column name to `_COLUMNS` / the relevant map, and re-run. Import
+   is idempotent, so re-running is always safe.
+
 ## Not built yet
 * **Phase 2 — Cloudflare Workers + D1**, MCP over Streamable HTTP at `/mcp`,
   auth via `workers-oauth-provider`. `server.py` selects transport by env var,

@@ -59,12 +59,17 @@ mkdir -p "$HOME/.config/systemd/user"
 cp "$REPO/fitness-mcp/deploy/fitness-mcp.service" "$HOME/.config/systemd/user/"
 cp "$REPO/fitness-mcp/deploy/fitness-mcp-sync.service" "$HOME/.config/systemd/user/"
 cp "$REPO/fitness-mcp/deploy/fitness-mcp-sync.timer" "$HOME/.config/systemd/user/"
+cp "$REPO/fitness-mcp/deploy/fitness-mcp-backup.service" "$HOME/.config/systemd/user/"
+cp "$REPO/fitness-mcp/deploy/fitness-mcp-backup.timer" "$HOME/.config/systemd/user/"
 systemctl --user daemon-reload
 systemctl --user enable fitness-mcp.service
 systemctl --user restart fitness-mcp.service
 
 echo "==> enabling hourly sync from the bot database"
 systemctl --user enable --now fitness-mcp-sync.timer
+
+echo "==> enabling daily database backup"
+systemctl --user enable --now fitness-mcp-backup.timer
 
 echo "==> linger (service must survive logout)"
 if ! loginctl show-user "$USER" 2>/dev/null | grep -q "Linger=yes"; then
