@@ -42,6 +42,9 @@ PULLUP_BOT_DB = _path_env("FITNESS_MCP_PULLUP_DB", _PKG_ROOT / "var" / "pullup_b
 # identifiers that have no business in this database.
 STRAVA_ARCHIVE = _path_env("FITNESS_MCP_STRAVA_ARCHIVE", _PKG_ROOT / "var" / "strava_export.zip")
 
+# Mi Fitness export directory (the official archive, not the cloud API).
+XIAOMI_EXPORT_DIR = _path_env("FITNESS_MCP_XIAOMI_DIR", _PKG_ROOT / "var" / "xiaomi_export")
+
 
 def owner_tg_id() -> int:
     """Telegram user id whose training data belongs to the server operator.

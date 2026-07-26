@@ -18,6 +18,9 @@ __pycache__/
 .claude/
 
 # Personal data exports. Strava/Xiaomi GDPR archives contain login history,
-# contacts and device identifiers as well as workouts — never commit them.
+# contacts, device identifiers and per-minute health data — never commit them.
 export_*.zip
 *_export_*.zip
+*MiFitness*/
+*MiFitness*
+hlth_center_*.csv

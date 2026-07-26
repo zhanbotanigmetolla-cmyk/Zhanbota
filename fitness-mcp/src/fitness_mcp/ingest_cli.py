@@ -14,10 +14,11 @@ from . import config, db
 from .ingest.base import run_adapter
 from .ingest.pullup_bot import PullupBotAdapter
 from .ingest.strava_export import StravaExportAdapter
+from .ingest.xiaomi_export import XiaomiExportAdapter
 
 log = logging.getLogger("fitness_mcp.ingest_cli")
 
-ADAPTERS = {"pullup_bot", "strava_export"}
+ADAPTERS = {"pullup_bot", "strava_export", "xiaomi_export"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,6 +42,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--archive", help="Path to the Strava bulk-export zip (source: strava_export).",
     )
+    parser.add_argument(
+        "--export-dir", help="Path to the Mi Fitness export directory (source: xiaomi_export).",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -56,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     elif args.source == "strava_export":
         adapter = StravaExportAdapter(archive_path=args.archive or str(config.STRAVA_ARCHIVE))
+    elif args.source == "xiaomi_export":
+        adapter = XiaomiExportAdapter(export_dir=args.export_dir or str(config.XIAOMI_EXPORT_DIR))
     else:  # pragma: no cover - argparse restricts this
         raise SystemExit(f"unknown source {args.source}")
 
@@ -69,8 +75,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     log.info(
-        "ingest from %s: %d created, %d updated (%d total)",
-        result.source, result.created, result.updated, result.total,
+        "ingest from %s: %d created, %d updated (%d total), %d daily metrics",
+        result.source, result.created, result.updated, result.total, result.daily_metrics,
     )
     if result.warnings:
         log.warning("%d data-quality warning(s) from the source", len(result.warnings))

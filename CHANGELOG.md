@@ -4,6 +4,41 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-27]
+
+### Added
+- **Mi Fitness / Xiaomi export importer** (`--source xiaomi_export`). 238 workouts and 390
+  days of wellness data, extending history back to 2025-06-27 — a year earlier than any
+  other source. `recovery_metrics` and `daily_metrics` now return real data instead of
+  explaining their own emptiness.
+- Daily metrics come from resting heart rate (328 days), sleep (379 days, with deep/light/
+  REM/awake breakdown), steps (390 days) and stress (69 days). The ingest runner gained an
+  optional `fetch_daily_metrics()` stream, written in the same transaction as workouts.
+- Dedup now honours an explicit `SOURCE_PRIORITY` — Xiaomi beats Strava beats the bot —
+  rather than deciding on field count alone. **125 of 129 Strava activities turned out to
+  be the same sessions**, matching within 0–1 seconds, and collapsed into their Xiaomi
+  records. The four that remain are genuinely Strava-only.
+
+### Fixed
+- Duration tolerance in dedup is now proportional (25%), because sources disagree on what
+  duration means: Xiaomi reports active time, Strava elapsed. A fixed 120-second window
+  missed real duplicates whenever a session had been paused.
+
+### Notes
+- Things the real archive revealed that a guessed parser would have got wrong: the
+  readable sport name is in the CSV's `Key` column, not the JSON (whose `sport_type` is an
+  opaque integer); `duration` disagrees with `end_time - start_time` on 47 of 238 records
+  because it excludes paused time; `rise_height` is the elevation-gain field; sleep values
+  are minutes; and `"timezone": 20` means 20 × 15 min = UTC+5.
+- The 133 MB per-reading file is streamed, never loaded, and only three of its 21 `Key`
+  types are read — `heart_rate` alone is 518k rows and is skipped.
+- Stress covers only 69 of 390 days. Both the per-minute readings and Xiaomi's own daily
+  rollup cover exactly the same 69 days, so the choice between them affects nothing.
+- The export directory is gitignored and verified with `git check-ignore` — it contains
+  per-minute health data for 13 months.
+
+---
+
 ## [2026-07-26]
 
 ### Added

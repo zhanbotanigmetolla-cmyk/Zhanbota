@@ -13,7 +13,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Iterable, Protocol, runtime_checkable
 
-from ..db import WorkoutRow, upsert_workout
+from ..db import WorkoutRow, upsert_daily_metric, upsert_workout
 
 log = logging.getLogger("fitness_mcp.ingest")
 
@@ -39,6 +39,7 @@ class IngestResult:
     source: str
     created: int = 0
     updated: int = 0
+    daily_metrics: int = 0
     failed: bool = False
     error: str | None = None
     warnings: list[str] = field(default_factory=list)
@@ -58,6 +59,10 @@ def run_adapter(conn: sqlite3.Connection, adapter: Adapter) -> IngestResult:
     result = IngestResult(source=adapter.name)
     try:
         rows = list(adapter.fetch())
+        # Optional second stream: daily wellness metrics, which only some
+        # sources have. Fetched before the transaction opens so a parse failure
+        # here aborts cleanly rather than half-writing the workouts.
+        metrics = list(adapter.fetch_daily_metrics()) if hasattr(adapter, "fetch_daily_metrics") else []
     except Exception as exc:  # noqa: BLE001 - fail soft is the whole point
         log.exception("adapter %s failed during fetch", adapter.name)
         result.failed = True
@@ -72,11 +77,14 @@ def run_adapter(conn: sqlite3.Connection, adapter: Adapter) -> IngestResult:
                     result.created += 1
                 else:
                     result.updated += 1
+            for metric in metrics:
+                upsert_daily_metric(conn, metric)
+                result.daily_metrics += 1
     except Exception as exc:  # noqa: BLE001
         log.exception("adapter %s failed during write", adapter.name)
         result.failed = True
         result.error = f"{type(exc).__name__}: {exc}"
-        result.created = result.updated = 0
+        result.created = result.updated = result.daily_metrics = 0
 
     warnings = getattr(adapter, "warnings", None)
     if warnings:
