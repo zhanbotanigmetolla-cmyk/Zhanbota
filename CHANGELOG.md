@@ -62,6 +62,11 @@ All notable changes to Турникмен / Pullup Bot are documented here.
   domain purchase, no dependency on the VM's ephemeral IP, and — unlike Cloudflare Workers
   + D1 — it reuses the tested Python as-is instead of requiring a rewrite against D1's
   async binding API.
+- **Hourly automatic sync** (`fitness-mcp-sync.timer`) so workouts logged in the bot reach
+  the server without anyone copying a database by hand. The import is idempotent, so a
+  failed run costs nothing and the next one catches up; `Persistent=true` catches up after
+  downtime. It runs no deduplication — merging is the only step that can lose information
+  if the heuristics are wrong, so that stays manual.
 - systemd user service with `Restart=always`, `RestartSec=10` and `MemoryMax=200M`, so a
   leak in the MCP server gets itself killed rather than OOMing the bot. Runs at ~40 MB.
   Its own venv (`~/.venv-fitness-mcp`), its own checkout (`~/fitness-mcp-src`), its own
