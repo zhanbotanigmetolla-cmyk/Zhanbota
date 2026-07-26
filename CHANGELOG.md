@@ -4,6 +4,108 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-07-26]
+
+### Added
+- **`fitness-mcp` (Phase 1, local only):** a new read-only MCP server in `fitness-mcp/`
+  that exposes my own training history to Claude. It owns its own SQLite database as
+  the source of truth, so imported history survives an upstream breaking, and keeps the
+  original payload in `raw_json` so a bad parse can be re-run rather than losing data.
+  Six read-only tools: `list_workouts`, `get_workout`, `training_summary`,
+  `exercise_history`, `personal_records`, `hr_distribution`. Wired into Claude Code
+  locally over stdio via `.mcp.json`. Not deployed and not network-reachable yet.
+- Pluggable ingest layer with a fail-soft runner: adapters only produce rows, the runner
+  owns the transaction, and a failing adapter leaves the database untouched instead of
+  propagating. Strava is a deliberate stub — Standard-tier API access has required a paid
+  subscription since 2026-06-30.
+- 44 tests, including hand-computed aggregation fixtures (Monday-aligned week buckets, a
+  week straddling a month boundary, and a guard against session duration being multiplied
+  by set count).
+
+### Notes
+- The bot is untouched: its database is opened read-only (`file:...?mode=ro`, asserted by
+  test), its systemd unit and venv are not modified, and `fitness-mcp` has its own venv.
+  A snapshot was taken first: `pullups.db.bak-2026-07-26`.
+- Ingest is scoped to a single owner id with no default, so the other 35 users in the bot
+  database cannot be imported by accident.
+- Surfaced a pre-existing data bug rather than silently resolving it: the `2026-04-05`
+  pull-up row has `completed=40` but sets summing to 80, and a UI button label
+  (`◀️ Назад`) leaked into `notes`.
+
+### Changed
+- **`fitness-mcp` schema v2**, migrating an existing database in place rather than
+  rebuilding it: adds a `daily_metrics` table (resting HR, sleep, steps, stress — from
+  the Xiaomi export, which the bot has no equivalent of), a `recovery_metrics` tool, and
+  cross-source deduplication.
+- Dedup keeps both source rows and marks the poorer one `superseded_by` instead of
+  deleting it, so a wrong merge is reversed by clearing one column. Only rows with a real
+  clock time participate — the bot's `started_at` is a synthesized day marker, and
+  matching on it would make every same-day session look like a duplicate.
+- Retargeted from self-hosting on the GCP VM to Cloudflare Workers + D1. The VM will only
+  push outbound, so no inbound ports, no TLS to manage, and nothing new competing for RAM
+  on a 1 GB box already 442 MB into swap.
+- Strava split into two: the **API** stays unbuilt (paid subscription required since
+  2026-06-30), but the free **bulk export** is now planned as a file importer.
+
+### Added
+- **Strava bulk-export importer** (`--source strava_export`). Imports the free GDPR
+  archive; the paid API stays unbuilt. Imported 129 activities spanning 2025-12-25 to
+  2026-07-26, verified against the CSV recomputed independently — distance, duration and
+  heart-rate counts all match exactly.
+- `training_summary` now reports `training_days` alongside `sessions`. The real data has
+  up to six cycling commutes in a single day, so "sessions" stopped meaning "days trained"
+  and the tool description had become wrong.
+
+### Added
+- **`fitness-mcp` is deployed and reachable from Claude on mobile/web.** Published via
+  Tailscale Funnel rather than Cloudflare: outbound-only, no inbound firewall rules, no
+  domain purchase, no dependency on the VM's ephemeral IP, and — unlike Cloudflare Workers
+  + D1 — it reuses the tested Python as-is instead of requiring a rewrite against D1's
+  async binding API.
+- systemd user service with `Restart=always`, `RestartSec=10` and `MemoryMax=200M`, so a
+  leak in the MCP server gets itself killed rather than OOMing the bot. Runs at ~40 MB.
+  Its own venv (`~/.venv-fitness-mcp`), its own checkout (`~/fitness-mcp-src`), its own
+  data directory. Deploy script is separate from the bot's `~/deploy.sh` on purpose.
+
+### Fixed
+- DNS-rebinding protection returned `421 Invalid Host header` for every proxied request.
+  FastMCP auto-enables it when bound to loopback and then trusts only localhost Host
+  headers, which a proxied public request never has. The public hostname is now allowed
+  explicitly via `FITNESS_MCP_PUBLIC_HOST` rather than disabling the check.
+- `deploy.sh` was committed from Windows as mode 644 and landed non-executable.
+
+### Notes
+- The bot was never restarted during any of this — verified by its unchanged
+  `ActiveEnterTimestamp` (2026-07-21) after the Tailscale install, which had printed a
+  `systemctl restart user@1001.service` suggestion that would have taken it down.
+- Access control is currently an unguessable 32-character path prefix, stored in
+  `~/.env.fitness_mcp` (600). Requests to `/mcp` without it get 404. This is a bearer
+  token in a URL, which is weak — acceptable for read-only fitness data, not acceptable
+  if this ever gains write tools.
+- Certificate provisioning failed once with a transient control-plane error and succeeded
+  on retry; public DNS took ~5 minutes to appear, within Tailscale's documented 10-minute
+  window. `tailscale cert` also drops a copy of the private key in `$HOME` — removed.
+- The Strava export is **localized** — the real archive has Russian column headers
+  (`ID физической активности`, `Тип активности`) and Russian dates
+  (`26 июл. 2026 г.` with a narrow no-break space). A parser written against the
+  documented English names would have imported zero rows *without erroring*. Columns now
+  resolve through an alias table and a missing required column fails loudly.
+- Two traps the real file exposed: there are two distance columns (`Расстояние` in km with
+  a comma decimal, `Дистанция` in metres) and two duration columns (elapsed vs moving).
+  Timestamps are UTC despite the localized formatting — confirmed by checking that
+  Strava's auto-generated names (Утренний/Дневной/Вечерний/Ночной) fall in correct
+  local-hour bands after conversion to Almaty.
+- Only `activities.csv` is read, straight out of the zip without extracting. The archive
+  also contains `logins.csv`, `contacts.csv` and `mobile_device_identifiers.csv`; a test
+  asserts none of it reaches the database.
+- Verified GCP pricing rather than assuming: the VM's external IPv4 costs ~$3.65/month
+  (SKU `C054-7F72-A02E`, $0.005/hr) and has since Feb 2024. It is a cost of running the
+  bot — the VM needs outbound access to Telegram either way — and is not removed by
+  moving MCP hosting to Cloudflare. A static IP attached to a running instance bills at
+  the same rate as an ephemeral one.
+
+---
+
 ## [2026-05-02]
 
 ### Added

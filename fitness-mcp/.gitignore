@@ -1,0 +1,15 @@
+# Local working data. Never commit: the pullup_bot snapshot contains other
+# users' training history, and fitness.db is derived from it.
+var/
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets (Phase 3 Xiaomi credentials, deploy env file)
+.env
+.env.*
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

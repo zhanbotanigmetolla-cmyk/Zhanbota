@@ -1,0 +1,12 @@
+[Unit]
+Description=Hourly import of new pullup_bot workouts into fitness-mcp
+
+[Timer]
+OnCalendar=hourly
+# Catch up after downtime rather than silently skipping the missed window.
+Persistent=true
+# Spread the start so it never lines up with the bot's own scheduled jobs.
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target
