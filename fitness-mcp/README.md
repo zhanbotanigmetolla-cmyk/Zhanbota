@@ -204,11 +204,59 @@ The archive is read **straight out of the zip, never extracted**, and only
 `contacts.csv` and `mobile_device_identifiers.csv`, none of which belong in
 this database — there is a test asserting none of it leaks into `raw_json`.
 
-## Not built yet
+## Xiaomi / Mi Fitness export — built
 
-* **Xiaomi export importer** — requested, ~15 working days. Format unknown
-  until it lands. It carries sleep, resting HR and stress, which is what
-  `recovery_metrics` and `daily_metrics` exist for.
+Requested from *account.xiaomi.com → Privacy → Manage*. Arrives as a directory
+of CSVs, all prefixed with a per-request stamp, so files are located by suffix
+rather than by name.
+
+```bash
+./.venv/Scripts/python.exe -m fitness_mcp.ingest_cli \
+    --source xiaomi_export --export-dir path/to/<stamp>_MiFitness_..._data_copy
+```
+
+It is the richest source: 238 workouts and 390 days of wellness data reaching
+back a year earlier than anything else, and the only source of resting heart
+rate, sleep and stress.
+
+### What the real archive taught us
+
+| Trap | Reality |
+|---|---|
+| Sport type | The readable name is the CSV's `Key` column. The JSON's `sport_type` is an opaque integer. |
+| `duration` | **Active** time, not elapsed — disagrees with `end_time - start_time` on 47 of 238 records. |
+| Elevation | `rise_height`, not any of `avg/max/min/fall_height`. |
+| Sleep units | Minutes, and `duration` equals deep + light + rem. |
+| `"timezone": 20` | 15-minute units, so UTC+5 — matching Almaty. |
+| `start_time` | Disagrees with the CSV `Time` column on 6 of 238 records; the JSON wins and the difference is warned about. |
+| `daily_mark` rows | Just `{"has_data": true}`. Only `daily_report` carries values. |
+
+The 133 MB per-reading file is **streamed, never loaded**, and only three of its
+21 `Key` types are read. `heart_rate` alone is 518k rows and is skipped.
+
+Sleep is attributed to the day you **woke up**, which is what "last night's
+sleep" means. Multiple segments in a day are summed.
+
+Stress covers only 69 of 390 days — the band samples it in specific modes only.
+Xiaomi's own daily rollup covers exactly the same 69 days, so the per-minute
+mean is used purely for being one consistent method.
+
+## Deduplication in practice
+
+With all three sources loaded, **125 of 129 Strava activities proved to be the
+same sessions as Xiaomi records**, matching within 0–1 seconds — Strava was
+being fed from the watch. They collapse into their Xiaomi rows, which carry HR
+zones, training load and recovery figures the Strava export does not.
+
+`SOURCE_PRIORITY` makes that preference explicit rather than leaving it to a
+field count. Duration tolerance is proportional, because a fixed window misses
+real duplicates whenever a session was paused and the two sources disagree
+about whether that time counts.
+
+Bot sessions never take part: they are `date_only`, and they hold rep-level
+data nothing else has.
+
+## Not built yet
 * **Phase 2 — Cloudflare Workers + D1**, MCP over Streamable HTTP at `/mcp`,
   auth via `workers-oauth-provider`. `server.py` selects transport by env var,
   so the transport switch is configuration rather than a rewrite.

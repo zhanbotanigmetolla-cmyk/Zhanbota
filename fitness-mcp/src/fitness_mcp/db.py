@@ -578,6 +578,18 @@ def recovery_metrics(conn: sqlite3.Connection, start_date: str, end_date: str) -
 _RICHNESS_FIELDS = ("duration_s", "distance_m", "avg_hr", "max_hr", "kcal", "elevation_m")
 
 
+# When two sources record the same activity, the one earlier in this list wins
+# regardless of field count. Xiaomi comes from the watch itself and carries HR
+# zones, training load and recovery figures that Strava's export does not, so it
+# is preferred even on the occasional record where it populates fewer columns.
+SOURCE_PRIORITY = ("xiaomi_export", "strava_export", "pullup_bot")
+
+
+def _priority(source: str) -> int:
+    """Lower is better. Unknown sources rank last but still beat nothing."""
+    return SOURCE_PRIORITY.index(source) if source in SOURCE_PRIORITY else len(SOURCE_PRIORITY)
+
+
 def _richness(row: sqlite3.Row) -> int:
     score = sum(1 for f in _RICHNESS_FIELDS if row[f] is not None)
     return score + (1 if row["set_count"] else 0)
@@ -591,6 +603,7 @@ def find_duplicate_pairs(
     conn: sqlite3.Connection,
     time_tolerance_s: int = 180,
     duration_tolerance_s: int = 120,
+    duration_tolerance_frac: float = 0.25,
 ) -> list[dict]:
     """Identify the same activity recorded by two different sources.
 
@@ -621,14 +634,23 @@ def find_duplicate_pairs(
             gap = abs(_epoch(a["started_at"]) - _epoch(b["started_at"]))
             if gap > time_tolerance_s:
                 break  # rows are start-time ordered, so nothing later can match
-            if (a["duration_s"] is not None and b["duration_s"] is not None
-                    and abs(a["duration_s"] - b["duration_s"]) > duration_tolerance_s):
-                continue
+            if a["duration_s"] is not None and b["duration_s"] is not None:
+                # Sources do not agree on what "duration" means: Xiaomi reports
+                # active time (paused time excluded) while Strava reports
+                # elapsed. A fixed tolerance would miss real duplicates whenever
+                # a session was paused, so it scales with the longer session.
+                allowed = max(duration_tolerance_s,
+                              duration_tolerance_frac * max(a["duration_s"], b["duration_s"]))
+                if abs(a["duration_s"] - b["duration_s"]) > allowed:
+                    continue
 
             ra, rb = _richness(a), _richness(b)
-            # On a tie the earlier-imported row (lower id) is kept, so repeated
-            # runs are stable rather than flip-flopping.
-            keep, drop = (a, b) if ra >= rb else (b, a)
+            # Source preference decides first; field count only breaks ties
+            # between equally-preferred sources. On a full tie the lower id is
+            # kept, so repeated runs are stable rather than flip-flopping.
+            rank_a = (_priority(a["source"]), -ra, a["id"])
+            rank_b = (_priority(b["source"]), -rb, b["id"])
+            keep, drop = (a, b) if rank_a <= rank_b else (b, a)
             superseded.add(drop["id"])
             pairs.append({
                 "keep_id": keep["id"], "keep_source": keep["source"],
