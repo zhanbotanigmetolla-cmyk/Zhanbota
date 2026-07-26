@@ -10,16 +10,25 @@
 
 set -euo pipefail
 
-REPO="$HOME/repo"
+# Its own checkout, deliberately NOT ~/repo. The bot's ~/deploy.sh runs
+# `git pull origin main` in ~/repo, so leaving that clone parked on a feature
+# branch would turn the next bot deploy into a surprise merge.
+REPO_URL="https://github.com/zhanbotanigmetolla-cmyk/Zhanbota.git"
+REPO="$HOME/fitness-mcp-src"
 VENV="$HOME/.venv-fitness-mcp"
 BRANCH="${1:-main}"
 DATA_DIR="$HOME/data/fitness-mcp"
+
+if [ ! -d "$REPO/.git" ]; then
+    echo "==> cloning into $REPO"
+    git clone "$REPO_URL" "$REPO"
+fi
 
 echo "==> syncing $REPO to $BRANCH"
 cd "$REPO"
 git fetch origin
 git checkout "$BRANCH"
-git pull origin "$BRANCH"
+git reset --hard "origin/$BRANCH"
 
 echo "==> ensuring own venv (never shared with the bot)"
 if [ ! -d "$VENV" ]; then
