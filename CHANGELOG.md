@@ -56,7 +56,35 @@ All notable changes to Турникмен / Pullup Bot are documented here.
   up to six cycling commutes in a single day, so "sessions" stopped meaning "days trained"
   and the tool description had become wrong.
 
+### Added
+- **`fitness-mcp` is deployed and reachable from Claude on mobile/web.** Published via
+  Tailscale Funnel rather than Cloudflare: outbound-only, no inbound firewall rules, no
+  domain purchase, no dependency on the VM's ephemeral IP, and — unlike Cloudflare Workers
+  + D1 — it reuses the tested Python as-is instead of requiring a rewrite against D1's
+  async binding API.
+- systemd user service with `Restart=always`, `RestartSec=10` and `MemoryMax=200M`, so a
+  leak in the MCP server gets itself killed rather than OOMing the bot. Runs at ~40 MB.
+  Its own venv (`~/.venv-fitness-mcp`), its own checkout (`~/fitness-mcp-src`), its own
+  data directory. Deploy script is separate from the bot's `~/deploy.sh` on purpose.
+
+### Fixed
+- DNS-rebinding protection returned `421 Invalid Host header` for every proxied request.
+  FastMCP auto-enables it when bound to loopback and then trusts only localhost Host
+  headers, which a proxied public request never has. The public hostname is now allowed
+  explicitly via `FITNESS_MCP_PUBLIC_HOST` rather than disabling the check.
+- `deploy.sh` was committed from Windows as mode 644 and landed non-executable.
+
 ### Notes
+- The bot was never restarted during any of this — verified by its unchanged
+  `ActiveEnterTimestamp` (2026-07-21) after the Tailscale install, which had printed a
+  `systemctl restart user@1001.service` suggestion that would have taken it down.
+- Access control is currently an unguessable 32-character path prefix, stored in
+  `~/.env.fitness_mcp` (600). Requests to `/mcp` without it get 404. This is a bearer
+  token in a URL, which is weak — acceptable for read-only fitness data, not acceptable
+  if this ever gains write tools.
+- Certificate provisioning failed once with a transient control-plane error and succeeded
+  on retry; public DNS took ~5 minutes to appear, within Tailscale's documented 10-minute
+  window. `tailscale cert` also drops a copy of the private key in `$HOME` — removed.
 - The Strava export is **localized** — the real archive has Russian column headers
   (`ID физической активности`, `Тип активности`) and Russian dates
   (`26 июл. 2026 г.` with a narrow no-break space). A parser written against the
