@@ -209,6 +209,34 @@ def hr_distribution(start_date: str, end_date: str) -> dict[str, Any]:
         return db.hr_distribution(conn, start_date, end_date)
 
 
+@mcp.tool()
+def recovery_metrics(start_date: str, end_date: str) -> dict[str, Any]:
+    """Resting heart rate and sleep over a date range, with a simple trend.
+
+    Dates are local calendar dates in Asia/Almaty (YYYY-MM-DD), both ends
+    INCLUSIVE.
+
+    Returns a per-day series (resting HR, sleep minutes, steps, stress),
+    summary statistics for each, and a trend that compares the first half of
+    the range against the second half. The trend is a plain two-halves
+    comparison, not a regression — do not present it as a statistical result.
+    A FALLING resting heart rate generally indicates improving recovery, which
+    is why a negative change is reported as "improving".
+
+    These metrics come from the Xiaomi export only. The pullup bot records
+    none of them, so until that export is imported this returns an empty
+    "days" list and an explanatory "note". An empty result means NO DATA
+    SOURCE IS CONNECTED — it does not mean recovery was poor, and it must not
+    be reported as bad sleep or an elevated resting heart rate.
+
+    Args:
+        start_date: First day to include, YYYY-MM-DD.
+        end_date: Last day to include, YYYY-MM-DD, inclusive.
+    """
+    with _conn() as conn:
+        return db.recovery_metrics(conn, start_date, end_date)
+
+
 # ── entry point ─────────────────────────────────────────────────────────────
 
 def main() -> None:

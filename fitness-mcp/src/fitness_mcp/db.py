@@ -20,14 +20,13 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
-
+_SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS workouts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     source      TEXT    NOT NULL,
@@ -68,6 +67,42 @@ CREATE INDEX IF NOT EXISTS idx_sets_workout  ON sets(workout_id);
 CREATE INDEX IF NOT EXISTS idx_sets_exercise ON sets(exercise);
 """
 
+_SCHEMA_V2 = """
+-- Not every source knows when a session started. The pullup bot records only a
+-- date, so its started_at is a synthesized day marker. Cross-source dedup must
+-- not treat those as real clock times or every same-day session would collide.
+ALTER TABLE workouts ADD COLUMN time_precision TEXT NOT NULL DEFAULT 'exact';
+
+-- Dedup keeps BOTH source rows and marks the poorer one superseded, rather than
+-- deleting it. Nothing is lost, and a wrong merge is reversible by clearing this
+-- column. Queries return only canonical rows (superseded_by IS NULL).
+ALTER TABLE workouts ADD COLUMN superseded_by INTEGER REFERENCES workouts(id);
+
+UPDATE workouts SET time_precision = 'date_only' WHERE source = 'pullup_bot';
+
+CREATE INDEX IF NOT EXISTS idx_workouts_superseded ON workouts(superseded_by);
+
+-- Daily wellness metrics. Currently only the Xiaomi export carries these; the
+-- bot has none of it. One row per (source, day).
+CREATE TABLE IF NOT EXISTS daily_metrics (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    source            TEXT    NOT NULL,
+    local_date        TEXT    NOT NULL,
+    resting_hr        INTEGER,
+    sleep_minutes     INTEGER,
+    sleep_stages_json TEXT,
+    steps             INTEGER,
+    stress            INTEGER,
+    raw_json          TEXT,
+    imported_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE(source, local_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON daily_metrics(local_date);
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
+
 
 # ── connection ──────────────────────────────────────────────────────────────
 
@@ -85,11 +120,22 @@ def connect(path: str | Path, *, read_only: bool = False) -> sqlite3.Connection:
 
 
 def migrate(conn: sqlite3.Connection) -> None:
-    """Create or upgrade the schema. Safe to call on every start."""
-    conn.executescript(_SCHEMA)
+    """Bring the schema up to SCHEMA_VERSION. Safe to call on every start.
+
+    Steps apply in order and each bumps the recorded version, so an existing
+    database upgrades in place rather than needing a rebuild.
+    """
+    conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
     row = conn.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
-        conn.execute("INSERT INTO schema_version(version) VALUES (?)", (SCHEMA_VERSION,))
+        conn.execute("INSERT INTO schema_version(version) VALUES (0)")
+        current = 0
+    else:
+        current = int(row["version"])
+
+    for version in range(current + 1, SCHEMA_VERSION + 1):
+        conn.executescript(_MIGRATIONS[version])
+        conn.execute("UPDATE schema_version SET version = ?", (version,))
     conn.commit()
 
 
@@ -120,6 +166,9 @@ class WorkoutRow:
     elevation_m: float | None = None
     raw: Any = None
     sets: Sequence[SetRow] = ()
+    # 'exact' when started_at is a real clock time, 'date_only' when the source
+    # knew the day but not the time. Only 'exact' rows take part in dedup.
+    time_precision: str = "exact"
 
 
 def upsert_workout(conn: sqlite3.Connection, w: WorkoutRow) -> tuple[int, bool]:
@@ -135,26 +184,28 @@ def upsert_workout(conn: sqlite3.Connection, w: WorkoutRow) -> tuple[int, bool]:
         """
         INSERT INTO workouts (source, source_id, started_at, local_date, sport_type,
                               duration_s, distance_m, avg_hr, max_hr, kcal,
-                              elevation_m, raw_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              elevation_m, raw_json, time_precision)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source, source_id) DO UPDATE SET
-            started_at  = excluded.started_at,
-            local_date  = excluded.local_date,
-            sport_type  = excluded.sport_type,
-            duration_s  = excluded.duration_s,
-            distance_m  = excluded.distance_m,
-            avg_hr      = excluded.avg_hr,
-            max_hr      = excluded.max_hr,
-            kcal        = excluded.kcal,
-            elevation_m = excluded.elevation_m,
-            raw_json    = excluded.raw_json,
-            imported_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            started_at     = excluded.started_at,
+            local_date     = excluded.local_date,
+            sport_type     = excluded.sport_type,
+            duration_s     = excluded.duration_s,
+            distance_m     = excluded.distance_m,
+            avg_hr         = excluded.avg_hr,
+            max_hr         = excluded.max_hr,
+            kcal           = excluded.kcal,
+            elevation_m    = excluded.elevation_m,
+            raw_json       = excluded.raw_json,
+            time_precision = excluded.time_precision,
+            imported_at    = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         """,
         (
             w.source, w.source_id, w.started_at, w.local_date, w.sport_type,
             w.duration_s, w.distance_m, w.avg_hr, w.max_hr, w.kcal,
             w.elevation_m,
             json.dumps(w.raw, ensure_ascii=False) if w.raw is not None else None,
+            w.time_precision,
         ),
     )
 
@@ -187,7 +238,7 @@ def upsert_workout(conn: sqlite3.Connection, w: WorkoutRow) -> tuple[int, bool]:
 # ── read path (used by MCP tools) ───────────────────────────────────────────
 
 _WORKOUT_COLS = """
-    id, source, local_date, started_at, sport_type, duration_s,
+    id, source, local_date, started_at, time_precision, sport_type, duration_s,
     distance_m, avg_hr, max_hr, kcal, elevation_m
 """
 
@@ -205,7 +256,7 @@ def list_workouts(
                (SELECT COALESCE(SUM(s.reps), 0) FROM sets s WHERE s.workout_id = w.id) AS total_reps,
                (SELECT GROUP_CONCAT(DISTINCT s.exercise) FROM sets s WHERE s.workout_id = w.id) AS exercises
         FROM workouts w
-        WHERE local_date BETWEEN ? AND ?
+        WHERE local_date BETWEEN ? AND ? AND superseded_by IS NULL
     """
     params: list[Any] = [start_date, end_date]
     if sport_type:
@@ -265,7 +316,7 @@ def training_summary(
         LEFT JOIN (
             SELECT workout_id, SUM(reps) AS reps FROM sets GROUP BY workout_id
         ) sw ON sw.workout_id = w.id
-        WHERE w.local_date BETWEEN ? AND ?
+        WHERE w.local_date BETWEEN ? AND ? AND w.superseded_by IS NULL
         GROUP BY bucket
         ORDER BY bucket
     """
@@ -282,7 +333,7 @@ def exercise_history(
         SELECT w.local_date, w.id AS workout_id, s.set_index, s.reps,
                s.weight_kg, s.rpe, s.inferred
         FROM sets s JOIN workouts w ON w.id = s.workout_id
-        WHERE s.exercise = ?
+        WHERE s.exercise = ? AND w.superseded_by IS NULL
     """
     params: list[Any] = [exercise]
     if start_date:
@@ -304,12 +355,16 @@ def personal_records(conn: sqlite3.Connection, exercise: str | None = None) -> l
     """
     where, params = "", []
     if exercise:
-        where = "WHERE s.exercise = ?"
+        where = "AND s.exercise = ?"
         params.append(exercise)
 
     exercises = [
         r["exercise"]
-        for r in conn.execute(f"SELECT DISTINCT s.exercise FROM sets s {where} ORDER BY 1", params)
+        for r in conn.execute(
+            "SELECT DISTINCT s.exercise FROM sets s JOIN workouts w ON w.id = s.workout_id "
+            f"WHERE w.superseded_by IS NULL {where} ORDER BY 1",
+            params,
+        )
     ]
 
     out: list[dict] = []
@@ -319,7 +374,7 @@ def personal_records(conn: sqlite3.Connection, exercise: str | None = None) -> l
         best_reps = conn.execute(
             """SELECT s.reps, s.weight_kg, s.rpe, w.local_date
                FROM sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE s.exercise = ? AND s.inferred = 0 AND s.reps IS NOT NULL
+               WHERE s.exercise = ? AND w.superseded_by IS NULL AND s.inferred = 0 AND s.reps IS NOT NULL
                ORDER BY s.reps DESC, w.local_date ASC LIMIT 1""",
             (ex,),
         ).fetchone()
@@ -327,7 +382,7 @@ def personal_records(conn: sqlite3.Connection, exercise: str | None = None) -> l
         best_weight = conn.execute(
             """SELECT s.reps, s.weight_kg, s.rpe, w.local_date
                FROM sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE s.exercise = ? AND s.inferred = 0 AND s.weight_kg IS NOT NULL
+               WHERE s.exercise = ? AND w.superseded_by IS NULL AND s.inferred = 0 AND s.weight_kg IS NOT NULL
                ORDER BY s.weight_kg DESC, w.local_date ASC LIMIT 1""",
             (ex,),
         ).fetchone()
@@ -337,7 +392,7 @@ def personal_records(conn: sqlite3.Connection, exercise: str | None = None) -> l
             """SELECT s.reps, s.weight_kg, w.local_date,
                       s.weight_kg * (1 + s.reps / 30.0) AS est_1rm
                FROM sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE s.exercise = ? AND s.inferred = 0
+               WHERE s.exercise = ? AND w.superseded_by IS NULL AND s.inferred = 0
                      AND s.weight_kg IS NOT NULL AND s.reps IS NOT NULL
                ORDER BY est_1rm DESC, w.local_date ASC LIMIT 1""",
             (ex,),
@@ -346,7 +401,7 @@ def personal_records(conn: sqlite3.Connection, exercise: str | None = None) -> l
         best_session = conn.execute(
             """SELECT w.local_date, SUM(s.reps) AS reps
                FROM sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE s.exercise = ?
+               WHERE s.exercise = ? AND w.superseded_by IS NULL
                GROUP BY w.id ORDER BY reps DESC, w.local_date ASC LIMIT 1""",
             (ex,),
         ).fetchone()
@@ -383,7 +438,8 @@ def hr_distribution(conn: sqlite3.Connection, start_date: str, end_date: str) ->
     """
     rows = conn.execute(
         """SELECT avg_hr, max_hr, duration_s, local_date
-           FROM workouts WHERE local_date BETWEEN ? AND ?""",
+           FROM workouts
+           WHERE local_date BETWEEN ? AND ? AND superseded_by IS NULL""",
         (start_date, end_date),
     ).fetchall()
 
@@ -410,3 +466,187 @@ def hr_distribution(conn: sqlite3.Connection, start_date: str, end_date: str) ->
         "sessions_without_hr": without_hr,
         "zones": list(buckets.values()),
     }
+
+
+# ── daily wellness metrics ──────────────────────────────────────────────────
+
+@dataclass
+class DailyMetricRow:
+    source: str
+    local_date: str
+    resting_hr: int | None = None
+    sleep_minutes: int | None = None
+    sleep_stages: Any = None
+    steps: int | None = None
+    stress: int | None = None
+    raw: Any = None
+
+
+def upsert_daily_metric(conn: sqlite3.Connection, m: DailyMetricRow) -> None:
+    conn.execute(
+        """
+        INSERT INTO daily_metrics (source, local_date, resting_hr, sleep_minutes,
+                                   sleep_stages_json, steps, stress, raw_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source, local_date) DO UPDATE SET
+            resting_hr        = excluded.resting_hr,
+            sleep_minutes     = excluded.sleep_minutes,
+            sleep_stages_json = excluded.sleep_stages_json,
+            steps             = excluded.steps,
+            stress            = excluded.stress,
+            raw_json          = excluded.raw_json,
+            imported_at       = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        """,
+        (
+            m.source, m.local_date, m.resting_hr, m.sleep_minutes,
+            json.dumps(m.sleep_stages, ensure_ascii=False) if m.sleep_stages is not None else None,
+            m.steps, m.stress,
+            json.dumps(m.raw, ensure_ascii=False) if m.raw is not None else None,
+        ),
+    )
+
+
+def _avg(values: list[float]) -> float | None:
+    return round(sum(values) / len(values), 1) if values else None
+
+
+def recovery_metrics(conn: sqlite3.Connection, start_date: str, end_date: str) -> dict:
+    """Resting HR and sleep over a range, with a first-half/second-half trend.
+
+    The trend is a plain comparison of the two halves of the range, not a
+    regression. It is easy to explain and hard to over-read, which is the point.
+    """
+    rows = [
+        dict(r)
+        for r in conn.execute(
+            """SELECT local_date, resting_hr, sleep_minutes, steps, stress
+               FROM daily_metrics
+               WHERE local_date BETWEEN ? AND ?
+               ORDER BY local_date""",
+            (start_date, end_date),
+        )
+    ]
+
+    if not rows:
+        return {
+            "days": [],
+            "note": "No daily wellness data is stored for this range. These metrics "
+                    "come from the Xiaomi export only; the pullup bot records none. "
+                    "This means no data source is connected, not that recovery was poor.",
+            "resting_hr": None,
+            "sleep": None,
+            "trend": None,
+        }
+
+    rhr = [r["resting_hr"] for r in rows if r["resting_hr"] is not None]
+    sleep = [r["sleep_minutes"] for r in rows if r["sleep_minutes"] is not None]
+
+    half = len(rows) // 2
+    first_rhr = [r["resting_hr"] for r in rows[:half] if r["resting_hr"] is not None]
+    second_rhr = [r["resting_hr"] for r in rows[half:] if r["resting_hr"] is not None]
+    trend = None
+    if first_rhr and second_rhr:
+        delta = round(_avg(second_rhr) - _avg(first_rhr), 1)
+        trend = {
+            "resting_hr_first_half": _avg(first_rhr),
+            "resting_hr_second_half": _avg(second_rhr),
+            "resting_hr_change": delta,
+            # Lower resting HR generally indicates better recovery.
+            "direction": "improving" if delta < 0 else "worsening" if delta > 0 else "flat",
+        }
+
+    return {
+        "days": rows,
+        "resting_hr": {
+            "avg": _avg(rhr), "min": min(rhr) if rhr else None,
+            "max": max(rhr) if rhr else None, "days_with_data": len(rhr),
+        },
+        "sleep": {
+            "avg_minutes": _avg(sleep), "min_minutes": min(sleep) if sleep else None,
+            "max_minutes": max(sleep) if sleep else None, "days_with_data": len(sleep),
+        },
+        "trend": trend,
+    }
+
+
+# ── cross-source deduplication ──────────────────────────────────────────────
+
+# Fields whose presence makes one source's copy of a workout richer than another's.
+_RICHNESS_FIELDS = ("duration_s", "distance_m", "avg_hr", "max_hr", "kcal", "elevation_m")
+
+
+def _richness(row: sqlite3.Row) -> int:
+    score = sum(1 for f in _RICHNESS_FIELDS if row[f] is not None)
+    return score + (1 if row["set_count"] else 0)
+
+
+def _epoch(started_at: str) -> float:
+    return datetime.strptime(started_at, "%Y-%m-%dT%H:%M:%SZ").timestamp()
+
+
+def find_duplicate_pairs(
+    conn: sqlite3.Connection,
+    time_tolerance_s: int = 180,
+    duration_tolerance_s: int = 120,
+) -> list[dict]:
+    """Identify the same activity recorded by two different sources.
+
+    Only rows with an exact start time are considered. The pullup bot's
+    ``started_at`` is a synthesized day marker, so including those would make
+    every same-day session look like a duplicate of every other.
+
+    Matching requires a different source, start times within
+    ``time_tolerance_s``, and — when both sides report one — durations within
+    ``duration_tolerance_s``. The richer row wins and the other is superseded.
+    """
+    rows = conn.execute(
+        """SELECT w.*, (SELECT COUNT(*) FROM sets s WHERE s.workout_id = w.id) AS set_count
+           FROM workouts w
+           WHERE w.time_precision = 'exact' AND w.superseded_by IS NULL
+           ORDER BY w.started_at"""
+    ).fetchall()
+
+    pairs: list[dict] = []
+    superseded: set[int] = set()
+
+    for i, a in enumerate(rows):
+        if a["id"] in superseded:
+            continue
+        for b in rows[i + 1:]:
+            if b["id"] in superseded or a["source"] == b["source"]:
+                continue
+            gap = abs(_epoch(a["started_at"]) - _epoch(b["started_at"]))
+            if gap > time_tolerance_s:
+                break  # rows are start-time ordered, so nothing later can match
+            if (a["duration_s"] is not None and b["duration_s"] is not None
+                    and abs(a["duration_s"] - b["duration_s"]) > duration_tolerance_s):
+                continue
+
+            ra, rb = _richness(a), _richness(b)
+            # On a tie the earlier-imported row (lower id) is kept, so repeated
+            # runs are stable rather than flip-flopping.
+            keep, drop = (a, b) if ra >= rb else (b, a)
+            superseded.add(drop["id"])
+            pairs.append({
+                "keep_id": keep["id"], "keep_source": keep["source"],
+                "supersede_id": drop["id"], "supersede_source": drop["source"],
+                "start_gap_s": round(gap), "richness": {keep["source"]: max(ra, rb),
+                                                        drop["source"]: min(ra, rb)},
+            })
+    return pairs
+
+
+def deduplicate(conn: sqlite3.Connection, **kw) -> list[dict]:
+    """Apply :func:`find_duplicate_pairs`. Returns what was merged.
+
+    Nothing is deleted — the superseded row keeps its data and its ``raw_json``.
+    Clearing ``superseded_by`` fully reverses a merge.
+    """
+    pairs = find_duplicate_pairs(conn, **kw)
+    with conn:
+        for p in pairs:
+            conn.execute(
+                "UPDATE workouts SET superseded_by = ? WHERE id = ?",
+                (p["keep_id"], p["supersede_id"]),
+            )
+    return pairs

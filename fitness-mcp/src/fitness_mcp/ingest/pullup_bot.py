@@ -135,6 +135,9 @@ class PullupBotAdapter:
             # elevation. Leaving these NULL is honest; zero would not be.
             raw={"rows": raw, "day_type": day_rows[0]["day_type"]},
             sets=sets,
+            # started_at marks the day, not a real session start, so these rows
+            # must never take part in start-time-based cross-source dedup.
+            time_precision="date_only",
         )
 
     def _parse_sets(self, row, local_date: str) -> list[int] | None:

@@ -32,6 +32,28 @@ All notable changes to Турникмен / Pullup Bot are documented here.
   pull-up row has `completed=40` but sets summing to 80, and a UI button label
   (`◀️ Назад`) leaked into `notes`.
 
+### Changed
+- **`fitness-mcp` schema v2**, migrating an existing database in place rather than
+  rebuilding it: adds a `daily_metrics` table (resting HR, sleep, steps, stress — from
+  the Xiaomi export, which the bot has no equivalent of), a `recovery_metrics` tool, and
+  cross-source deduplication.
+- Dedup keeps both source rows and marks the poorer one `superseded_by` instead of
+  deleting it, so a wrong merge is reversed by clearing one column. Only rows with a real
+  clock time participate — the bot's `started_at` is a synthesized day marker, and
+  matching on it would make every same-day session look like a duplicate.
+- Retargeted from self-hosting on the GCP VM to Cloudflare Workers + D1. The VM will only
+  push outbound, so no inbound ports, no TLS to manage, and nothing new competing for RAM
+  on a 1 GB box already 442 MB into swap.
+- Strava split into two: the **API** stays unbuilt (paid subscription required since
+  2026-06-30), but the free **bulk export** is now planned as a file importer.
+
+### Notes
+- Verified GCP pricing rather than assuming: the VM's external IPv4 costs ~$3.65/month
+  (SKU `C054-7F72-A02E`, $0.005/hr) and has since Feb 2024. It is a cost of running the
+  bot — the VM needs outbound access to Telegram either way — and is not removed by
+  moving MCP hosting to Cloudflare. A static IP attached to a running instance bills at
+  the same rate as an ephemeral one.
+
 ---
 
 ## [2026-05-02]

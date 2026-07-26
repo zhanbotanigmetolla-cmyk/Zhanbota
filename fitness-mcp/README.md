@@ -3,8 +3,8 @@
 A personal, **read-only** MCP server over my own training data.
 
 **Status: Phase 1 complete (local, stdio).** Not deployed, not reachable from
-the network, no TLS, no auth. Tasks 2–7 are not started — see
-[Not built yet](#not-built-yet).
+the network, no TLS, no auth. Target host is Cloudflare Workers + D1 on the
+free plan — see [Not built yet](#not-built-yet).
 
 ---
 
@@ -137,24 +137,67 @@ by construction rather than by discipline.
 | `exercise_history` | Every logged set of one movement, oldest first |
 | `personal_records` | Best set by reps, by weight, estimated 1RM, best day |
 | `hr_distribution` | Approximate session-level HR zone distribution |
+| `recovery_metrics` | Resting HR and sleep, with a two-halves trend |
 
-## Strava — deliberately not built
+## Cross-source deduplication
 
-As of **2026-06-30**, Standard-tier Strava API access requires an active paid
-Strava subscription. Self-hosting does not route around it: the gate is on the
-API credentials, not on where the client runs. `ingest/strava.py` is a stub that
-documents the shape and refuses to run. Do not fill it in without a
-subscription — it will fail at authorization, not at the code.
+A run recorded by both Strava and the Xiaomi export is one workout. Dedup
+matches on start time within a tolerance plus comparable duration, and keeps
+whichever row has more fields populated.
+
+Two properties worth knowing:
+
+* **Only rows with an exact start time take part.** The bot's `started_at` is a
+  synthesized day marker (`time_precision = 'date_only'`), so including those
+  would make every same-day session look like a duplicate of every other.
+* **Nothing is deleted.** The losing row keeps its data and its `raw_json`, and
+  is marked `superseded_by`. Queries return canonical rows only. Clearing that
+  one column fully reverses a merge, so a bad match costs nothing.
+
+Dedup does not run automatically — it is a separate step, because merging is
+the one operation here that can lose information if the heuristics are wrong.
+
+## Strava — API not built, bulk export is
+
+Two different things:
+
+* **Strava API — will not be built.** Since **2026-06-30**, Standard-tier API
+  access requires an active paid Strava subscription. Self-hosting does not
+  route around it: the gate is on the credentials, not on where the client
+  runs. `ingest/strava.py` is a stub that documents the shape and refuses to
+  run. It will fail at authorization, not at the code.
+* **Strava bulk export — free and planned.** *Settings → My Account → Download
+  or Delete Your Account → request archive* yields `activities.csv` plus
+  per-activity GPX/TCX/FIT. File-based: no API keys, no rate limits, nothing
+  that can start charging. `activities.csv` is the primary source; the
+  per-activity files are only needed for stream-level detail.
 
 ## Not built yet
 
-Phase 2 (Xiaomi official export), Phase 3 (Mi Fitness cloud), and everything
-network-facing:
+* **Strava bulk export importer** — waiting on the archive itself. Writing the
+  parser against the real file beats coding to a guess.
+* **Xiaomi export importer** — requested, ~15 working days. Format unknown
+  until it lands. It carries sleep, resting HR and stress, which is what
+  `recovery_metrics` and `daily_metrics` exist for.
+* **Phase 2 — Cloudflare Workers + D1**, MCP over Streamable HTTP at `/mcp`,
+  auth via `workers-oauth-provider`. `server.py` selects transport by env var,
+  so the transport switch is configuration rather than a rewrite.
+* **Phase 3 — VM push script**: outbound HTTPS only, read-only on the bot DB,
+  no inbound and no firewall changes.
+* **Phase 4 — Mi Fitness cloud scraping**: only on explicit request.
+* **Threat model**, **runbook**, and **Xiaomi format-change recovery** are
+  written when there is something deployed to threaten. Right now this listens
+  on nothing.
 
-* Streamable HTTP transport (Task 2) — `server.py` selects transport by env var
-  so this is configuration, not a rewrite
-* Domain + TLS (Task 3), GCP firewall (Task 4), auth (Task 5), deploy (Task 6)
-* **Threat model** — belongs with Task 5 and is written when the server is
-  actually exposed. Right now it listens on nothing.
-* **Runbook** and **Xiaomi API-change recovery** — written when there is a
-  deployed service and a Xiaomi adapter to recover.
+## Cost
+
+Cloudflare Workers + D1 free tier covers this comfortably: 100k requests/day,
+500 MB per D1 database, 5M row reads/day. A few hundred workouts is a rounding
+error against that, and there is no egress charge.
+
+One thing worth being accurate about: the GCP VM's external IPv4 costs
+**~$3.65/month** (`$0.005/hr`, SKU `C054-7F72-A02E`) and has since Feb 2024.
+That is a cost of running the Telegram bot, not of this project — the VM needs
+an external IP for outbound access to Telegram regardless, and moving MCP
+hosting to Cloudflare does not remove it. A reserved static IP attached to a
+running instance bills at the same rate as an ephemeral one.

@@ -68,12 +68,13 @@ def bot_db_factory(tmp_path):
     return build
 
 
-def add_workout(conn, *, source="test", source_id, local_date, sets=(), **kw):
+def add_workout(conn, *, source="test", source_id, local_date, sets=(),
+                started_at=None, **kw):
     """Insert a workout with known sets straight into the fitness database."""
     row = db.WorkoutRow(
         source=source,
         source_id=source_id,
-        started_at=f"{local_date}T00:00:00Z",
+        started_at=started_at or f"{local_date}T00:00:00Z",
         local_date=local_date,
         sport_type=kw.pop("sport_type", "strength"),
         sets=[db.SetRow(**s) for s in sets],
