@@ -10,6 +10,8 @@ No tool returns credentials, tokens, filesystem paths or environment values.
 
 from __future__ import annotations
 
+import hmac
+import json
 import logging
 import os
 import sqlite3
@@ -17,8 +19,11 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from . import config, db
+from .ingest.apple_health import ApplePayload
 
 log = logging.getLogger("fitness_mcp.server")
 
@@ -271,6 +276,79 @@ def recovery_metrics(start_date: str, end_date: str) -> dict[str, Any]:
     """
     with _conn() as conn:
         return db.recovery_metrics(conn, start_date, end_date)
+
+
+# ── push ingest (NOT an MCP tool) ───────────────────────────────────────────
+#
+# The MCP surface above stays strictly read-only. This is a plain HTTP route
+# that the phone POSTs to; no MCP tool can reach it and Claude cannot invoke it.
+# It exists because HealthKit will not release data while the device is locked,
+# so the phone has to push when it happens to be unlocked rather than being
+# polled on a schedule.
+
+MAX_BODY_BYTES = 8 * 1024 * 1024
+
+
+@mcp.custom_route("/ingest/health", methods=["POST"])
+async def ingest_health(request: Request) -> JSONResponse:
+    expected = config.ingest_token()
+    if not expected:
+        # Refusing beats defaulting open: this endpoint writes, and it is
+        # reachable from the public internet through the funnel.
+        return JSONResponse({"error": "ingest is not configured"}, status_code=503)
+
+    presented = request.headers.get("x-ingest-token", "")
+    if not hmac.compare_digest(presented, expected):
+        log.warning("rejected /ingest/health: bad or missing token")
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    body = await request.body()
+    if len(body) > MAX_BODY_BYTES:
+        return JSONResponse({"error": "payload too large"}, status_code=413)
+
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return JSONResponse({"error": f"invalid JSON: {exc}"}, status_code=400)
+
+    try:
+        parsed = ApplePayload(payload)
+        workouts = list(parsed.workouts())
+        metrics = list(parsed.daily_metrics())
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    created = updated = 0
+    conn = db.connect(config.DB_PATH)
+    try:
+        db.migrate(conn)
+        # One transaction: a partial delivery is never half-applied.
+        with conn:
+            for row in workouts:
+                _, was_created = db.upsert_workout(conn, row)
+                created += was_created
+                updated += not was_created
+            for metric in metrics:
+                db.upsert_daily_metric(conn, metric)
+    except Exception as exc:  # noqa: BLE001 - never leak a stack trace outward
+        log.exception("ingest failed")
+        return JSONResponse({"error": f"{type(exc).__name__}"}, status_code=500)
+    finally:
+        conn.close()
+
+    log.info(
+        "ingest: %d workouts (%d new), %d daily metrics, %d warnings",
+        len(workouts), created, len(metrics), len(parsed.warnings),
+    )
+    # Counts come back so a single run can be verified from the phone itself.
+    return JSONResponse({
+        "ok": True,
+        "workouts_received": len(workouts),
+        "workouts_created": created,
+        "workouts_updated": updated,
+        "daily_metrics": len(metrics),
+        "warnings": parsed.warnings[:20],
+    })
 
 
 # ── entry point ─────────────────────────────────────────────────────────────

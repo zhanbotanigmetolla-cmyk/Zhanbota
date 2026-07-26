@@ -46,6 +46,16 @@ STRAVA_ARCHIVE = _path_env("FITNESS_MCP_STRAVA_ARCHIVE", _PKG_ROOT / "var" / "st
 XIAOMI_EXPORT_DIR = _path_env("FITNESS_MCP_XIAOMI_DIR", _PKG_ROOT / "var" / "xiaomi_export")
 
 
+def ingest_token() -> str | None:
+    """Shared secret the phone must present to POST /ingest/health.
+
+    Returns None when unset, and the endpoint then refuses every request. An
+    unauthenticated write endpoint reachable from the public internet must never
+    be the default, so absence disables it rather than opening it.
+    """
+    return os.environ.get("FITNESS_MCP_INGEST_TOKEN", "").strip() or None
+
+
 def owner_tg_id() -> int:
     """Telegram user id whose training data belongs to the server operator.
 

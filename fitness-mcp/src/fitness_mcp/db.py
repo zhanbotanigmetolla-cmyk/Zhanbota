@@ -114,6 +114,12 @@ def connect(path: str | Path, *, read_only: bool = False) -> sqlite3.Connection:
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(path)
+        # There are now two independent writers — the hourly bot sync and the
+        # pushed Apple Health endpoint. WAL lets a reader continue during a
+        # write, and the busy timeout makes a collision wait rather than fail
+        # with "database is locked".
+        conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 10000")
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -582,7 +588,12 @@ _RICHNESS_FIELDS = ("duration_s", "distance_m", "avg_hr", "max_hr", "kcal", "ele
 # regardless of field count. Xiaomi comes from the watch itself and carries HR
 # zones, training load and recovery figures that Strava's export does not, so it
 # is preferred even on the occasional record where it populates fewer columns.
-SOURCE_PRIORITY = ("xiaomi_export", "strava_export", "pullup_bot")
+# Xiaomi outranks Apple Health because the watch record carries HR zones and
+# training load that HealthKit does not expose. In practice they barely meet:
+# the Xiaomi export is historical (through 2026-07-26) and Apple Health is the
+# live source from 2026-07-27, so this only matters if a newer Xiaomi export is
+# ever imported over the same dates. Flip the order here to change that.
+SOURCE_PRIORITY = ("xiaomi_export", "apple_health", "strava_export", "pullup_bot")
 
 
 def _priority(source: str) -> int:
