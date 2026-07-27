@@ -311,6 +311,15 @@ async def ingest_health(request: Request) -> JSONResponse:
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         return JSONResponse({"error": f"invalid JSON: {exc}"}, status_code=400)
 
+    # Count what arrived *before* parsing. Without this, "0 workouts" is
+    # ambiguous between "the phone sent nothing" and "the phone sent things
+    # that all failed to parse", and those need completely different fixes.
+    received = {
+        key: len(payload[key]) if isinstance(payload.get(key), list) else "not-a-list"
+        for key in ("workouts", "sleep_samples", "resting_hr", "steps")
+        if key in payload
+    }
+
     try:
         parsed = ApplePayload(payload)
         workouts = list(parsed.workouts())
@@ -337,18 +346,30 @@ async def ingest_health(request: Request) -> JSONResponse:
         conn.close()
 
     log.info(
-        "ingest: %d workouts (%d new), %d daily metrics, %d warnings",
-        len(workouts), created, len(metrics), len(parsed.warnings),
+        "ingest: received=%s -> %d workouts (%d new), %d daily metrics, %d warnings",
+        received or "{}", len(workouts), created, len(metrics), len(parsed.warnings),
     )
     # Counts come back so a single run can be verified from the phone itself.
-    return JSONResponse({
+    # `received` echoes the raw item counts per key, and `hint` says plainly
+    # what to fix when nothing arrived — debugging a Shortcut from a phone is
+    # painful enough without having to guess.
+    body: dict[str, Any] = {
         "ok": True,
+        "received": received,
         "workouts_received": len(workouts),
         "workouts_created": created,
         "workouts_updated": updated,
         "daily_metrics": len(metrics),
         "warnings": parsed.warnings[:20],
-    })
+    }
+    if not received:
+        body["hint"] = ("Body contained no workouts/sleep_samples/resting_hr/steps keys. "
+                        "In Get Contents of URL set Request Body to JSON and add an Array "
+                        "field per key; a leftover Text action with {} sends this.")
+    elif not workouts and not metrics:
+        body["hint"] = ("Keys arrived but every entry was unusable. Check that the "
+                        "date fields are set to ISO 8601 format.")
+    return JSONResponse(body)
 
 
 # ── entry point ─────────────────────────────────────────────────────────────
