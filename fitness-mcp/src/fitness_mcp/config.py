@@ -45,6 +45,11 @@ STRAVA_ARCHIVE = _path_env("FITNESS_MCP_STRAVA_ARCHIVE", _PKG_ROOT / "var" / "st
 # Mi Fitness export directory (the official archive, not the cloud API).
 XIAOMI_EXPORT_DIR = _path_env("FITNESS_MCP_XIAOMI_DIR", _PKG_ROOT / "var" / "xiaomi_export")
 
+# Hevy CSV export (Settings -> Export Data in the app, which emails a CSV).
+# Re-exported periodically with overlapping dates; the adapter is idempotent,
+# so the file is simply overwritten in place and re-ingested.
+HEVY_CSV = _path_env("FITNESS_MCP_HEVY_CSV", _PKG_ROOT / "var" / "hevy_export.csv")
+
 
 def ingest_token() -> str | None:
     """Shared secret the phone must present to POST /ingest/health.

@@ -7,6 +7,31 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 ## [2026-07-27]
 
 ### Added
+- **Hevy gym-training import** (`--source hevy_export --csv <file>`) — 103 sessions of
+  weighted barbell/dumbbell/machine work going back to 2022-12-09, imported from a Hevy
+  CSV export. This is a *second* training modality alongside the bodyweight pull-up data,
+  not a replacement for it, so the two are kept apart rather than merged: each workout
+  carries its `source`, and weighted movements keep their own exercise names, which is why
+  `подтягивания (с утяжелителем)` now reports a real 1RM while `pullups` still, correctly,
+  reports none.
+- A `source` filter on `list_workouts`, `training_summary`, `exercise_history`,
+  `personal_records` and `hr_distribution`, so anything can be asked of Hevy alone, the
+  bot alone, or everything together. An unknown source name is rejected rather than
+  silently returning nothing, because an empty result reads as "you trained nothing".
+- Sets now record their `set_type` where the source distinguishes one (schema v3). Warm-up
+  sets are excluded from personal records — a light ramp-up set is not an attempt at a best
+  effort, and without this a 10-rep warm-up would outrank a genuine 8-rep working set.
+
+### Changed
+- Deduplication will no longer supersede a workout that has sets in favour of one that has
+  none. A watch and Hevy can record the same gym session, but superseding hides a row from
+  every query, and trading a whole set list for an average heart rate is a bad deal.
+- Tool descriptions now spell out the traps the second modality introduces: that
+  `total_reps` mixes bodyweight and loaded reps, that `weight_kg` on a weighted pull-up is
+  *added* load and not total, and that Hevy carries no heart rate at all — so
+  `sessions_without_hr` grows for reasons of coverage, not training.
+
+### Added
 - **Apple Health push ingest** — `POST /ingest/health`, authenticated by a shared secret
   header, so workouts and wellness data arrive from the phone automatically. Apple Health
   is the live source from 2026-07-27 onward; Xiaomi stays historical. The MCP tool surface

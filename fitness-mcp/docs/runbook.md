@@ -62,6 +62,7 @@ the end to prove it. **Never** use the bot's `~/deploy.sh` for this.
 | Bot | `$SSH "systemctl --user start fitness-mcp-sync.service"` | Also runs hourly on its own |
 | Strava | `--source strava_export --archive <zip>` | Manual; request a fresh export first |
 | Xiaomi | `--source xiaomi_export --export-dir <dir>` | Manual; ~15 working days to obtain |
+| Hevy | `--source hevy_export --csv <file>` | Manual; re-export weekly from the app |
 | Apple Health | run the iOS Shortcut | Pushes a rolling 7-day window |
 
 Manual imports run from wherever the archive is, usually the laptop:
@@ -81,6 +82,24 @@ archive that overlaps an existing one, run dedup explicitly:
 
 Dedup is never automatic: it is the only operation that can lose information if
 the matching heuristics are wrong.
+
+### Hevy, the weekly one
+
+Hevy exports the whole history every time, so each export overlaps everything
+already imported. That is fine — a session keys on its UTC start time and its
+sets are replaced wholesale, so re-importing never duplicates a set or
+double-counts volume. Export from the app (Profile → settings → Export Data),
+then copy the CSV up and run it against the live database:
+
+```bash
+scp -i ~/.ssh/id_ed25519_claude workout_data_hevy.csv     nigmetolla_zhanbota@35.226.20.162:~/data/fitness-mcp/hevy_export.csv
+
+$SSH "FITNESS_MCP_DB=~/data/fitness-mcp/fitness.db       ~/.venv-fitness-mcp/bin/python -m fitness_mcp.ingest_cli       --source hevy_export --csv ~/data/fitness-mcp/hevy_export.csv"
+```
+
+Expect `N created, M updated`; on an unchanged re-run it is `0 created`. No
+service restart is needed — the server opens the database per request. The CSV
+is personal training data and is gitignored; never commit it.
 
 ## Undoing a bad merge
 

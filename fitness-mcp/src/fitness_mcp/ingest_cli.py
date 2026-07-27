@@ -12,13 +12,14 @@ import sys
 
 from . import config, db
 from .ingest.base import run_adapter
+from .ingest.hevy_export import HevyExportAdapter
 from .ingest.pullup_bot import PullupBotAdapter
 from .ingest.strava_export import StravaExportAdapter
 from .ingest.xiaomi_export import XiaomiExportAdapter
 
 log = logging.getLogger("fitness_mcp.ingest_cli")
 
-ADAPTERS = {"pullup_bot", "strava_export", "xiaomi_export"}
+ADAPTERS = {"pullup_bot", "hevy_export", "strava_export", "xiaomi_export"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,6 +46,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--export-dir", help="Path to the Mi Fitness export directory (source: xiaomi_export).",
     )
+    parser.add_argument(
+        "--csv", help="Path to the Hevy CSV export (source: hevy_export).",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -60,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     elif args.source == "strava_export":
         adapter = StravaExportAdapter(archive_path=args.archive or str(config.STRAVA_ARCHIVE))
+    elif args.source == "hevy_export":
+        adapter = HevyExportAdapter(csv_path=args.csv or str(config.HEVY_CSV))
     elif args.source == "xiaomi_export":
         adapter = XiaomiExportAdapter(export_dir=args.export_dir or str(config.XIAOMI_EXPORT_DIR))
     else:  # pragma: no cover - argparse restricts this
