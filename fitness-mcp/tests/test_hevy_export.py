@@ -191,3 +191,24 @@ def test_missing_columns_fail_loudly(tmp_path):
     path.write_text("a,b,c\n1,2,3\n", encoding="utf-8")
     with pytest.raises(ValueError, match="Hevy CSV export"):
         list(HevyExportAdapter(str(path)).fetch())
+
+
+def test_every_filterable_source_is_documented_in_the_tools():
+    """The tool description is what Claude reads, so a missing source is a bug.
+
+    Five hand-copied docstrings had already drifted and omitted strava_export.
+    They are generated from one table now; this guards the table itself.
+    """
+    from fitness_mcp import server
+
+    assert set(server._SOURCE_BLURB) == set(db.KNOWN_SOURCES)
+    for tool in (server.list_workouts, server.training_summary,
+                 server.exercise_history, server.personal_records,
+                 server.hr_distribution):
+        doc = tool.__doc__ or ""
+        assert "{SOURCES}" not in doc, f"{tool.__name__} leaks the placeholder"
+        for name in db.KNOWN_SOURCES:
+            assert name in doc, f"{tool.__name__} does not document {name}"
+
+    # get_workout takes no source argument, so it must not claim to.
+    assert "source:" not in (server.get_workout.__doc__ or "")

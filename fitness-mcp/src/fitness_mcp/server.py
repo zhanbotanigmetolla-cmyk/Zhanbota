@@ -72,7 +72,42 @@ def _ensure_db() -> None:
 
 # ── tools ───────────────────────────────────────────────────────────────────
 
+# Documented once and substituted into every tool that takes a `source`
+# filter. Five hand-copied versions had already drifted out of step with
+# db.KNOWN_SOURCES; the names are now asserted against it at import time, so a
+# new adapter cannot ship with a tool description that fails to mention it.
+_SOURCE_BLURB = {
+    "hevy_export": "weighted gym training: barbell, dumbbell and machine work with real loads",
+    "pullup_bot": "unweighted bodyweight pull-up work, set by set",
+    "xiaomi_export": "watch-recorded activity, the only source of heart rate and wellness data",
+    "apple_health": "phone-recorded activity, the live wearable source from 2026-07-27",
+    "strava_export": "a handful of activities recorded only by Strava",
+}
+assert set(_SOURCE_BLURB) == set(db.KNOWN_SOURCES), (
+    f"tool docs describe {sorted(_SOURCE_BLURB)} but db.KNOWN_SOURCES is "
+    f"{sorted(db.KNOWN_SOURCES)}; every filterable source must be documented"
+)
+
+_SOURCES_DOC = (
+    "        source: Optional data-source filter. Omit to combine all sources.\n"
+    + "".join(f'            "{name}" — {what}.\n' for name, what in _SOURCE_BLURB.items())
+).rstrip("\n")
+
+
+def _document_sources(fn):
+    """Substitute the shared `source` text into a tool's docstring.
+
+    Applied below @mcp.tool() so the docstring is final before FastMCP reads
+    it — the tool description is what Claude actually sees at query time.
+    """
+    if fn.__doc__:
+        fn.__doc__ = fn.__doc__.replace("{SOURCES}", _SOURCES_DOC)
+    return fn
+
+
+
 @mcp.tool()
+@_document_sources
 def list_workouts(
     start_date: str,
     end_date: str,
@@ -105,10 +140,7 @@ def list_workouts(
         end_date: Last day to include, YYYY-MM-DD, inclusive.
         sport_type: Optional filter, e.g. "strength". Omit for all types.
         limit: Maximum sessions to return (default 100, capped at 500).
-        source: Optional data-source filter. "hevy_export" is weighted gym
-            training, "pullup_bot" is bodyweight pull-up work, "xiaomi_export"
-            and "apple_health" are wearable-recorded activity. Omit to combine
-            all sources.
+{SOURCES}
     """
     limit = max(1, min(int(limit), MAX_LIMIT))
     with _conn() as conn:
@@ -138,6 +170,7 @@ def get_workout(workout_id: int) -> dict[str, Any] | None:
 
 
 @mcp.tool()
+@_document_sources
 def training_summary(
     start_date: str,
     end_date: str,
@@ -182,16 +215,14 @@ def training_summary(
         start_date: First day to include, YYYY-MM-DD.
         end_date: Last day to include, YYYY-MM-DD, inclusive.
         group_by: One of "day", "week", "month". Defaults to "week".
-        source: Optional data-source filter. "hevy_export" is weighted gym
-            training, "pullup_bot" is bodyweight pull-up work, "xiaomi_export"
-            and "apple_health" are wearable-recorded activity. Omit to combine
-            all sources.
+{SOURCES}
     """
     with _conn() as conn:
         return db.training_summary(conn, start_date, end_date, group_by, source)
 
 
 @mcp.tool()
+@_document_sources
 def exercise_history(
     exercise: str,
     start_date: str | None = None,
@@ -220,16 +251,14 @@ def exercise_history(
         exercise: Exact exercise name, e.g. "pullups".
         start_date: Optional first day, YYYY-MM-DD.
         end_date: Optional last day, YYYY-MM-DD, inclusive.
-        source: Optional data-source filter. "hevy_export" is weighted gym
-            training, "pullup_bot" is bodyweight pull-up work, "xiaomi_export"
-            and "apple_health" are wearable-recorded activity. Omit to combine
-            all sources.
+{SOURCES}
     """
     with _conn() as conn:
         return db.exercise_history(conn, exercise, start_date, end_date, source)
 
 
 @mcp.tool()
+@_document_sources
 def personal_records(
     exercise: str | None = None,
     source: str | None = None,
@@ -265,16 +294,14 @@ def personal_records(
 
     Args:
         exercise: Optional exact exercise name to restrict to.
-        source: Optional data-source filter. "hevy_export" is weighted gym
-            training, "pullup_bot" is bodyweight pull-up work, "xiaomi_export"
-            and "apple_health" are wearable-recorded activity. Omit to combine
-            all sources.
+{SOURCES}
     """
     with _conn() as conn:
         return db.personal_records(conn, exercise, source)
 
 
 @mcp.tool()
+@_document_sources
 def hr_distribution(
     start_date: str, end_date: str, source: str | None = None
 ) -> dict[str, Any]:
@@ -301,10 +328,7 @@ def hr_distribution(
     Args:
         start_date: First day to include, YYYY-MM-DD.
         end_date: Last day to include, YYYY-MM-DD, inclusive.
-        source: Optional data-source filter. "hevy_export" is weighted gym
-            training, "pullup_bot" is bodyweight pull-up work, "xiaomi_export"
-            and "apple_health" are wearable-recorded activity. Omit to combine
-            all sources.
+{SOURCES}
     """
     with _conn() as conn:
         return db.hr_distribution(conn, start_date, end_date, source)
