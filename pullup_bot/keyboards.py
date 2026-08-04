@@ -38,6 +38,7 @@ def guide_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
         "step2": t("btn_guide_step3", lang),
         "step3": t("btn_guide_step4", lang),
         "step4": t("btn_guide_extra", lang),
+        "extra": t("btn_guide_weighted", lang),
     }.get(step)
     if next_btn:
         b.button(text=next_btn)
@@ -49,7 +50,7 @@ def guide_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
 def about_kb(step: str, lang: str = "ru") -> ReplyKeyboardMarkup:
     """Return the About pager keyboard; omits Next on the last page."""
     b = ReplyKeyboardBuilder()
-    if step != "page3":
+    if step != "page4":
         b.button(text=t("btn_about_next", lang))
     b.button(text=t("btn_back", lang))
     b.adjust(2)
@@ -108,6 +109,32 @@ def training_kb(sets: list, planned: int = 0, lang: str = "ru",
           KeyboardButton(text=t("btn_manual", lang)))
     b.row(KeyboardButton(text=t("btn_finish", lang)),
           KeyboardButton(text=t("btn_cancel_train", lang)))
+    return b.as_markup(resize_keyboard=True)
+
+
+def weight_choices(working: float) -> list:
+    """Loads to offer for today's weighted session: the working weight and a plate either side."""
+    from .config import MAX_WEIGHT_KG, WEIGHT_STEP
+    base = max(0.0, float(working or 0))
+    raw = [base - 2 * WEIGHT_STEP, base - WEIGHT_STEP, base,
+           base + WEIGHT_STEP, base + 2 * WEIGHT_STEP]
+    seen, out = set(), []
+    for value in raw:
+        if value < 0 or value > MAX_WEIGHT_KG or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def weight_kb(working: float, lang: str = "ru") -> ReplyKeyboardMarkup:
+    """Return the load picker for a weighted session: nearby weights plus Back."""
+    from .services.xp import fmt_kg
+    b = ReplyKeyboardBuilder()
+    for value in weight_choices(working):
+        b.button(text=f"{fmt_kg(value)} {t('kg', lang)}")
+    b.adjust(3)
+    b.row(KeyboardButton(text=t("btn_back", lang)))
     return b.as_markup(resize_keyboard=True)
 
 

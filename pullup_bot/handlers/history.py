@@ -8,6 +8,7 @@ from ..config import EXERCISES, EXERCISE_EMOJI
 from ..db import get_db, get_user
 from ..i18n import t, text_filter, day_name
 from ..keyboards import history_nav_kb
+from ..services.xp import fmt_kg
 
 
 router = Router()
@@ -51,7 +52,11 @@ def _format_week(rows_by_date: dict, monday: date, sunday: date, lang: str) -> s
             cells = []
             rpe_vals = []
             for r in training:
-                cells.append(f"{EXERCISE_EMOJI.get(r['exercise'], '')}{r['completed']}/{r['planned']}")
+                cell = f"{EXERCISE_EMOJI.get(r['exercise'], '')}{r['completed']}/{r['planned']}"
+                # A weighted row without its load reads the same as a bodyweight one
+                if r["weight_kg"]:
+                    cell += f"+{fmt_kg(r['weight_kg'])}"
+                cells.append(cell)
                 if r["rpe"]:
                     rpe_vals.append(r["rpe"])
                 d_, p_ = week_totals.get(r["exercise"], (0, 0))

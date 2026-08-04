@@ -206,7 +206,8 @@ async def weekly_summary(bot):
             pct_e = int(done_e / planned_e * 100) if planned_e else 0
             volume_lines.append(
                 f"  {EXERCISE_EMOJI[ex]} {t('ex_' + ex, lang)}: {done_e}/{planned_e} ({pct_e}%)")
-        week_xp = sum(xp_for(r["exercise"], r["completed"] or 0) for r in rows)
+        week_xp = sum(xp_for(r["exercise"], r["completed"] or 0, r["weight_kg"] or 0)
+                      for r in rows)
         rpe_rows = [r["rpe"] for r in rows if r["rpe"] and r["rpe"] > 0]
         avg_rpe = f"{sum(rpe_rows)/len(rpe_rows):.1f}" if rpe_rows else "—"
         msg = (

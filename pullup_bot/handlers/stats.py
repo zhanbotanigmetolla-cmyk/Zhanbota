@@ -6,10 +6,10 @@ from aiogram.filters import Command
 from ..db import get_db, get_user
 from ..i18n import t, text_filter, day_name
 from ..keyboards import stats_analytics_kb, stats_back_kb
-from ..config import (EXERCISES, EXERCISE_EMOJI, LEVEL_NAMES,
+from ..config import (BEST_WEIGHT_COLS, EXERCISES, EXERCISE_EMOJI, LEVEL_NAMES,
                       LEVEL_THRESHOLDS, PR_COLS, PROGRAMS, SET_RECORD_COLS,
-                      XP_CASE_SQL)
-from ..services.xp import (day_type_for, display, level_info, md_escape,
+                      XP_CASE_SQL, is_weighted)
+from ..services.xp import (day_type_for, display, fmt_kg, level_info, md_escape,
                            progress_bar, user_base)
 
 router = Router()
@@ -293,8 +293,13 @@ async def stats_analytics_view(callback: types.CallbackQuery):
         set_pr = user[SET_RECORD_COLS[ex]] or 0
         if pr == 0 and set_pr == 0 and user_base(user, ex) <= 0:
             continue
-        record_lines.append(
-            f"  {EXERCISE_EMOJI[ex]} {t('ex_' + ex, lang)}: {pr} / {set_pr}")
+        line = f"  {EXERCISE_EMOJI[ex]} {t('ex_' + ex, lang)}: {pr} / {set_pr}"
+        # For weighted work the heaviest load ever used is the record that matters
+        if is_weighted(ex):
+            best = user[BEST_WEIGHT_COLS[ex]] or 0
+            if best > 0:
+                line += f" · 🏋️ +{fmt_kg(best)} {t('kg', lang)}"
+        record_lines.append(line)
     records_block = "\n".join(record_lines) if record_lines else "  —"
     max_streak_val = user["max_streak"] or 0
 

@@ -26,8 +26,8 @@ _INPUT_STATES = (
     SkipReason.pick_date, SkipReason.enter_reason,
 )
 # EditDay states are intentionally excluded — each step has its own back handler
-from ..services.xp import level_info, user_base
-from ..config import BASE_COLS, EXERCISES, EXERCISE_EMOJI, xp_for
+from ..services.xp import fmt_kg, level_info, user_base, user_weight
+from ..config import (BASE_COLS, EXERCISES, EXERCISE_EMOJI, is_weighted, xp_for)
 from .admin import _is_admin
 from .training import ex_label, sync_max_streak
 
@@ -39,7 +39,10 @@ def _bases_block(user, lang: str) -> str:
     lines = []
     for ex in EXERCISES:
         b = user_base(user, ex)
-        lines.append(f"  {EXERCISE_EMOJI[ex]} {t('ex_' + ex, lang)}: {b if b > 0 else '—'}")
+        line = f"  {EXERCISE_EMOJI[ex]} {t('ex_' + ex, lang)}: {b if b > 0 else '—'}"
+        if is_weighted(ex) and b > 0:
+            line += f" (+{fmt_kg(user_weight(user, ex))} {t('kg', lang)})"
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -490,7 +493,8 @@ async def _delete_exercise_record(message, state, user, lang, d: str, exercise: 
             (user["id"], d, exercise))
         await conn.commit()
         if old_completed > 0:
-            await add_xp(message.from_user.id, -xp_for(exercise, old_completed))
+            await add_xp(message.from_user.id,
+                         -xp_for(exercise, old_completed, existing["weight_kg"] or 0))
         # If this was today's only training record, revert program_day and last_workout
         # (program_day was already incremented when the day was acknowledged)
         if d == date.today().isoformat():
@@ -586,9 +590,13 @@ async def _save_edit(message: types.Message, state: FSMContext):
                          if r["exercise"] != "rest" and r["day_type"]), "Средний")
         planned = fallback_planned
     old = existing["completed"] if existing else 0
-    xp_diff = xp_for(exercise, done) - xp_for(exercise, old)
+    # Keep the load the session was actually done with; fall back to the current
+    # working weight when the row is being created from scratch.
+    weight = (existing["weight_kg"] if existing and existing["weight_kg"]
+              else user_weight(user, exercise))
+    xp_diff = xp_for(exercise, done, weight) - xp_for(exercise, old, weight)
     await upsert_workout(user["id"], d, exercise, completed=done, planned=planned,
-                         day_type=day_type, rpe=rpe)
+                         day_type=day_type, rpe=rpe, weight_kg=weight)
     # The day now has real training — the rest marker no longer applies
     await clear_rest_row(user["id"], d)
     if xp_diff != 0:
