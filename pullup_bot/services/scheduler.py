@@ -356,15 +356,23 @@ async def daily_xp_decay(bot):
 
 
 async def auto_cleanup_inactive(bot):
-    """Warn at 27 days of inactivity, delete at 30 days."""
+    """Warn at 27 days of inactivity, delete at 30 days.
+
+    Inactivity is counted from the last workout, or from the registration date for
+    users who never logged one. Keying off last_workout alone made accounts that
+    registered and never trained permanently exempt from cleanup.
+    """
     today = date.today()
     cutoff_delete = (today - timedelta(days=30)).isoformat()
     cutoff_warn = (today - timedelta(days=27)).isoformat()
     conn = await get_db()
+    # "Idle since" — last workout, or registration date if they never trained.
+    IDLE_SINCE = "COALESCE(last_workout, joined)"
 
     # Step 1: delete accounts inactive 30+ days (skip logged-out users — they're paused)
     async with conn.execute(
-        "SELECT * FROM users WHERE last_workout IS NOT NULL AND last_workout < ? AND is_logged_out=0 AND is_banned=0",
+        f"SELECT * FROM users WHERE {IDLE_SINCE} IS NOT NULL AND {IDLE_SINCE} < ? "
+        "AND is_logged_out=0 AND is_banned=0",
         (cutoff_delete,)
     ) as cur:
         stale = await cur.fetchall()
@@ -376,25 +384,38 @@ async def auto_cleanup_inactive(bot):
 
     # Step 2: warn accounts inactive 27–29 days (warning not yet sent, skip logged-out)
     async with conn.execute(
-        "SELECT * FROM users WHERE last_workout IS NOT NULL AND last_workout < ? "
-        "AND last_workout >= ? AND inactivity_warned IS NULL AND is_logged_out=0 AND is_banned=0",
+        f"SELECT * FROM users WHERE {IDLE_SINCE} IS NOT NULL AND {IDLE_SINCE} < ? "
+        f"AND {IDLE_SINCE} >= ? AND inactivity_warned IS NULL AND is_logged_out=0 AND is_banned=0",
         (cutoff_warn, cutoff_delete)
     ) as cur:
         to_warn = await cur.fetchall()
     warned = 0
     for user in to_warn:
         lang = user["lang"] or "ru"
-        days_inactive = (today - date.fromisoformat(user["last_workout"])).days
+        never_trained = not user["last_workout"]
+        idle_since = user["last_workout"] or user["joined"]
+        days_inactive = (today - date.fromisoformat(idle_since)).days
         days_left = 30 - days_inactive
-        msg = (
-            f"⚠️ Ты не тренировался {days_inactive} дней.\n\n"
-            f"Через {days_left} дн. аккаунт будет удалён автоматически.\n"
-            f"Зайди и сделай хоть одну тренировку, чтобы сохранить данные 💪"
-            if lang == "ru" else
-            f"⚠️ You haven't trained for {days_inactive} days.\n\n"
-            f"Your account will be deleted in {days_left} day(s) if you stay inactive.\n"
-            f"Log a workout to keep your data 💪"
-        )
+        if never_trained:
+            msg = (
+                f"⚠️ Ты зарегистрировался {days_inactive} дн. назад, но так и не начал.\n\n"
+                f"Через {days_left} дн. аккаунт будет удалён автоматически.\n"
+                f"Сделай хоть одну тренировку, чтобы этого не случилось 💪"
+                if lang == "ru" else
+                f"⚠️ You signed up {days_inactive} day(s) ago and haven't started yet.\n\n"
+                f"Your account will be deleted in {days_left} day(s).\n"
+                f"Log a single workout to keep it 💪"
+            )
+        else:
+            msg = (
+                f"⚠️ Ты не тренировался {days_inactive} дней.\n\n"
+                f"Через {days_left} дн. аккаунт будет удалён автоматически.\n"
+                f"Зайди и сделай хоть одну тренировку, чтобы сохранить данные 💪"
+                if lang == "ru" else
+                f"⚠️ You haven't trained for {days_inactive} days.\n\n"
+                f"Your account will be deleted in {days_left} day(s) if you stay inactive.\n"
+                f"Log a workout to keep your data 💪"
+            )
         try:
             await bot.send_message(user["tg_id"], msg)
             await conn.execute(

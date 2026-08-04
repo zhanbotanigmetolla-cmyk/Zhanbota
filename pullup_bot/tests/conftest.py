@@ -29,14 +29,13 @@ async def test_db():
 
 
 async def insert_test_user(conn, tg_id=12345, base=100, lang="ru", **kw):
-    """Helper to insert a user for tests."""
-    defaults = dict(username="test", first_name="Test", start_day=1,
-                    lang=lang, base_pullups=base)
-    defaults.update(kw)
+    """Helper to insert a user for tests. Extra kwargs set any other users column."""
+    cols = dict(tg_id=tg_id, username="test", first_name="Test", start_day=1,
+                lang=lang, base_pullups=base)
+    cols.update(kw)
+    names = ", ".join(cols)
+    placeholders = ", ".join("?" * len(cols))
     await conn.execute(
-        "INSERT INTO users (tg_id, username, first_name, base_pullups, "
-        "start_day, lang) VALUES (?,?,?,?,?,?)",
-        (tg_id, defaults["username"], defaults["first_name"],
-         defaults["base_pullups"], defaults["start_day"],
-         defaults["lang"]))
+        f"INSERT INTO users ({names}) VALUES ({placeholders})", tuple(cols.values())
+    )
     await conn.commit()
