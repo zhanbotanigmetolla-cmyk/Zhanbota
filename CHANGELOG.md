@@ -4,6 +4,15 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-08-04]
+
+### Changed
+- **CodeRabbit turned off** — added `.coderabbit.yaml` that disables automatic PR
+  reviews, summaries, status checks and chat auto-replies. The bot was reviewing
+  every PR unasked; reviews can still be requested manually with `@coderabbitai review`.
+
+---
+
 ## [2026-07-27]
 
 ### Added
