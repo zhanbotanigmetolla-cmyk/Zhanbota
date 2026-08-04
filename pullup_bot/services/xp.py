@@ -1,6 +1,20 @@
 import inspect
 
-from ..config import BASE_COLS, LEVEL_NAMES, LEVEL_THRESHOLDS, PROGRAMS
+from ..config import (BASE_COLS, LEVEL_NAMES, LEVEL_THRESHOLDS, PROGRAMS,
+                      WEIGHT_COLS, is_weighted)
+
+
+def fmt_kg(kg) -> str:
+    """Format a load for display: 2.5 -> '2.5', 10.0 -> '10'."""
+    value = float(kg or 0)
+    return str(int(value)) if value == int(value) else f"{value:.1f}"
+
+
+def user_weight(user, exercise: str) -> float:
+    """Return the load the user is currently working with, 0 for bodyweight exercises."""
+    if not is_weighted(exercise):
+        return 0.0
+    return float(user[WEIGHT_COLS[exercise]] or 0)
 
 # message_effect_id needs aiogram >= 3.7 (Bot API 7.4); older versions get plain sends
 try:

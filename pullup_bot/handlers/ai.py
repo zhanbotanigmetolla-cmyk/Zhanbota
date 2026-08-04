@@ -4,11 +4,12 @@ import random
 from aiogram import Router, types as aiogram_types
 from aiogram.fsm.context import FSMContext
 
-from ..config import EXERCISES, PR_COLS, SET_RECORD_COLS, logger
+from ..config import EXERCISES, PR_COLS, SET_RECORD_COLS, is_weighted, logger
 from ..db import get_db, get_user, log_ai_usage
 from ..i18n import t, text_filter
 from ..keyboards import ai_chat_kb, back_only_kb, main_kb
-from ..services.xp import day_type_for, display, level_info, user_base
+from ..services.xp import (day_type_for, display, fmt_kg, level_info, user_base,
+                           user_weight)
 from ..services.gemini import get_manager, RATE_LIMIT_DAILY, RATE_LIMIT_MINUTE
 from ..states import AIChat
 
@@ -238,6 +239,7 @@ def _user_data_block(user, workouts) -> str:
 
     bases_line = "  |  ".join(
         f"{ex}: {user_base(user, ex)}/day"
+        + (f" @ +{fmt_kg(user_weight(user, ex))}kg" if is_weighted(ex) else "")
         for ex in EXERCISES if user_base(user, ex) > 0) or "pullups not set"
     records_line = "  |  ".join(
         f"{ex}: day {user[PR_COLS[ex]] or 0} / set {user[SET_RECORD_COLS[ex]] or 0}"

@@ -82,6 +82,22 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN base_squats INTEGER DEFAULT 0",
     "ALTER TABLE users ADD COLUMN personal_record_squats INTEGER DEFAULT 0",
     "ALTER TABLE users ADD COLUMN set_record_squats INTEGER DEFAULT 0",
+    # index 34–43 — weighted pull-ups and weighted dips.
+    # base_*        : daily rep target, same meaning as the bodyweight variants
+    # weight_*      : the load currently being worked with, in kg
+    # best_weight_* : heaviest load ever completed, kept as a record
+    "ALTER TABLE users ADD COLUMN base_pullups_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN base_dips_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN weight_pullups_weighted REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN weight_dips_weighted REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN best_weight_pullups_weighted REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN best_weight_dips_weighted REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN personal_record_pullups_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN personal_record_dips_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN set_record_pullups_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN set_record_dips_weighted INTEGER DEFAULT 0",
+    # index 44 — added load for a weighted session, in kg (0 for bodyweight rows)
+    "ALTER TABLE workouts ADD COLUMN weight_kg REAL DEFAULT 0",
 ]
 
 
@@ -199,6 +215,7 @@ async def init_db():
             rpe            INTEGER DEFAULT 0,
             day_type       TEXT DEFAULT '',
             notes          TEXT DEFAULT '',
+            weight_kg      REAL DEFAULT 0,
             UNIQUE(user_id, date, exercise)
         );
         CREATE TABLE IF NOT EXISTS streak_recoveries (
@@ -243,10 +260,14 @@ async def init_db():
         await conn.execute("UPDATE migrations SET version=?", (len(MIGRATIONS),))
     # Structural rebuild — must run after column migrations, raises on failure
     await _migrate_workouts_exercise(conn)
-    # Legacy migrations (idempotent — safe to run even if column already exists)
+    # Legacy migrations (idempotent — safe to run even if column already exists).
+    # workouts.weight_kg is re-asserted here because _migrate_workouts_exercise
+    # rebuilds the table from a fixed column list and would otherwise drop a
+    # column added by an earlier numbered migration.
     for col_sql in [
         "ALTER TABLE users ADD COLUMN first_name TEXT",
         "ALTER TABLE users ADD COLUMN is_logged_out INTEGER DEFAULT 0",
+        "ALTER TABLE workouts ADD COLUMN weight_kg REAL DEFAULT 0",
     ]:
         try:
             await conn.execute(col_sql)
@@ -317,7 +338,8 @@ async def get_day_rows(user_id: int, d: str = None) -> list:
         return await cur.fetchall()
 
 
-_WORKOUT_COLS = {"planned", "completed", "sets_json", "rpe", "day_type", "notes"}
+_WORKOUT_COLS = {"planned", "completed", "sets_json", "rpe", "day_type", "notes",
+                 "weight_kg"}
 
 
 async def upsert_workout(user_id: int, d: str, exercise: str, **kwargs):

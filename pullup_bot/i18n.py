@@ -41,16 +41,53 @@ STRINGS = {
         "ex_pushups": "Отжимания",
         "ex_dips": "Брусья",
         "ex_squats": "Приседания",
+        "ex_pullups_weighted": "Подтягивания с весом",
+        "ex_dips_weighted": "Брусья с весом",
         "ex_gen_pullups": "подтягиваний",
         "ex_gen_pushups": "отжиманий",
         "ex_gen_dips": "отжиманий на брусьях",
         "ex_gen_squats": "приседаний",
+        "ex_gen_pullups_weighted": "подтягиваний с весом",
+        "ex_gen_dips_weighted": "отжиманий на брусьях с весом",
         "train_pick_exercise": "🏋️ Что тренируем сегодня?",
         "ex_setup_prompt": (
             "Первый раз! 💪 Сколько {ex} ты можешь сделать *за один подход* максимум?\n"
             "_Введи честное число — программа подстроится под тебя._"
         ),
+        "ex_setup_prompt_weighted": (
+            "Первый раз с весом! 🏋️ Сколько {ex} ты можешь сделать *за один подход* "
+            "с рабочим весом?\n"
+            "_Обычно это 3–8 повторений. Дальше спрошу, сколько кг вешаешь._"
+        ),
         "ex_setup_ok": "✅ Дневная норма — *{base}*. Начинаем!",
+        # Weighted training
+        "kg": "кг",
+        "weight_setup_prompt": (
+            "⚖️ Сколько килограммов ты вешаешь на пояс для {ex}?\n"
+            "_Введи число, например 10 или 12.5. Если пока без веса — введи 0._"
+        ),
+        "weight_setup_ok": "✅ Рабочий вес — *+{weight} кг*. Поехали!",
+        "weight_pick_prompt": (
+            "⚖️ Вес на сегодня для {ex}\n\n"
+            "Рабочий вес: *+{weight} кг*\n"
+            "_Выбери кнопкой или введи своё число. Выбранный вес станет рабочим._"
+        ),
+        "weight_enter_number": "Введи вес в кг числом — от 0 до {max}. Например: 10 или 12.5",
+        "train_with_weight": "⚖️ Вес: *+{weight} кг*",
+        "new_weight_pr": (
+            "\n\n🏋️ *НОВЫЙ РЕКОРД ПО ВЕСУ!* +{weight} кг в {ex} — "
+            "такого ты ещё не поднимал!"
+        ),
+        "train_progression_weight_up": (
+            "\n\n🏋️ *Прибавка веса!* Ты уверенно закрывал план — вешаем ещё "
+            "2.5 кг: теперь *+{weight} кг* в {ex}, норма — {base} повторений.\n"
+            "_Норма снижена намеренно: с новым весом повторений будет меньше, это нормально._"
+        ),
+        "train_progression_weight_down": (
+            "\n\n⚖️ *Вес снижен.* План в {ex} закрывался меньше чем на 70% — "
+            "снимаем 2.5 кг: теперь *+{weight} кг*.\n"
+            "_Лучше сделать план с меньшим весом, чем недоделывать с большим._"
+        ),
         # Start
         "welcome": (
             "💪 *Турникмен*\n\n"
@@ -99,12 +136,13 @@ STRINGS = {
             "Бот — это инструмент. Настоящий прогресс строится на сне, питании и восстановлении."
         ),
         "about_page3": (
-            "ℹ️ *О боте — 3/3*\n\n"
+            "ℹ️ *О боте — 3/4*\n\n"
             "⭐ *Как работает XP:*\n"
             "+1 XP за подтягивание\n"
             "+0.75 XP за отжимание на брусьях\n"
             "+0.5 XP за отжимание\n"
             "+0.25 XP за приседание\n"
+            "+3% за каждый кг утяжеления (до 50 кг)\n"
             "+50 XP за каждый день стрика подряд\n\n"
             "🏅 *Ранги (как в CS:GO):*\n"
             "`Silver I                 0 XP`\n"
@@ -131,6 +169,27 @@ STRINGS = {
             "Если ты решишь уйти — можно полностью удалить аккаунт через _Настройки_. "
             "Все данные будут стёрты навсегда."
         ),
+        "about_page4": (
+            "ℹ️ *О боте — 4/4*\n\n"
+            "🏋️ *Тренировки с утяжелением*\n\n"
+            "В боте шесть упражнений. Четыре со своим весом — подтягивания, "
+            "отжимания, брусья, приседания — и два с дополнительным весом: "
+            "*подтягивания с весом* и *брусья с весом*.\n\n"
+            "Обычные упражнения работают ровно как раньше. Утяжеление — это "
+            "отдельные упражнения со своей нормой, своим весом и своими рекордами. "
+            "Можно вести только своим весом, только с утяжелением, или всё сразу.\n\n"
+            "*Как это работает*\n\n"
+            "• Выбираешь упражнение с весом → бот спрашивает, сколько кг на поясе\n"
+            "• Вес сохраняется как рабочий — в следующий раз просто подтверждаешь\n"
+            "• Каждый килограмм добавляет 3% XP за повторение (до 50 кг)\n"
+            "• Бот отдельно помнит твой самый тяжёлый вес как рекорд\n\n"
+            "*Прогрессия — двойная*\n\n"
+            "Сначала растут повторения на текущем весе. Как только стабильно "
+            "закрываешь план — бот добавляет 2.5 кг и снижает норму повторений, "
+            "и цикл повторяется. Так вес растёт годами без застоя.\n\n"
+            "📖 Подробный гайд — чем вешать вес, как надевать пояс, техника и "
+            "безопасность — в _«📖 Как начать» → «🏋️ С утяжелением»_."
+        ),
         "btn_about_next": "Далее →",
         "btn_guide": "📖 Как начать",
         "btn_guide_step1": "Шаг 1 →",
@@ -138,10 +197,65 @@ STRINGS = {
         "btn_guide_step3": "Шаг 3 →",
         "btn_guide_step4": "Шаг 4 →",
         "btn_guide_extra": "Дополнительно →",
+        "btn_guide_weighted": "🏋️ С утяжелением →",
+        "guide_weighted": (
+            "🏋️ *Подтягивания и брусья с утяжелением*\n\n"
+            "Когда своего веса становится мало, дальше растут не повторения, а вес. "
+            "Это отдельные упражнения в боте — обычные подтягивания и брусья "
+            "никуда не делись и работают как раньше.\n\n"
+            "*Когда пора начинать*\n\n"
+            "Ориентир — 12–15 чистых подтягиваний или 20 отжиманий на брусьях "
+            "за подход. Раньше этого вес только испортит технику.\n\n"
+            "*Чем вешать вес*\n\n"
+            "🔗 *Пояс для отягощений (dip belt)* — основной вариант. Широкий пояс "
+            "с цепью, цепь продевается через блины и застёгивается карабином. "
+            "Цепь 80–90 см, блины висят между ног чуть ниже колен. "
+            "Это самый удобный способ: вес висит свободно и не мешает движению.\n\n"
+            "🎽 *Жилет-утяжелитель* — вес распределён по корпусу, ничего не "
+            "раскачивается. Удобно для брусьев и для большого числа повторений, "
+            "но обычно ограничен 20–30 кг и стоит дороже пояса.\n\n"
+            "🎒 *Рюкзак с блинами или бутылками воды* — с чего начинают почти все. "
+            "Бесплатно и работает до ~15 кг. Затяни лямки потуже, чтобы не болтался. "
+            "Минус: тянет плечи назад и мешает вверху амплитуды.\n\n"
+            "🦵 *Гантель между стоп или колен* — годится на 5–10 кг, если ничего "
+            "другого нет. Держать её всё время неудобно, и уронить легко — "
+            "не делай так с большим весом.\n\n"
+            "*Как надевать пояс*\n\n"
+            "1. Застегни пояс на бёдрах, а не на талии — он должен сидеть на тазу\n"
+            "2. Продень цепь через отверстие блина\n"
+            "3. Пристегни цепь карабином, отрегулируй длину\n"
+            "4. Проверь, что блины не задевают перекладину и не бьют по коленям\n"
+            "5. Повисни на месте пару секунд, прежде чем делать первое повторение\n\n"
+            "*Техника*\n\n"
+            "• Вес не отменяет амплитуду: внизу руки прямые, вверху подбородок над перекладиной\n"
+            "• Никакого раскачивания и киппинга — с весом это прямой путь к травме плеча\n"
+            "• Опускайся под контролем, 2–3 секунды. Именно это даёт рост\n"
+            "• На брусьях не уходи слишком глубоко: плечо ниже локтя под весом опасно\n"
+            "• Дыши: вдох внизу, выдох на подъёме\n\n"
+            "*Безопасность*\n\n"
+            "⚠️ Всегда разминайся без веса — 1–2 подхода обычных подтягиваний\n"
+            "⚠️ Снимай вес до того, как спрыгнуть с перекладины\n"
+            "⚠️ Заболело плечо или локоть — снимай вес, не терпи\n"
+            "⚠️ Не проверяй максимум на один раз чаще раза в месяц\n\n"
+            "*Как бот ведёт прогрессию*\n\n"
+            "Здесь работает *двойная прогрессия* — сначала растут повторения, "
+            "потом вес:\n"
+            "• Закрываешь ≥95% плана и нагрузка не выше ожидаемой → *+2.5 кг*, "
+            "а норма повторений падает на 10%\n"
+            "• Закрываешь 80–95% → норма повторений +5%, вес прежний\n"
+            "• Закрываешь <70% → *−2.5 кг*, норма прежняя\n\n"
+            "То есть ты набираешь повторения на текущем весе, потом вешаешь блин "
+            "и начинаешь набирать заново. Так вес растёт годами без застоя.\n\n"
+            "*XP*\n\n"
+            "Каждый килограмм добавляет 3% к XP за повторение (считается до 50 кг). "
+            "Подтягивание с +20 кг = 1.6 XP вместо 1. "
+            "Вес честно оплачивается — но и своим весом ранг набрать можно."
+        ),
         "guide_intro": (
             "📖 *Руководство для новичка*\n\n"
-            "Бот помогает систематически прогрессировать в четырёх упражнениях: "
-            "подтягивания, отжимания, брусья и приседания. "
+            "Бот помогает систематически прогрессировать в шести упражнениях: "
+            "подтягивания, отжимания, брусья, приседания, а также подтягивания "
+            "и брусья *с утяжелением*. "
             "Он строит план, отслеживает прогресс и адаптирует нагрузку под тебя.\n\n"
             "🤖 Есть встроенный *Турникмен AI* — задавай любые вопросы про тренировки или бот."
         ),
@@ -167,9 +281,11 @@ STRINGS = {
         "guide_step3": (
             "🏋️ *Шаг 3 — Тренировка*\n\n"
             "1. Нажми «🏋️ Тренировка»\n"
-            "2. Выбери упражнение — подтягивания, отжимания, брусья или приседания\n"
-            "3. Делай подходы — нажимай на цифры или «✏️ Ввести вручную»\n"
-            "4. Нажми «✅ Завершить тренировку» когда закончишь\n\n"
+            "2. Выбери упражнение — подтягивания, отжимания, брусья, приседания "
+            "или их версии с утяжелением\n"
+            "3. Для упражнений с весом бот спросит, сколько кг сегодня на поясе\n"
+            "4. Делай подходы — нажимай на цифры или «✏️ Ввести вручную»\n"
+            "5. Нажми «✅ Завершить тренировку» когда закончишь\n\n"
             "Хочешь ещё? Снова нажми «Тренировка» и выбери другое упражнение."
         ),
         "guide_step4": (
@@ -193,10 +309,10 @@ STRINGS = {
             "и независимо от других упражнений.\n\n"
             "▲ *Повышается:*\n"
             "• +5% после завершения 7-дневного цикла, если среднее выполнение последних 5 тренировок ≥80%\n"
-            "• +3% если средний RPE последних 3 сессий ≤5.5 и все цели выполнены\n\n"
+            "• +3% если последние 3 сессии дались заметно легче, чем предполагал тип дня, и все цели выполнены\n\n"
             "▼ *Понижается:*\n"
-            "• −2% если средний RPE последних 3 сессий 7.0–8.5\n"
-            "• −5% если средний RPE последних 3 сессий ≥8.5\n"
+            "• −2% если последние 3 сессии стабильно тяжелее ожидаемого\n"
+            "• −5% если они тяжелее ожидаемого больше чем на полтора балла RPE\n"
             "• Первая тренировка после перерыва 3–6 дней — план снижен на 25%\n"
             "• Первая тренировка после перерыва 7+ дней — план снижен на 40%\n\n"
             "❓ *Нужно ли 7 дней подряд без пропусков?*\n\n"
@@ -205,18 +321,28 @@ STRINGS = {
             "Пропустил день без открытия бота — шаг не засчитался, но начинать с нуля не нужно. "
             "Просто продолжи с того же места.\n\n"
             "📊 *Как RPE влияет на план*\n\n"
-            "RPE (1–10) влияет на норму долгосрочно через скользящее среднее за 3 сессии "
+            "Бот сравнивает твою оценку не с одним общим числом, а с тем, "
+            "*насколько тяжёлым этот день должен был быть*:\n"
+            "• Лёгкий день — ожидаем RPE ~5\n"
+            "• Средний — ~6.5\n"
+            "• Плотность — ~7\n"
+            "• Тяжёлый — ~8\n\n"
+            "Считается скользящее среднее отклонения за 3 последние сессии "
             "этого упражнения:\n"
-            "• RPE ≤5.5 (тренировки даются легко) → норма постепенно растёт (+3%)\n"
-            "• RPE 5.5–7.0 (нормальная нагрузка) → без изменений\n"
-            "• RPE 7.0–8.5 (нагрузка высокая) → норма слегка снижается (−2%)\n"
-            "• RPE ≥8.5 (постоянно на пределе) → норма снижается (−5%)\n"
-            "_Одна тяжёлая тренировка ничего не изменит — важна тенденция за 3 подряд._\n\n"
+            "• На балл легче ожидаемого и все цели закрыты → норма растёт (+3%)\n"
+            "• Примерно как ожидалось → без изменений\n"
+            "• На полбалла тяжелее → норма слегка снижается (−2%)\n"
+            "• На полтора балла тяжелее → норма снижается (−5%)\n"
+            "_Тяжёлый день на RPE 8 — это план работает как задумано, а не повод "
+            "снижать норму. Одна тяжёлая тренировка ничего не изменит — важна "
+            "тенденция за 3 подряд. Норма меняется не чаще раза в день._\n\n"
             "⭐ *XP за упражнения*\n\n"
             "• Подтягивание — 1 XP\n"
             "• Отжимание на брусьях — 0.75 XP\n"
             "• Отжимание — 0.5 XP\n"
             "• Приседание — 0.25 XP\n"
+            "• С утяжелением — +3% за каждый кг (до 50 кг). "
+            "Подтягивание с +20 кг = 1.6 XP\n"
             "• Каждый день стрика — +50 XP\n"
             "Рейтинг недели и «Кочка недели» считаются по XP за неделю.\n\n"
             "📈 *Статистика и история*\n\n"
@@ -479,16 +605,53 @@ STRINGS = {
         "ex_pushups": "Push-ups",
         "ex_dips": "Dips",
         "ex_squats": "Squats",
+        "ex_pullups_weighted": "Weighted pull-ups",
+        "ex_dips_weighted": "Weighted dips",
         "ex_gen_pullups": "pull-ups",
         "ex_gen_pushups": "push-ups",
         "ex_gen_dips": "dips",
         "ex_gen_squats": "squats",
+        "ex_gen_pullups_weighted": "weighted pull-ups",
+        "ex_gen_dips_weighted": "weighted dips",
         "train_pick_exercise": "🏋️ What are we training today?",
         "ex_setup_prompt": (
             "First time! 💪 How many {ex} can you do *in one set* at your max?\n"
             "_Be honest — the program will adjust to you._"
         ),
+        "ex_setup_prompt_weighted": (
+            "First time with added load! 🏋️ How many {ex} can you do *in one set* "
+            "at your working weight?\n"
+            "_Usually 3–8 reps. I'll ask how many kg you're hanging next._"
+        ),
         "ex_setup_ok": "✅ Daily target — *{base}*. Let's go!",
+        # Weighted training
+        "kg": "kg",
+        "weight_setup_prompt": (
+            "⚖️ How many kilograms do you hang on the belt for {ex}?\n"
+            "_Enter a number, e.g. 10 or 12.5. Enter 0 if you're not adding load yet._"
+        ),
+        "weight_setup_ok": "✅ Working weight — *+{weight} kg*. Let's go!",
+        "weight_pick_prompt": (
+            "⚖️ Today's load for {ex}\n\n"
+            "Working weight: *+{weight} kg*\n"
+            "_Tap a button or type your own. Whatever you pick becomes the new working weight._"
+        ),
+        "weight_enter_number": "Enter the load in kg as a number — 0 to {max}. For example: 10 or 12.5",
+        "train_with_weight": "⚖️ Load: *+{weight} kg*",
+        "new_weight_pr": (
+            "\n\n🏋️ *NEW WEIGHT RECORD!* +{weight} kg on {ex} — "
+            "you've never lifted that before!"
+        ),
+        "train_progression_weight_up": (
+            "\n\n🏋️ *Load increased!* You've been closing the plan comfortably, so "
+            "another 2.5 kg goes on: now *+{weight} kg* on {ex}, target {base} reps.\n"
+            "_The rep target drops on purpose — fewer reps at a heavier load is expected._"
+        ),
+        "train_progression_weight_down": (
+            "\n\n⚖️ *Load reduced.* You were finishing under 70% of the plan on {ex}, "
+            "so 2.5 kg comes off: now *+{weight} kg*.\n"
+            "_Better to complete the plan lighter than to leave it unfinished heavier._"
+        ),
         # Start
         "welcome": (
             "💪 *Pullup Pro*\n\n"
@@ -535,12 +698,13 @@ STRINGS = {
             "The bot is a tool. Real progress is built on sleep, nutrition, and recovery."
         ),
         "about_page3": (
-            "ℹ️ *About — 3/3*\n\n"
+            "ℹ️ *About — 3/4*\n\n"
             "⭐ *How XP works:*\n"
             "+1 XP per pull-up\n"
             "+0.75 XP per dip\n"
             "+0.5 XP per push-up\n"
             "+0.25 XP per squat\n"
+            "+3% per kg of added load (counted up to 50 kg)\n"
             "+50 XP for every consecutive streak day\n\n"
             "🏅 *Ranks (CS:GO style):*\n"
             "`Silver I                 0 XP`\n"
@@ -567,6 +731,27 @@ STRINGS = {
             "If you ever decide to leave — you can permanently delete your account via _Settings_. "
             "All data will be erased forever."
         ),
+        "about_page4": (
+            "ℹ️ *About — 4/4*\n\n"
+            "🏋️ *Weighted training*\n\n"
+            "The bot has six exercises. Four at bodyweight — pull-ups, push-ups, "
+            "dips, squats — and two with added load: *weighted pull-ups* and "
+            "*weighted dips*.\n\n"
+            "The bodyweight exercises work exactly as before. Weighted work is "
+            "separate, with its own target, its own load and its own records. "
+            "Train bodyweight only, weighted only, or both.\n\n"
+            "*How it works*\n\n"
+            "• Pick a weighted exercise → the bot asks how many kg are on the belt\n"
+            "• That load is stored as your working weight — next time you just confirm it\n"
+            "• Each kilogram adds 3% XP per rep (counted up to 50 kg)\n"
+            "• Your heaviest load ever is tracked as a record of its own\n\n"
+            "*Double progression*\n\n"
+            "Reps build first at the current load. Once you're closing the plan "
+            "consistently, the bot adds 2.5 kg and drops the rep target, and the "
+            "cycle repeats. That's how the weight keeps climbing for years.\n\n"
+            "📖 The full guide — what to hang the weight from, how to fit a belt, "
+            "technique and safety — is in _«📖 Getting Started» → «🏋️ Weighted»_."
+        ),
         "btn_about_next": "Next →",
         "btn_guide": "📖 Getting Started",
         "btn_guide_step1": "Step 1 →",
@@ -574,10 +759,63 @@ STRINGS = {
         "btn_guide_step3": "Step 3 →",
         "btn_guide_step4": "Step 4 →",
         "btn_guide_extra": "More →",
+        "btn_guide_weighted": "🏋️ Weighted →",
+        "guide_weighted": (
+            "🏋️ *Weighted pull-ups and dips*\n\n"
+            "When bodyweight stops being enough, progress moves from reps to load. "
+            "These are separate exercises in the bot — plain pull-ups and dips are "
+            "untouched and work exactly as before.\n\n"
+            "*When to start*\n\n"
+            "Roughly 12–15 clean pull-ups or 20 dips in a set. Adding weight before "
+            "that just wrecks your form.\n\n"
+            "*What to hang the weight from*\n\n"
+            "🔗 *Dip belt* — the main option. A wide belt with a chain; the chain "
+            "threads through the plates and clips back with a carabiner. An 80–90 cm "
+            "chain puts the plates between your legs just below the knees. Most "
+            "comfortable choice: the load hangs free and stays out of the way.\n\n"
+            "🎽 *Weight vest* — load spread across your torso, nothing swinging. "
+            "Good for dips and higher rep counts, but usually capped at 20–30 kg and "
+            "pricier than a belt.\n\n"
+            "🎒 *Backpack with plates or water bottles* — where nearly everyone "
+            "starts. Free, and works up to about 15 kg. Tighten the straps so it "
+            "doesn't sway. Downside: it pulls your shoulders back and gets in the way "
+            "at the top.\n\n"
+            "🦵 *Dumbbell between the feet or knees* — fine for 5–10 kg if you have "
+            "nothing else. Awkward to hold and easy to drop — don't do this heavy.\n\n"
+            "*Fitting the belt*\n\n"
+            "1. Buckle it around your hips, not your waist — it should sit on the pelvis\n"
+            "2. Thread the chain through the plate\n"
+            "3. Clip the carabiner back on and set the chain length\n"
+            "4. Check the plates clear the bar and don't bang your knees\n"
+            "5. Hang still for a couple of seconds before your first rep\n\n"
+            "*Technique*\n\n"
+            "• Load doesn't excuse range: arms straight at the bottom, chin over the bar at the top\n"
+            "• No swinging or kipping — under load that's a direct route to a shoulder injury\n"
+            "• Lower under control, 2–3 seconds. That's where the growth comes from\n"
+            "• On dips don't go too deep: shoulder below elbow under load is risky\n"
+            "• Breathe: in at the bottom, out on the way up\n\n"
+            "*Safety*\n\n"
+            "⚠️ Always warm up unloaded — 1–2 sets of ordinary pull-ups\n"
+            "⚠️ Take the weight off before you drop from the bar\n"
+            "⚠️ Shoulder or elbow hurts — strip the weight, don't push through it\n"
+            "⚠️ Don't test a one-rep max more than once a month\n\n"
+            "*How the bot progresses you*\n\n"
+            "This runs on *double progression* — reps first, then load:\n"
+            "• Closing ≥95% of the plan and it isn't harder than the day called for → *+2.5 kg*, "
+            "and the rep target drops 10%\n"
+            "• Closing 80–95% → rep target +5%, load unchanged\n"
+            "• Closing <70% → *−2.5 kg*, target unchanged\n\n"
+            "So you accumulate reps at the current load, then add a plate and start "
+            "accumulating again. That's what keeps the weight climbing for years.\n\n"
+            "*XP*\n\n"
+            "Each kilogram adds 3% to the XP per rep (counted up to 50 kg). "
+            "A pull-up with +20 kg is worth 1.6 XP instead of 1. "
+            "Load is paid for honestly — but you can still climb the ranks at bodyweight."
+        ),
         "guide_intro": (
             "📖 *Beginner's Guide*\n\n"
-            "The bot helps you progress systematically in four exercises: "
-            "pull-ups, push-ups, dips and squats. "
+            "The bot helps you progress systematically in six exercises: "
+            "pull-ups, push-ups, dips, squats, plus *weighted* pull-ups and dips. "
             "It builds your plan, tracks progress, and automatically adapts load to you.\n\n"
             "🤖 Includes built-in *Turnikmen AI* — ask anything about your training or the bot."
         ),
@@ -603,9 +841,10 @@ STRINGS = {
         "guide_step3": (
             "🏋️ *Step 3 — Training*\n\n"
             "1. Tap «🏋️ Training»\n"
-            "2. Pick an exercise — pull-ups, push-ups, dips or squats\n"
-            "3. Do sets — tap the numbers or «✏️ Enter Manually»\n"
-            "4. Tap «✅ Finish Training» when done\n\n"
+            "2. Pick an exercise — pull-ups, push-ups, dips, squats, or their weighted versions\n"
+            "3. For weighted exercises the bot asks how many kg are on the belt today\n"
+            "4. Do sets — tap the numbers or «✏️ Enter Manually»\n"
+            "5. Tap «✅ Finish Training» when done\n\n"
             "Want more? Tap «Training» again and pick another exercise."
         ),
         "guide_step4": (
@@ -629,10 +868,10 @@ STRINGS = {
             "and independently of the other exercises.\n\n"
             "▲ *Increases when:*\n"
             "• +5% after completing a 7-day cycle if your last 5 training sessions averaged ≥80% completion\n"
-            "• +3% if your average RPE over the last 3 sessions is ≤5.5 and all targets were hit\n\n"
+            "• +3% if the last 3 sessions felt clearly easier than the day type called for and all targets were hit\n\n"
             "▼ *Decreases when:*\n"
-            "• −2% if your average RPE over the last 3 sessions is 7.0–8.5\n"
-            "• −5% if your average RPE over the last 3 sessions is ≥8.5\n"
+            "• −2% if the last 3 sessions consistently land harder than expected\n"
+            "• −5% if they land more than one and a half RPE points harder than expected\n"
             "• First session after a 3–6 day break — plan reduced by 25%\n"
             "• First session after a 7+ day break — plan reduced by 40%\n\n"
             "❓ *Do you need 7 consecutive days without missing?*\n\n"
@@ -641,18 +880,26 @@ STRINGS = {
             "If you skip a day without opening the bot, that step isn't counted, "
             "but you don't restart from zero. Just continue from where you left off.\n\n"
             "📊 *How RPE affects your plan*\n\n"
-            "RPE (1–10) shapes each exercise's target over time via a rolling average "
-            "of that exercise's last 3 sessions:\n"
-            "• RPE ≤5.5 (workouts feel easy) → target gradually increases (+3%)\n"
-            "• RPE 5.5–7.0 (normal load) → no change\n"
-            "• RPE 7.0–8.5 (load is high) → target eases slightly (−2%)\n"
-            "• RPE ≥8.5 (constantly at the limit) → target decreases (−5%)\n"
-            "_One hard session won't change anything — the trend over 3 in a row matters._\n\n"
+            "The bot compares your rating not against one fixed number, but against "
+            "*how hard that day was supposed to be*:\n"
+            "• Light day — expect RPE ~5\n"
+            "• Medium — ~6.5\n"
+            "• Density — ~7\n"
+            "• Hard — ~8\n\n"
+            "It then takes a rolling average of the gap over that exercise's last 3 sessions:\n"
+            "• A point easier than expected and all targets hit → target increases (+3%)\n"
+            "• About as expected → no change\n"
+            "• Half a point harder → target eases slightly (−2%)\n"
+            "• One and a half points harder → target decreases (−5%)\n"
+            "_A hard day at RPE 8 means the plan is working, not a reason to back off. "
+            "One hard session won't change anything — the trend over 3 in a row matters. "
+            "The target moves at most once a day._\n\n"
             "⭐ *XP per exercise*\n\n"
             "• Pull-up — 1 XP\n"
             "• Dip — 0.75 XP\n"
             "• Push-up — 0.5 XP\n"
             "• Squat — 0.25 XP\n"
+            "• Weighted — +3% per kg (up to 50 kg). A pull-up with +20 kg = 1.6 XP\n"
             "• Each streak day — +50 XP\n"
             "The weekly leaderboard and Beast of the Week are ranked by weekly XP.\n\n"
             "📈 *Stats & History*\n\n"

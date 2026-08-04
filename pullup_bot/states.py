@@ -7,11 +7,13 @@ class Guide(StatesGroup):
     step3 = State()
     step4 = State()
     extra = State()
+    weighted = State()
 
 
 class About(StatesGroup):
     page2 = State()
     page3 = State()
+    page4 = State()
 
 
 class Reg(StatesGroup):
@@ -22,6 +24,8 @@ class Reg(StatesGroup):
 class Training(StatesGroup):
     pick_exercise = State()
     setup_base = State()
+    setup_weight = State()   # first-time working load for a weighted exercise
+    pick_weight = State()    # load for today's weighted session
     active = State()
     rest_day = State()
     cancel_confirm = State()

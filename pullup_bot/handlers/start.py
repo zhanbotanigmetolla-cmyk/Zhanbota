@@ -117,15 +117,25 @@ async def about_page2(message: types.Message, state: FSMContext):
 
 @router.message(About.page3, text_filter("btn_about_next"))
 async def about_page3(message: types.Message, state: FSMContext):
-    """Show About page 3 (last page) and return to the landing keyboard."""
+    """Advance to About page 3 (XP and ranks)."""
+    data = await state.get_data()
+    lang = data.get("about_lang", "ru")
+    await state.set_state(About.page4)
+    await message.answer(t("about_page3", lang), parse_mode="Markdown",
+                         reply_markup=about_kb("page3", lang))
+
+
+@router.message(About.page4, text_filter("btn_about_next"))
+async def about_page4(message: types.Message, state: FSMContext):
+    """Show About page 4 (weighted training, last page) and return to the landing keyboard."""
     data = await state.get_data()
     lang = data.get("about_lang", "ru")
     await state.clear()
-    await message.answer(t("about_page3", lang), parse_mode="Markdown",
+    await message.answer(t("about_page4", lang), parse_mode="Markdown",
                          reply_markup=await _home_kb(message.from_user.id, lang))
 
 
-@router.message(StateFilter(About.page2, About.page3), text_filter("btn_back"))
+@router.message(StateFilter(About.page2, About.page3, About.page4), text_filter("btn_back"))
 async def about_back(message: types.Message, state: FSMContext):
     """Exit the About flow and return to the landing screen."""
     data = await state.get_data()
@@ -189,15 +199,26 @@ async def guide_step4(message: types.Message, state: FSMContext):
 
 @router.message(Guide.extra, text_filter("btn_guide_extra"))
 async def guide_extra(message: types.Message, state: FSMContext):
-    """Show the extra tips page and finish the guide flow."""
+    """Show the extra tips page and offer the weighted-training page."""
+    data = await state.get_data()
+    lang = data.get("guide_lang", "ru")
+    await state.set_state(Guide.weighted)
+    await message.answer(t("guide_extra", lang), parse_mode="Markdown",
+                         reply_markup=guide_kb("extra", lang))
+
+
+@router.message(Guide.weighted, text_filter("btn_guide_weighted"))
+async def guide_weighted(message: types.Message, state: FSMContext):
+    """Show the weighted-training page and finish the guide flow."""
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.clear()
-    await message.answer(t("guide_extra", lang), parse_mode="Markdown",
+    await message.answer(t("guide_weighted", lang), parse_mode="Markdown",
                          reply_markup=await _home_kb(message.from_user.id, lang))
 
 
-@router.message(StateFilter(Guide.step1, Guide.step2, Guide.step3, Guide.step4, Guide.extra),
+@router.message(StateFilter(Guide.step1, Guide.step2, Guide.step3, Guide.step4,
+                            Guide.extra, Guide.weighted),
                 text_filter("btn_back"))
 async def guide_back(message: types.Message, state: FSMContext):
     """Exit the guide flow and return to the landing screen."""
