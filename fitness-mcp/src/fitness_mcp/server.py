@@ -72,12 +72,48 @@ def _ensure_db() -> None:
 
 # ── tools ───────────────────────────────────────────────────────────────────
 
+# Documented once and substituted into every tool that takes a `source`
+# filter. Five hand-copied versions had already drifted out of step with
+# db.KNOWN_SOURCES; the names are now asserted against it at import time, so a
+# new adapter cannot ship with a tool description that fails to mention it.
+_SOURCE_BLURB = {
+    "hevy_export": "weighted gym training: barbell, dumbbell and machine work with real loads",
+    "pullup_bot": "unweighted bodyweight pull-up work, set by set",
+    "xiaomi_export": "watch-recorded activity, the only source of heart rate and wellness data",
+    "apple_health": "phone-recorded activity, the live wearable source from 2026-07-27",
+    "strava_export": "a handful of activities recorded only by Strava",
+}
+assert set(_SOURCE_BLURB) == set(db.KNOWN_SOURCES), (
+    f"tool docs describe {sorted(_SOURCE_BLURB)} but db.KNOWN_SOURCES is "
+    f"{sorted(db.KNOWN_SOURCES)}; every filterable source must be documented"
+)
+
+_SOURCES_DOC = (
+    "        source: Optional data-source filter. Omit to combine all sources.\n"
+    + "".join(f'            "{name}" — {what}.\n' for name, what in _SOURCE_BLURB.items())
+).rstrip("\n")
+
+
+def _document_sources(fn):
+    """Substitute the shared `source` text into a tool's docstring.
+
+    Applied below @mcp.tool() so the docstring is final before FastMCP reads
+    it — the tool description is what Claude actually sees at query time.
+    """
+    if fn.__doc__:
+        fn.__doc__ = fn.__doc__.replace("{SOURCES}", _SOURCES_DOC)
+    return fn
+
+
+
 @mcp.tool()
+@_document_sources
 def list_workouts(
     start_date: str,
     end_date: str,
     sport_type: str | None = None,
     limit: int = 100,
+    source: str | None = None,
 ) -> list[dict[str, Any]]:
     """List training sessions in a date range, newest first.
 
@@ -93,15 +129,22 @@ def list_workouts(
     duration means "not tracked", not "zero". Days with no training simply do
     not appear; absence is not a zero row.
 
+    Each session carries the `source` it came from. Two distinct training
+    modalities are stored side by side: "hevy_export" is weighted gym work
+    (barbell, dumbbell, machines, with real loads) and "pullup_bot" is
+    unweighted bodyweight pull-up work. They are separate training, not
+    duplicates of each other. Pass `source` to report on one alone.
+
     Args:
         start_date: First day to include, YYYY-MM-DD.
         end_date: Last day to include, YYYY-MM-DD, inclusive.
         sport_type: Optional filter, e.g. "strength". Omit for all types.
         limit: Maximum sessions to return (default 100, capped at 500).
+{SOURCES}
     """
     limit = max(1, min(int(limit), MAX_LIMIT))
     with _conn() as conn:
-        return db.list_workouts(conn, start_date, end_date, sport_type, limit)
+        return db.list_workouts(conn, start_date, end_date, sport_type, limit, source)
 
 
 @mcp.tool()
@@ -127,10 +170,12 @@ def get_workout(workout_id: int) -> dict[str, Any] | None:
 
 
 @mcp.tool()
+@_document_sources
 def training_summary(
     start_date: str,
     end_date: str,
     group_by: str = "week",
+    source: str | None = None,
 ) -> list[dict[str, Any]]:
     """Aggregate training volume per day, week or month.
 
@@ -148,7 +193,15 @@ def training_summary(
       training_days — number of distinct days trained
       total_reps    — volume measure for strength work
       duration_s, distance_m — 0 when the source tracked neither, which is the
-                    case for all bot-sourced strength work
+                    case for all bot-sourced strength work. Hevy sessions do
+                    report a duration (elapsed gym time, rest included) and a
+                    distance only when a cardio machine was used in-session.
+
+    total_reps mixes two modalities once Hevy data is included: a bodyweight
+    pull-up rep and a loaded squat rep both count as one. It is a volume proxy,
+    not a load measure — filter by `source` if you need one or the other alone.
+    Note also that reps only exist from 2026-03-29 onward for the pullup bot;
+    a zero there means "not tracked then", not "did not train".
 
     sessions and training_days differ, and the distinction matters: several
     activities can fall on one day (six cycling commutes is six sessions but
@@ -162,16 +215,19 @@ def training_summary(
         start_date: First day to include, YYYY-MM-DD.
         end_date: Last day to include, YYYY-MM-DD, inclusive.
         group_by: One of "day", "week", "month". Defaults to "week".
+{SOURCES}
     """
     with _conn() as conn:
-        return db.training_summary(conn, start_date, end_date, group_by)
+        return db.training_summary(conn, start_date, end_date, group_by, source)
 
 
 @mcp.tool()
+@_document_sources
 def exercise_history(
     exercise: str,
     start_date: str | None = None,
     end_date: str | None = None,
+    source: str | None = None,
 ) -> list[dict[str, Any]]:
     """Every logged set of a single movement, oldest first, for tracking progression.
 
@@ -179,9 +235,15 @@ def exercise_history(
     that session, reps, weight_kg, RPE, and the `inferred` flag described in
     get_workout.
 
-    Exercise names are lowercase identifiers as stored, e.g. "pullups",
-    "pushups", "dips", "squats". The match is exact, so call personal_records
-    with no argument first if you need to discover which names exist.
+    Exercise names are lowercase identifiers as stored. Bot-sourced bodyweight
+    work uses short English names ("pullups", "pushups", "dips"); Hevy-sourced
+    gym work keeps Hevy's own names, mostly Russian, e.g. "присед (штанга)" or
+    "подтягивания (с утяжелителем)". The match is exact, so call
+    personal_records with no argument first to discover which names exist.
+
+    Weighted and bodyweight versions of the same movement are deliberately kept
+    under different names — "подтягивания (с утяжелителем)" is not "pullups" —
+    so progression on one is never mixed into the other.
 
     Omit the dates for the full history.
 
@@ -189,13 +251,18 @@ def exercise_history(
         exercise: Exact exercise name, e.g. "pullups".
         start_date: Optional first day, YYYY-MM-DD.
         end_date: Optional last day, YYYY-MM-DD, inclusive.
+{SOURCES}
     """
     with _conn() as conn:
-        return db.exercise_history(conn, exercise, start_date, end_date)
+        return db.exercise_history(conn, exercise, start_date, end_date, source)
 
 
 @mcp.tool()
-def personal_records(exercise: str | None = None) -> list[dict[str, Any]]:
+@_document_sources
+def personal_records(
+    exercise: str | None = None,
+    source: str | None = None,
+) -> list[dict[str, Any]]:
     """Best recorded efforts per exercise. Omit the argument for all exercises.
 
     For each exercise returns:
@@ -212,18 +279,32 @@ def personal_records(exercise: str | None = None) -> list[dict[str, Any]]:
     work, best_set_by_reps and best_session_total_reps are the meaningful
     records.
 
+    Weighted gym work from Hevy DOES carry loads, so those exercises return a
+    real best_set_by_weight and estimated_1rm. A null 1RM therefore means "this
+    movement was trained unloaded", not "this movement is untested".
+
+    One caveat on weighted bodyweight movements such as
+    "подтягивания (с утяжелителем)": weight_kg is the ADDED load only, so the
+    1RM there is an added-weight figure, not a total-system 1RM. Quote it as
+    "+17 kg", never as "a 17 kg pull-up".
+
     Sets reconstructed from a session total are excluded from single-set
-    records, so these numbers reflect genuinely logged sets.
+    records, and so are sets the source labelled as warm-ups, so these numbers
+    reflect genuine working efforts.
 
     Args:
         exercise: Optional exact exercise name to restrict to.
+{SOURCES}
     """
     with _conn() as conn:
-        return db.personal_records(conn, exercise)
+        return db.personal_records(conn, exercise, source)
 
 
 @mcp.tool()
-def hr_distribution(start_date: str, end_date: str) -> dict[str, Any]:
+@_document_sources
+def hr_distribution(
+    start_date: str, end_date: str, source: str | None = None
+) -> dict[str, Any]:
     """Approximate heart-rate zone distribution across a date range.
 
     READ THIS BEFORE QUOTING THE NUMBERS. The stored data has one average and
@@ -238,16 +319,19 @@ def hr_distribution(start_date: str, end_date: str) -> dict[str, Any]:
     Z4 80-90%, Z5 >=90%.
 
     Sessions without heart-rate data are counted in sessions_without_hr rather
-    than dropped. Strength work from the pullup bot carries no HR at all, so
-    on bot-only data every session lands there and the zones are empty — that
-    means "no heart-rate source connected", not "no cardio done".
+    than dropped. Neither the pullup bot nor the Hevy export records HR at all,
+    so every strength session lands there and on strength-only data the zones
+    are empty — that means "no heart-rate source connected", not "no cardio
+    done". Gym sessions are long, so sessions_without_hr grows noticeably once
+    Hevy data is included; that is coverage, not a change in training.
 
     Args:
         start_date: First day to include, YYYY-MM-DD.
         end_date: Last day to include, YYYY-MM-DD, inclusive.
+{SOURCES}
     """
     with _conn() as conn:
-        return db.hr_distribution(conn, start_date, end_date)
+        return db.hr_distribution(conn, start_date, end_date, source)
 
 
 @mcp.tool()

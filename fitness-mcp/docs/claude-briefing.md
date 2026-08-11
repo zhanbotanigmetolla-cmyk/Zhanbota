@@ -17,8 +17,9 @@ answers rather than obvious errors.
 
 ## Where the data comes from
 
-Three sources merged into one database, **322 workouts from 2025-06-27 to
-2026-07-26**, plus 390 days of wellness data.
+Four sources merged into one database, plus 390 days of wellness data. Every
+workout carries the `source` it came from, and every tool takes an optional
+`source` filter, so any of them can be reported on alone or combined.
 
 **Xiaomi / Mi Fitness export** (`xiaomi_export`, 238 workouts) — from my watch.
 The richest source and the only one going back to mid-2025. Carries heart rate,
@@ -27,6 +28,12 @@ calories, distance, elevation, and all the sleep / resting-HR / stress data.
 **My Telegram pull-up bot** (`pullup_bot`, 80 sessions) — a calisthenics tracker
 I built. The **only** source with set-level detail: individual rep counts per
 set, plus RPE. Started 2026-03-29.
+
+**Hevy** (`hevy_export`, 103 sessions, 2022-12-09 to 2026-04-26) — my gym
+logbook: barbell, dumbbell and machine work, set by set with real loads. This
+is a **second, separate training modality**, not a duplicate of the pull-up bot
+and not a replacement for it. It is also the only source that goes back before
+mid-2025.
 
 **Strava bulk export** (`strava_export`, 4 visible) — originally 129 activities,
 but **125 turned out to be the same sessions as Xiaomi records**, matching
@@ -44,11 +51,26 @@ stopped training or "had no strength phase" from a zero rep count.
 
 **`null` never means zero.** It means that source never recorded the field.
 
-**`estimated_1rm` and `best_set_by_weight` are null for everything.** All my
-strength work is bodyweight; no external load was ever recorded. That is an
-absence of data, not a weakness and not a missing PR. Don't estimate a 1RM from
-bodyweight. The real records are `best_set_by_reps` and
-`best_session_total_reps`.
+**`estimated_1rm` and `best_set_by_weight` are null for the *bodyweight*
+work only.** Bot-sourced pull-ups, push-ups and dips carry no external load, so
+a null there is an absence of data, not a weakness and not a missing PR — don't
+estimate a 1RM from bodyweight. Hevy-sourced lifts *do* carry loads and return
+real numbers. Which one you are looking at is in `source`.
+
+**Weighted and bodyweight versions of a movement are separate exercises.**
+`pullups` (bot, bodyweight, up to 20 in a set) and
+`подтягивания (с утяжелителем)` (Hevy, with added weight) are the same movement
+but deliberately not merged, because merging would wreck both the rep records
+and the 1RM. Hevy exercise names are Hevy's own, mostly Russian and lowercased;
+bot names are short English ones.
+
+**Added weight is not total weight.** On weighted bodyweight movements
+`weight_kg` is the load *added* to me. "+15 kg × 3" is right; "a 15 kg
+pull-up" is not.
+
+**`total_reps` mixes modalities.** Once Hevy is included, a bodyweight pull-up
+rep and a loaded squat rep both count as one rep. It is a volume proxy, not a
+load measure. Filter by `source` if that distinction matters.
 
 **`sessions` and `training_days` are different.** I log up to six cycling
 commutes in a day: 6 sessions, 1 training day. Use `training_days` for "how
@@ -107,8 +129,18 @@ push-ups over 31 sets. Recent resting HR averages about 48 bpm, sleep about
 - Bot sessions and Xiaomi sessions are **not** merged even on the same day —
   the bot has reps, the watch has heart rate, and merging would discard one.
   Some days legitimately show both.
-- Bot data syncs hourly; Xiaomi and Strava are manual imports, currently frozen
-  at the 2026-07-26 exports.
+- Bot data syncs hourly; Xiaomi, Strava and Hevy are manual imports. Hevy is
+  re-exported roughly weekly and re-imported over itself, which is safe.
+- Hevy sessions carry **no heart rate at all** and their `duration_s` is elapsed
+  gym time including rest between sets, so they inflate `sessions_without_hr`
+  in `hr_distribution`. That is missing coverage, not a change in training.
+- A Hevy session's `distance_m` is only whatever a cardio machine inside that
+  session recorded (a treadmill warm-up), not distance covered training.
+- Warm-up sets are labelled by Hevy and are excluded from personal records — a
+  light ramp-up set is not an attempt at a best effort.
+- A watch record and a Hevy record of the same gym session are **not** merged,
+  for the same reason bot and watch records are not: only one of them knows
+  what was lifted.
 
 ## What I'd like from you
 

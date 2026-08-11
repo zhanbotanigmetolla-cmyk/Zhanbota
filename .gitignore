@@ -24,3 +24,6 @@ export_*.zip
 *MiFitness*/
 *MiFitness*
 hlth_center_*.csv
+# Hevy workout export — personal training history, same reasoning as above.
+workout_data_hevy*.csv
+hevy_export*.csv

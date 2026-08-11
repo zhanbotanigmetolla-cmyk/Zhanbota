@@ -26,7 +26,7 @@ def test_v1_database_upgrades_in_place(tmp_path):
 
     db.migrate(conn)
 
-    assert conn.execute("SELECT version FROM schema_version").fetchone()["version"] == 2
+    assert conn.execute("SELECT version FROM schema_version").fetchone()["version"] == db.SCHEMA_VERSION
     row = conn.execute("SELECT time_precision, superseded_by FROM workouts").fetchone()
     # Bot rows carry a synthesized start time and must be marked as such.
     assert row["time_precision"] == "date_only"
@@ -38,7 +38,7 @@ def test_migrate_is_idempotent(fitness_db):
     db.migrate(fitness_db)
     db.migrate(fitness_db)
     assert fitness_db.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 1
-    assert fitness_db.execute("SELECT version FROM schema_version").fetchone()["version"] == 2
+    assert fitness_db.execute("SELECT version FROM schema_version").fetchone()["version"] == db.SCHEMA_VERSION
 
 
 # ── daily_metrics ───────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS workouts (
@@ -101,7 +101,14 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
 CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON daily_metrics(local_date);
 """
 
-_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
+_SCHEMA_V3 = """
+-- Hevy distinguishes warm-up, working, drop and failure sets. A warm-up set is
+-- not an attempt at a best effort, so records must be able to skip it. NULL
+-- means the source did not say, which is the case for every pre-existing row.
+ALTER TABLE sets ADD COLUMN set_type TEXT;
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3}
 
 
 # ── connection ──────────────────────────────────────────────────────────────
@@ -155,6 +162,9 @@ class SetRow:
     rpe: float | None = None
     set_index: int = 0
     inferred: bool = False
+    # 'normal', 'warmup', 'dropset', 'failure' where the source distinguishes
+    # them; None where it does not. Only 'warmup' changes how records are read.
+    set_type: str | None = None
 
 
 @dataclass
@@ -231,10 +241,12 @@ def upsert_workout(conn: sqlite3.Connection, w: WorkoutRow) -> tuple[int, bool]:
     # session was edited to have fewer sets than before.
     conn.execute("DELETE FROM sets WHERE workout_id = ?", (workout_id,))
     conn.executemany(
-        """INSERT INTO sets (workout_id, exercise, reps, weight_kg, rpe, set_index, inferred)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO sets (workout_id, exercise, reps, weight_kg, rpe, set_index,
+                             inferred, set_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         [
-            (workout_id, s.exercise, s.reps, s.weight_kg, s.rpe, s.set_index, int(s.inferred))
+            (workout_id, s.exercise, s.reps, s.weight_kg, s.rpe, s.set_index,
+             int(s.inferred), s.set_type)
             for s in w.sets
         ],
     )
@@ -249,12 +261,32 @@ _WORKOUT_COLS = """
 """
 
 
+"""Sources currently written by an adapter. Exposed so tools can name them."""
+KNOWN_SOURCES = ("pullup_bot", "hevy_export", "strava_export", "xiaomi_export", "apple_health")
+
+
+def _source_clause(source: str | None, params: list[Any], prefix: str = "") -> str:
+    """``AND source = ?`` when a source filter was given, else nothing.
+
+    Kept in one place so every read function filters identically, and so an
+    unknown name fails loudly instead of quietly returning zero rows — an empty
+    result would otherwise be indistinguishable from "you trained nothing".
+    """
+    if not source:
+        return ""
+    if source not in KNOWN_SOURCES:
+        raise ValueError(f"unknown source {source!r}; known sources: {', '.join(KNOWN_SOURCES)}")
+    params.append(source)
+    return f" AND {prefix}source = ?"
+
+
 def list_workouts(
     conn: sqlite3.Connection,
     start_date: str,
     end_date: str,
     sport_type: str | None = None,
     limit: int = 100,
+    source: str | None = None,
 ) -> list[dict]:
     sql = f"""
         SELECT {_WORKOUT_COLS},
@@ -268,6 +300,7 @@ def list_workouts(
     if sport_type:
         sql += " AND sport_type = ?"
         params.append(sport_type)
+    sql += _source_clause(source, params)
     sql += " ORDER BY local_date DESC, started_at DESC LIMIT ?"
     params.append(limit)
     return [dict(r) for r in conn.execute(sql, params)]
@@ -283,7 +316,7 @@ def get_workout(conn: sqlite3.Connection, workout_id: int) -> dict | None:
     out["sets"] = [
         dict(r)
         for r in conn.execute(
-            """SELECT exercise, set_index, reps, weight_kg, rpe, inferred
+            """SELECT exercise, set_index, reps, weight_kg, rpe, inferred, set_type
                FROM sets WHERE workout_id = ?
                ORDER BY exercise, set_index""",
             (workout_id,),
@@ -303,7 +336,8 @@ _BUCKET_SQL = {
 
 
 def training_summary(
-    conn: sqlite3.Connection, start_date: str, end_date: str, group_by: str = "week"
+    conn: sqlite3.Connection, start_date: str, end_date: str, group_by: str = "week",
+    source: str | None = None,
 ) -> list[dict]:
     if group_by not in _BUCKET_SQL:
         raise ValueError(f"group_by must be one of {sorted(_BUCKET_SQL)}, got {group_by!r}")
@@ -326,10 +360,13 @@ def training_summary(
             SELECT workout_id, SUM(reps) AS reps FROM sets GROUP BY workout_id
         ) sw ON sw.workout_id = w.id
         WHERE w.local_date BETWEEN ? AND ? AND w.superseded_by IS NULL
+        {{source_clause}}
         GROUP BY bucket
         ORDER BY bucket
     """
-    return [dict(r) for r in conn.execute(sql, (start_date, end_date))]
+    params: list[Any] = [start_date, end_date]
+    sql = sql.replace("{source_clause}", _source_clause(source, params, "w."))
+    return [dict(r) for r in conn.execute(sql, params)]
 
 
 def exercise_history(
@@ -337,14 +374,16 @@ def exercise_history(
     exercise: str,
     start_date: str | None = None,
     end_date: str | None = None,
+    source: str | None = None,
 ) -> list[dict]:
     sql = """
-        SELECT w.local_date, w.id AS workout_id, s.set_index, s.reps,
-               s.weight_kg, s.rpe, s.inferred
+        SELECT w.local_date, w.id AS workout_id, w.source, s.set_index, s.reps,
+               s.weight_kg, s.rpe, s.inferred, s.set_type
         FROM sets s JOIN workouts w ON w.id = s.workout_id
         WHERE s.exercise = ? AND w.superseded_by IS NULL
     """
     params: list[Any] = [exercise]
+    sql += _source_clause(source, params, "w.")
     if start_date:
         sql += " AND w.local_date >= ?"
         params.append(start_date)
@@ -355,17 +394,34 @@ def exercise_history(
     return [dict(r) for r in conn.execute(sql, params)]
 
 
-def personal_records(conn: sqlite3.Connection, exercise: str | None = None) -> list[dict]:
+# A warm-up is a ramp-up to the working weight, not an attempt at a best
+# effort, so it cannot set a record. Sources that do not label set types store
+# NULL, and those rows stay eligible — absence of a label is not a warm-up.
+_NOT_WARMUP = "AND (s.set_type IS NULL OR s.set_type != 'warmup')"
+
+
+def personal_records(
+    conn: sqlite3.Connection,
+    exercise: str | None = None,
+    source: str | None = None,
+) -> list[dict]:
     """Best set by reps, best by weight, and estimated 1RM, per exercise.
 
     Weight-based records are only meaningful where the source recorded a load.
     For unweighted bodyweight work every ``weight_kg`` is NULL, and the honest
     answer is null rather than a fabricated number — see the tool description.
+
+    Two modalities now coexist: bodyweight work from the pullup bot and
+    weighted gym work from Hevy. They are kept apart by exercise name rather
+    than merged, so "подтягивания (с утяжелителем)" carries a real 1RM while
+    "pullups" still, correctly, carries none. Pass ``source`` to report on one
+    of them alone.
     """
     where, params = "", []
     if exercise:
         where = "AND s.exercise = ?"
         params.append(exercise)
+    where += _source_clause(source, params, "w.")
 
     exercises = [
         r["exercise"]
@@ -376,46 +432,54 @@ def personal_records(conn: sqlite3.Connection, exercise: str | None = None) -> l
         )
     ]
 
+    # Every per-exercise query below carries the same source filter, otherwise
+    # a "Hevy only" request would still return records set by bot sessions.
+    def _q(sql: str, ex: str):
+        p: list[Any] = [ex]
+        return conn.execute(sql.replace("{src}", _source_clause(source, p, "w.")), p).fetchone()
+
     out: list[dict] = []
     for ex in exercises:
         # inferred sets are reconstructed from a session total and would produce
         # a fake "best single set", so they are excluded from records.
-        best_reps = conn.execute(
-            """SELECT s.reps, s.weight_kg, s.rpe, w.local_date
+        best_reps = _q(
+            f"""SELECT s.reps, s.weight_kg, s.rpe, w.local_date, w.source
                FROM sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE s.exercise = ? AND w.superseded_by IS NULL AND s.inferred = 0 AND s.reps IS NOT NULL
+               WHERE s.exercise = ? AND w.superseded_by IS NULL AND s.inferred = 0
+                     AND s.reps IS NOT NULL {_NOT_WARMUP} {{src}}
                ORDER BY s.reps DESC, w.local_date ASC LIMIT 1""",
-            (ex,),
-        ).fetchone()
+            ex,
+        )
 
-        best_weight = conn.execute(
-            """SELECT s.reps, s.weight_kg, s.rpe, w.local_date
+        best_weight = _q(
+            f"""SELECT s.reps, s.weight_kg, s.rpe, w.local_date, w.source
                FROM sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE s.exercise = ? AND w.superseded_by IS NULL AND s.inferred = 0 AND s.weight_kg IS NOT NULL
+               WHERE s.exercise = ? AND w.superseded_by IS NULL AND s.inferred = 0
+                     AND s.weight_kg IS NOT NULL {_NOT_WARMUP} {{src}}
                ORDER BY s.weight_kg DESC, w.local_date ASC LIMIT 1""",
-            (ex,),
-        ).fetchone()
+            ex,
+        )
 
         # Epley: 1RM = w * (1 + reps/30). Undefined without an external load.
-        best_1rm = conn.execute(
-            """SELECT s.reps, s.weight_kg, w.local_date,
+        best_1rm = _q(
+            f"""SELECT s.reps, s.weight_kg, w.local_date, w.source,
                       s.weight_kg * (1 + s.reps / 30.0) AS est_1rm
                FROM sets s JOIN workouts w ON w.id = s.workout_id
                WHERE s.exercise = ? AND w.superseded_by IS NULL AND s.inferred = 0
-                     AND s.weight_kg IS NOT NULL AND s.reps IS NOT NULL
+                     AND s.weight_kg IS NOT NULL AND s.reps IS NOT NULL {_NOT_WARMUP} {{src}}
                ORDER BY est_1rm DESC, w.local_date ASC LIMIT 1""",
-            (ex,),
-        ).fetchone()
+            ex,
+        )
 
-        best_session = conn.execute(
+        best_session = _q(
             """SELECT w.local_date, SUM(s.reps) AS reps
                FROM sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE s.exercise = ? AND w.superseded_by IS NULL
+               WHERE s.exercise = ? AND w.superseded_by IS NULL AND s.reps IS NOT NULL {src}
                GROUP BY w.id ORDER BY reps DESC, w.local_date ASC LIMIT 1""",
-            (ex,),
-        ).fetchone()
+            ex,
+        )
 
-        out.append({
+        record = {
             "exercise": ex,
             "best_set_by_reps": dict(best_reps) if best_reps else None,
             "best_set_by_weight": dict(best_weight) if best_weight else None,
@@ -423,7 +487,12 @@ def personal_records(conn: sqlite3.Connection, exercise: str | None = None) -> l
                 {**dict(best_1rm), "formula": "Epley"} if best_1rm else None
             ),
             "best_session_total_reps": dict(best_session) if best_session else None,
-        })
+        }
+        # Cardio machines logged inside a Hevy session (treadmill, rower) have
+        # neither reps nor load, so every field above is null. Listing them as
+        # exercises with no records at all is noise, not information.
+        if any(record[k] is not None for k in record if k != "exercise"):
+            out.append(record)
     return out
 
 
@@ -437,7 +506,9 @@ HR_ZONES = [
 ]
 
 
-def hr_distribution(conn: sqlite3.Connection, start_date: str, end_date: str) -> dict:
+def hr_distribution(
+    conn: sqlite3.Connection, start_date: str, end_date: str, source: str | None = None
+) -> dict:
     """Approximate time-in-zone from per-session average HR.
 
     The schema stores one avg/max HR per session, not a heart-rate time series,
@@ -445,11 +516,13 @@ def hr_distribution(conn: sqlite3.Connection, start_date: str, end_date: str) ->
     attributed to the single zone its average HR falls in. Sessions without HR
     are reported separately rather than silently dropped.
     """
+    params: list[Any] = [start_date, end_date]
     rows = conn.execute(
         """SELECT avg_hr, max_hr, duration_s, local_date
            FROM workouts
-           WHERE local_date BETWEEN ? AND ? AND superseded_by IS NULL""",
-        (start_date, end_date),
+           WHERE local_date BETWEEN ? AND ? AND superseded_by IS NULL"""
+        + _source_clause(source, params),
+        params,
     ).fetchall()
 
     observed_max = max((r["max_hr"] or 0) for r in rows) if rows else 0
@@ -593,7 +666,11 @@ _RICHNESS_FIELDS = ("duration_s", "distance_m", "avg_hr", "max_hr", "kcal", "ele
 # the Xiaomi export is historical (through 2026-07-26) and Apple Health is the
 # live source from 2026-07-27, so this only matters if a newer Xiaomi export is
 # ever imported over the same dates. Flip the order here to change that.
-SOURCE_PRIORITY = ("xiaomi_export", "apple_health", "strava_export", "pullup_bot")
+#
+# hevy_export sits above the wearables for gym sessions because it is the only
+# source that knows what was actually lifted. It rarely gets that far, though:
+# the rule below refuses to supersede a row carrying sets in the first place.
+SOURCE_PRIORITY = ("hevy_export", "xiaomi_export", "apple_health", "strava_export", "pullup_bot")
 
 
 def _priority(source: str) -> int:
@@ -645,6 +722,12 @@ def find_duplicate_pairs(
             gap = abs(_epoch(a["started_at"]) - _epoch(b["started_at"]))
             if gap > time_tolerance_s:
                 break  # rows are start-time ordered, so nothing later can match
+            # A watch and Hevy can record the same gym session, but superseding
+            # hides a row from every query — and only one of the two knows the
+            # sets. Losing the entire set list to gain an average heart rate is
+            # a bad trade, so a row with sets is never dropped for one without.
+            if bool(a["set_count"]) != bool(b["set_count"]):
+                continue
             if a["duration_s"] is not None and b["duration_s"] is not None:
                 # Sources do not agree on what "duration" means: Xiaomi reports
                 # active time (paused time excluded) while Strava reports
