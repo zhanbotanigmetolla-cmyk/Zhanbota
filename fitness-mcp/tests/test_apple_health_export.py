@@ -14,7 +14,7 @@ one, because those quirks are where the import can quietly go wrong:
 import pytest
 
 from fitness_mcp import db
-from fitness_mcp.ingest.apple_health_export import AppleHealthExportAdapter, _snake
+from fitness_mcp.ingest.apple_health_export import AppleHealthExportAdapter, _scale, _snake
 from fitness_mcp.ingest.base import run_adapter
 
 from .conftest import add_workout
@@ -335,6 +335,41 @@ def test_dedup_prefers_the_native_export_over_apples_copy(fitness_db):
     assert len(merged) == 1
     assert merged[0]["keep_source"] == "strava_export"
     assert merged[0]["supersede_source"] == "apple_health_export"
+
+
+# ── units ───────────────────────────────────────────────────────────────────
+
+def test_healthkit_percentages_are_fractions(tmp_path, fitness_db):
+    """HKUnit.percent() stores 27% body fat as 0.27, with the unit written "%".
+
+    Passing that through is worse than an obvious error: "0.24% body fat" and
+    "blood oxygen 1%" read as catastrophic medical readings rather than as a
+    unit bug, and a health assistant would reasonably panic about them.
+    """
+    body = (
+        record("HKQuantityTypeIdentifierBodyFatPercentage", "0.2360",
+               "2026-09-06 08:00:00 +0500", unit="%")
+        + record("HKQuantityTypeIdentifierOxygenSaturation", "0.98",
+                 "2026-09-06 09:00:00 +0500", unit="%")
+        + record("HKQuantityTypeIdentifierBodyMass", "81.9",
+                 "2026-09-06 08:00:00 +0500", unit="kg")
+    )
+    run_adapter(fitness_db, AppleHealthExportAdapter(export_dir=write_export(tmp_path, body)))
+
+    assert health_rows(fitness_db, "body_fat_percentage")["2026-09-06"]["avg"] == 23.6
+    assert health_rows(fitness_db, "oxygen_saturation")["2026-09-06"]["avg"] == 98.0
+    # Non-percent units must be left exactly alone.
+    assert health_rows(fitness_db, "body_mass")["2026-09-06"]["avg"] == 81.9
+
+
+@pytest.mark.parametrize("value,unit,expected", [
+    (0.27, "%", 27.0),
+    (81.9, "kg", 81.9),
+    (54562, "count", 54562),
+    (48.0, None, 48.0),
+])
+def test_scale_only_touches_percentages(value, unit, expected):
+    assert _scale(value, unit) == pytest.approx(expected)
 
 
 # ── naming ──────────────────────────────────────────────────────────────────

@@ -99,6 +99,21 @@ _DT_FMT = "%Y-%m-%d %H:%M:%S %z"
 _TO_METRES = {"km": 1000.0, "m": 1.0, "mi": 1609.344, "ft": 0.3048, "cm": 0.01, "yd": 0.9144}
 
 
+def _scale(value: float, unit: str | None) -> float:
+    """Convert HealthKit's fractional percentages to actual percentages.
+
+    HKUnit.percent() is a fraction: body fat 27% is stored as 0.27 with the unit
+    written as "%". Passing that through unchanged is worse than an obvious
+    error, because "0.27% body fat" and "blood oxygen 1%" read as catastrophic
+    medical readings rather than as a unit bug. Every percent metric in this
+    archive — body fat, blood oxygen, walking steadiness, gait asymmetry and
+    double support — is confirmed to be 0..1.
+    """
+    if (unit or "").strip() == "%":
+        return value * 100.0
+    return value
+
+
 def _is_cumulative(kind_name: str) -> bool:
     return kind_name in _CUMULATIVE or kind_name.startswith(_CUMULATIVE_PREFIXES)
 
@@ -294,6 +309,7 @@ class AppleHealthExportAdapter:
 
         metric = _snake(kind_name)
         unit = el.get("unit")
+        value = _scale(value, unit)
         day = _local_date(start)
 
         if _is_cumulative(kind_name):
