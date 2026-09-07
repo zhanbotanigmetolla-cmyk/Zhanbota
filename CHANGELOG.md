@@ -4,6 +4,37 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-09-07]
+
+### Added
+- **Apple Health export import** (`--source apple_health_export --apple-dir <dir>`) — the
+  full HealthKit archive, 417,429 records parsed in about 20 seconds. It closes the gap
+  the other sources left: the Xiaomi and Strava exports both stop at 2026-07-26, and this
+  brings 96 sessions running through 2026-09-06, most of them Apple Watch rides and runs
+  that nothing else recorded.
+- **52 daily health metrics across 307 days** in a new `health_daily` table (schema v4) —
+  body mass, body fat, VO2 max, HRV, blood oxygen, respiratory rate, energy burned,
+  walking gait, mindful minutes and more. A tall (source, day, metric) table rather than
+  50 new columns, because Apple adds measurement types with every iOS release and a column
+  each would mean a migration every time.
+- Two MCP tools over that table: `list_health_metrics` to discover what exists and over
+  what dates, and `health_metrics` to pull daily series for named metrics. Metrics that
+  are missing versus misspelled are reported differently, so an empty answer is never
+  mistaken for "this was never measured".
+
+### Fixed
+- `recovery_metrics` returned one row **per source per day**, so a day covered by two
+  wearables was counted twice and the same night's sleep averaged in twice. Days are now
+  collapsed to a single row, filling each field from the best available source, and the
+  contributing sources are named on the row. This was latent before and would have become
+  wrong on 259 days the moment Apple Health data landed.
+
+### Changed
+- `recovery_metrics` and the source documentation no longer claim Mi Fitness is the only
+  wellness source, and now warn that resting HR jumps about 10 bpm across 2026-07-26 —
+  that is the Mi Band being replaced by the Apple Watch, not a change in recovery. A trend
+  spanning that date compares hardware.
+
 ## [2026-07-27]
 
 ### Added

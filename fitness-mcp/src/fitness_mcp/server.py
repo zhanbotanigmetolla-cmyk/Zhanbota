@@ -80,7 +80,9 @@ _SOURCE_BLURB = {
     "hevy_export": "weighted gym training: barbell, dumbbell and machine work with real loads",
     "pullup_bot": "unweighted bodyweight pull-up work, set by set",
     "xiaomi_export": "watch-recorded activity, the only source of heart rate and wellness data",
-    "apple_health": "phone-recorded activity, the live wearable source from 2026-07-27",
+    "apple_health": "phone-recorded activity pushed live from the iPhone Shortcut",
+    "apple_health_export": "the full Apple Health archive from 2025-11-05: Apple Watch "
+                           "sessions plus every daily health metric (see health_metrics)",
     "strava_export": "a handful of activities recorded only by Strava",
 }
 assert set(_SOURCE_BLURB) == set(db.KNOWN_SOURCES), (
@@ -348,11 +350,30 @@ def recovery_metrics(start_date: str, end_date: str) -> dict[str, Any]:
     A FALLING resting heart rate generally indicates improving recovery, which
     is why a negative change is reported as "improving".
 
-    These metrics come from the Xiaomi export only. The pullup bot records
-    none of them, so until that export is imported this returns an empty
-    "days" list and an explanatory "note". An empty result means NO DATA
-    SOURCE IS CONNECTED — it does not mean recovery was poor, and it must not
-    be reported as bad sleep or an elevated resting heart rate.
+    These metrics come from the wearables: the Mi Fitness export through
+    2026-07-26, and the Apple Health export from 2025-11-05 onward. Neither the
+    pullup bot nor Hevy records any of them. Where both wearables cover a day
+    they are merged into one row and the `sources` field names the ones that
+    actually contributed, so a day is never counted twice.
+
+    BEWARE OF TRENDS THAT SPAN 2026-07-26. The wearable changed there: Mi Band
+    figures run up to that date and Apple Watch figures from 2026-07-27. The two
+    devices measure resting heart rate differently, so a range crossing the
+    switch compares hardware as much as recovery — this data shows resting HR
+    apparently rising about 10 bpm across it. Check the `sources` field on the
+    day rows before reading any such trend as a physiological change, and say
+    plainly that the measurement device changed if it did.
+
+    An empty "days" list with a "note" means NO DATA SOURCE COVERS THOSE DATES
+    — it does not mean recovery was poor, and it must not be reported as bad
+    sleep or an elevated resting heart rate. Coverage is also uneven within the
+    range: sleep only exists from 2026-07-27 (when the Apple Watch arrived),
+    while steps go back to 2025-11-05. A null field is "not measured".
+
+    For any health measurement beyond these four — body mass, VO2 max, HRV,
+    blood oxygen, respiratory rate, walking metrics, energy burned — use
+    health_metrics instead. This tool deliberately covers only the four
+    recovery-relevant ones.
 
     Args:
         start_date: First day to include, YYYY-MM-DD.
@@ -360,6 +381,89 @@ def recovery_metrics(start_date: str, end_date: str) -> dict[str, Any]:
     """
     with _conn() as conn:
         return db.recovery_metrics(conn, start_date, end_date)
+
+
+@mcp.tool()
+def list_health_metrics() -> list[dict[str, Any]]:
+    """Discover which health measurements exist, and over what dates.
+
+    CALL THIS FIRST, before health_metrics. Metric names are matched exactly, so
+    a guessed name returns nothing and an empty result is easy to misread as
+    "this was never measured" when it actually means "that is not the name".
+
+    Returns one entry per metric per source: the metric name, its kind, its
+    unit, how many days carry data, and the first and last of those days.
+
+    `kind` decides which number is meaningful and must be respected:
+      "cumulative" — a daily total is the real figure (step_count,
+                     active_energy_burned, distance_walking_running,
+                     apple_exercise_time). Quote `total`.
+      "discrete"   — individual readings (heart_rate, body_mass, vo2_max,
+                     heart_rate_variability_sdnn). Quote `avg`, `min` or `max`.
+                     Their `total` is null on purpose: adding up 300 heart-rate
+                     readings is a meaningless number, not a useful one.
+
+    Coverage varies enormously between metrics and that is about which device
+    was owned when, not about behaviour. Steps reach back to 2025-11-05 from the
+    iPhone; heart rate, sleep and VO2 max only start when the Apple Watch
+    arrived in late July 2026. A metric starting late is not a habit that
+    started late.
+    """
+    with _conn() as conn:
+        return db.list_health_metrics(conn)
+
+
+@mcp.tool()
+@_document_sources
+def health_metrics(
+    metrics: list[str],
+    start_date: str,
+    end_date: str,
+    source: str | None = None,
+) -> dict[str, Any]:
+    """Daily series for named health measurements over a date range.
+
+    This is the general health data tool, covering everything the Apple Health
+    export holds beyond training itself: body mass and body fat, VO2 max, heart
+    rate, heart rate variability, blood oxygen, respiratory rate, energy burned,
+    steps, distances, walking gait metrics, audio exposure, mindful minutes and
+    more. Use recovery_metrics instead for the specific resting-HR-and-sleep
+    picture; use this for anything else.
+
+    Names come from list_health_metrics and must match exactly — call it first.
+    Several metrics can be requested in one call, which is the efficient way to
+    correlate two of them (say body_mass against active_energy_burned).
+
+    Dates are local calendar dates in Asia/Almaty (YYYY-MM-DD), both ends
+    INCLUSIVE.
+
+    For each metric returned you get its kind, unit, the number of days with
+    data, a summary, and the per-day rows (total, avg, min, max, sample_count).
+    Read `kind` before quoting anything: for "cumulative" metrics the day's
+    figure is `total`, for "discrete" ones it is `avg`/`min`/`max` and `total`
+    is null by design.
+
+    Anything not returned is listed in `unavailable` with the reason —
+    either the name is not stored at all, or it is stored but has no readings
+    in this range. Treat both as missing data. Days on which nothing was
+    recorded are simply absent from `days`; an absent day is NOT a zero, and
+    reporting it as one would turn "the watch was on the charger" into "no
+    steps taken".
+
+    A caveat worth stating whenever these numbers are quoted: cumulative
+    metrics are taken from the single device that recorded the most that day,
+    because Apple stores overlapping samples from the iPhone, the Apple Watch
+    and Mi Fitness simultaneously. This is close to what the Health app shows,
+    but a day split between two devices can read slightly low.
+
+    Args:
+        metrics: Exact metric names, e.g. ["body_mass", "vo2_max"].
+        start_date: First day to include, YYYY-MM-DD.
+        end_date: Last day to include, YYYY-MM-DD, inclusive.
+{SOURCES}
+    """
+    with _conn() as conn:
+        return db.health_metrics(conn, metrics, start_date, end_date, source)
 
 
 # ── push ingest (NOT an MCP tool) ───────────────────────────────────────────

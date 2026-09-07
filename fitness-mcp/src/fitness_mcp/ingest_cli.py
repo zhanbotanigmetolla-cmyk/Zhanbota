@@ -11,6 +11,7 @@ import logging
 import sys
 
 from . import config, db
+from .ingest.apple_health_export import AppleHealthExportAdapter
 from .ingest.base import run_adapter
 from .ingest.hevy_export import HevyExportAdapter
 from .ingest.pullup_bot import PullupBotAdapter
@@ -19,7 +20,7 @@ from .ingest.xiaomi_export import XiaomiExportAdapter
 
 log = logging.getLogger("fitness_mcp.ingest_cli")
 
-ADAPTERS = {"pullup_bot", "hevy_export", "strava_export", "xiaomi_export"}
+ADAPTERS = {"pullup_bot", "hevy_export", "strava_export", "xiaomi_export", "apple_health_export"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -49,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--csv", help="Path to the Hevy CSV export (source: hevy_export).",
     )
+    parser.add_argument(
+        "--apple-dir",
+        help="Path to the unzipped Apple Health export directory "
+             "(source: apple_health_export).",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -68,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
         adapter = HevyExportAdapter(csv_path=args.csv or str(config.HEVY_CSV))
     elif args.source == "xiaomi_export":
         adapter = XiaomiExportAdapter(export_dir=args.export_dir or str(config.XIAOMI_EXPORT_DIR))
+    elif args.source == "apple_health_export":
+        adapter = AppleHealthExportAdapter(
+            export_dir=args.apple_dir or str(config.APPLE_EXPORT_DIR)
+        )
     else:  # pragma: no cover - argparse restricts this
         raise SystemExit(f"unknown source {args.source}")
 
@@ -81,8 +91,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     log.info(
-        "ingest from %s: %d created, %d updated (%d total), %d daily metrics",
-        result.source, result.created, result.updated, result.total, result.daily_metrics,
+        "ingest from %s: %d created, %d updated (%d total), %d daily metrics, "
+        "%d health metric rows",
+        result.source, result.created, result.updated, result.total,
+        result.daily_metrics, result.health_daily,
     )
     if result.warnings:
         log.warning("%d data-quality warning(s) from the source", len(result.warnings))

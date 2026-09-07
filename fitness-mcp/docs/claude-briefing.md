@@ -17,9 +17,9 @@ answers rather than obvious errors.
 
 ## Where the data comes from
 
-Four sources merged into one database, plus 390 days of wellness data. Every
-workout carries the `source` it came from, and every tool takes an optional
-`source` filter, so any of them can be reported on alone or combined.
+Five sources merged into one database, plus daily wellness and health data.
+Every workout carries the `source` it came from, and every tool takes an
+optional `source` filter, so any of them can be reported on alone or combined.
 
 **Xiaomi / Mi Fitness export** (`xiaomi_export`, 238 workouts) — from my watch.
 The richest source and the only one going back to mid-2025. Carries heart rate,
@@ -34,6 +34,18 @@ logbook: barbell, dumbbell and machine work, set by set with real loads. This
 is a **second, separate training modality**, not a duplicate of the pull-up bot
 and not a replacement for it. It is also the only source that goes back before
 mid-2025.
+
+**Apple Health export** (`apple_health_export`, 96 visible) — the full HealthKit
+archive from my iPhone and Apple Watch. Originally 133 sessions; 37 were the same
+rides already held by Xiaomi or Strava and were merged into them. It is the
+**only** source covering 2026-07-27 onward — the Xiaomi and Strava exports both
+stop at 2026-07-26 — so it is what fills the recent weeks.
+
+It also carries **52 daily health metrics across 307 days**, which is everything
+the other sources never had: body mass, body fat, VO2 max, HRV, blood oxygen,
+respiratory rate, energy burned, walking gait, mindful minutes. Reach these with
+`list_health_metrics` first, then `health_metrics` — the names must match
+exactly.
 
 **Strava bulk export** (`strava_export`, 4 visible) — originally 129 activities,
 but **125 turned out to be the same sessions as Xiaomi records**, matching
@@ -88,6 +100,28 @@ highest max HR observed (191 bpm), not a lab-measured max. Say so if you quote i
 **Stress covers only 69 of 390 days.** The band samples it in specific modes
 only. Sparse stress data is a sensor limitation, not a sign of anything.
 
+**The wearable changed on 2026-07-26, and resting HR jumps because of it.** Mi
+Band figures run to that date, Apple Watch figures from 2026-07-27. Resting HR
+reads roughly 10 bpm higher on the Apple Watch, so `recovery_metrics` over any
+range crossing that date reports a "worsening" trend that is a hardware change,
+not my recovery. Check the `sources` field on the day rows and compare within
+one device, not across the switch.
+
+**A metric starting late means I didn't own the sensor yet.** Steps go back to
+2025-11-05 from the iPhone, but heart rate, sleep, VO2 max and HRV only start in
+late July 2026 when the Apple Watch arrived. That is equipment history, not a
+habit that suddenly began. Same for the 8 days of dietary data in Jan-Feb 2026 —
+I tried a food logger briefly and stopped.
+
+**Never read an absent day as a zero in `health_metrics`.** Days with no
+readings are simply missing from `days`. A day the watch spent on the charger is
+not a day I took no steps.
+
+**Respect `kind` before quoting a health metric.** `cumulative` metrics
+(step_count, active_energy_burned) mean the daily `total`. `discrete` ones
+(heart_rate, body_mass, vo2_max) mean `avg`/`min`/`max`, and their `total` is
+deliberately null — summing 300 heart-rate readings is not a number.
+
 ## Useful things to know
 
 `sport_type` values: `running`, `cycling`, `strength`, `high_bar`, `walking`,
@@ -129,8 +163,15 @@ push-ups over 31 sets. Recent resting HR averages about 48 bpm, sleep about
 - Bot sessions and Xiaomi sessions are **not** merged even on the same day —
   the bot has reps, the watch has heart rate, and merging would discard one.
   Some days legitimately show both.
-- Bot data syncs hourly; Xiaomi, Strava and Hevy are manual imports. Hevy is
-  re-exported roughly weekly and re-imported over itself, which is safe.
+- Bot data syncs hourly; Xiaomi, Strava, Hevy and Apple Health are manual
+  imports. Hevy is re-exported roughly weekly and re-imported over itself,
+  which is safe.
+- Apple's cumulative daily metrics (steps, distance, energy) are taken from the
+  single device that recorded the most that day, because HealthKit stores the
+  iPhone's and the Watch's overlapping copies of the same walk. This matches
+  the Health app closely, but a day split across two devices can read slightly
+  low. Never add two devices' figures together.
+- The Apple archive's ECG recordings and GPS workout routes are not imported.
 - Hevy sessions carry **no heart rate at all** and their `duration_s` is elapsed
   gym time including rest between sets, so they inflate `sessions_without_hr`
   in `hr_distribution`. That is missing coverage, not a change in training.

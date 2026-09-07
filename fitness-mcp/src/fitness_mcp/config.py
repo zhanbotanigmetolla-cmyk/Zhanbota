@@ -50,6 +50,11 @@ XIAOMI_EXPORT_DIR = _path_env("FITNESS_MCP_XIAOMI_DIR", _PKG_ROOT / "var" / "xia
 # so the file is simply overwritten in place and re-ingested.
 HEVY_CSV = _path_env("FITNESS_MCP_HEVY_CSV", _PKG_ROOT / "var" / "hevy_export.csv")
 
+# Apple Health bulk export, unzipped (Health > profile > Export All Health Data).
+# The directory, not the XML: the adapter finds the file itself because Health
+# names it in the phone's language.
+APPLE_EXPORT_DIR = _path_env("FITNESS_MCP_APPLE_DIR", _PKG_ROOT / "var" / "apple_health_export")
+
 
 def ingest_token() -> str | None:
     """Shared secret the phone must present to POST /ingest/health.
