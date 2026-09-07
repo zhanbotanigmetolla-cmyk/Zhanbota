@@ -337,6 +337,50 @@ def test_dedup_prefers_the_native_export_over_apples_copy(fitness_db):
     assert merged[0]["supersede_source"] == "apple_health_export"
 
 
+def test_day_rows_are_capped_but_summaries_stay_whole(fitness_db):
+    """Requesting everything must not return 180k tokens of rows.
+
+    The cap is on resolution, never on correctness: the summary is computed
+    before the trim, so a shortened series still reports the true average over
+    the whole range.
+    """
+    with fitness_db:
+        for i in range(1, 41):
+            for metric in ("step_count", "heart_rate"):
+                db.upsert_health_daily(fitness_db, db.HealthDailyRow(
+                    source="apple_health_export", local_date="2026-08-%02d" % i,
+                    metric=metric, kind="cumulative" if metric == "step_count" else "discrete",
+                    unit="count", sample_count=1,
+                    total=100.0 if metric == "step_count" else None,
+                    avg=100.0, min=100.0, max=100.0))
+
+    out = db.health_metrics(fitness_db, ["step_count", "heart_rate"],
+                            "2026-08-01", "2026-08-31", )
+    assert "note" not in out          # well under the cap
+
+    monkeyed = db.MAX_HEALTH_DAYS
+    try:
+        db.MAX_HEALTH_DAYS = 5
+        out = db.health_metrics(fitness_db, ["step_count", "heart_rate"],
+                                "2026-08-01", "2026-08-31")
+    finally:
+        db.MAX_HEALTH_DAYS = monkeyed
+
+    steps = out["metrics"]["step_count"]
+    assert len(steps["days"]) == 5
+    assert steps["days_omitted"] == 26            # 31 days in range, 5 kept
+    assert steps["days_with_data"] == 31          # the true count, not the kept count
+    assert steps["summary"]["range_total"] == 3100.0   # full range, not the trimmed slice
+    # Budget spent by the first metric, so the second returns summary only —
+    # empty, but explicitly empty rather than silently absent.
+    assert out["metrics"]["heart_rate"]["days"] == []
+    assert out["metrics"]["heart_rate"]["summary"]["daily_avg"] == 100.0
+    assert "days_omitted" in out["metrics"]["heart_rate"]
+    assert "capped" in out["note"]
+    # The most recent days are the ones kept.
+    assert steps["days"][-1]["local_date"] == "2026-08-31"
+
+
 # ── units ───────────────────────────────────────────────────────────────────
 
 def test_healthkit_percentages_are_fractions(tmp_path, fitness_db):

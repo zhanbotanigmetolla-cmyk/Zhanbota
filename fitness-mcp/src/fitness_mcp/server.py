@@ -443,6 +443,15 @@ def health_metrics(
     figure is `total`, for "discrete" ones it is `avg`/`min`/`max` and `total`
     is null by design.
 
+    Day-by-day rows are capped at 500 across the whole call, because asking for
+    every metric over all time returns about 180,000 tokens of rows. When the
+    cap bites, a top-level `note` appears and the affected metrics carry
+    `days_omitted`; the most recent days are the ones kept. Every `summary` is
+    computed over the FULL range either way and stays accurate, so a shortened
+    `days` list costs resolution, never correctness. Prefer asking for a few
+    metrics at a time — request what you need to answer the question, not
+    everything available.
+
     Anything not returned is listed in `unavailable` with the reason —
     either the name is not stored at all, or it is stored but has no readings
     in this range. Treat both as missing data. Days on which nothing was

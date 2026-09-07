@@ -685,6 +685,15 @@ def list_health_metrics(conn: sqlite3.Connection) -> list[dict]:
     ]
 
 
+# Ceiling on day rows returned by one health_metrics call, summed across every
+# metric asked for. Without it, requesting all 52 metrics over all time returns
+# 4,039 rows — about 0.73 MB and 180k tokens, which overruns the context window
+# of the model doing the asking long before it troubles the server. Summaries
+# are always computed over the FULL range regardless, so truncation costs
+# resolution, never correctness.
+MAX_HEALTH_DAYS = 500
+
+
 def health_metrics(
     conn: sqlite3.Connection,
     metrics: Sequence[str],
@@ -702,6 +711,11 @@ def health_metrics(
     Metrics that exist but have no data in the range, and metrics that are not
     stored at all, are reported separately in ``unavailable``. Silently omitting
     them would read as "measured, and it was zero".
+
+    Day rows are capped at ``MAX_HEALTH_DAYS`` in total. Metrics are filled in
+    the order requested; once the budget is spent the remaining ones still carry
+    a full, correct summary with an empty ``days`` list and a ``days_omitted``
+    count, so a truncated answer can never be mistaken for a complete one.
     """
     if not metrics:
         raise ValueError("at least one metric name is required")
@@ -709,6 +723,8 @@ def health_metrics(
     known = {r["metric"] for r in conn.execute("SELECT DISTINCT metric FROM health_daily")}
 
     out: dict[str, Any] = {"metrics": {}, "unavailable": {}}
+    budget = MAX_HEALTH_DAYS
+    truncated = False
     for name in metrics:
         if name not in known:
             out["unavailable"][name] = "not stored; call list_health_metrics for the real names"
@@ -733,7 +749,10 @@ def health_metrics(
         values = [d["total"] for d in days if d["total"] is not None] if kind == "cumulative" \
             else [d["avg"] for d in days if d["avg"] is not None]
 
-        out["metrics"][name] = {
+        # The summary is computed over every day in range, then the rows are
+        # trimmed. Summarizing the trimmed slice instead would quietly report a
+        # different average than the one the data supports.
+        block: dict[str, Any] = {
             "kind": kind,
             "unit": days[0]["unit"],
             "days_with_data": len(days),
@@ -743,8 +762,25 @@ def health_metrics(
                 "max_day": round(max(values), 2) if values else None,
                 "range_total": round(sum(values), 2) if kind == "cumulative" and values else None,
             },
-            "days": days,
         }
+        # Most recent days are the ones kept: a partial series is far more
+        # useful ending at today than ending wherever the budget ran out.
+        kept = days[-budget:] if budget else []
+        if len(kept) < len(days):
+            truncated = True
+            block["days_omitted"] = len(days) - len(kept)
+        budget -= len(kept)
+        block["days"] = kept
+        out["metrics"][name] = block
+
+    if truncated:
+        out["note"] = (
+            f"Day-by-day rows were capped at {MAX_HEALTH_DAYS} across this call, so some "
+            "series are shortened or empty — 'days_omitted' says by how much, and the most "
+            "recent days are the ones kept. Every 'summary' still covers the WHOLE range "
+            "and is accurate. Ask for fewer metrics, or a narrower date range, to see the "
+            "full day-by-day series."
+        )
     return out
 
 

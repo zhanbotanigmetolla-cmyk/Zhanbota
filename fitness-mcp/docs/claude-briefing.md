@@ -141,16 +141,24 @@ Recent shape of things, for grounding:
 
 | Month | Sessions | Training days | Reps | Duration | Distance |
 |---|---|---|---|---|---|
-| 2026-03 | 8 | 8 | 125 | 11.7 h | 0.0 km |
-| 2026-04 | 32 | 23 | 1,281 | 12.9 h | 29.0 km |
+| 2026-03 | 13 | 8 | 996 | 17.9 h | 2.4 km |
+| 2026-04 | 35 | 23 | 1,800 | 16.3 h | 31.4 km |
 | 2026-05 | 45 | 23 | 1,474 | 18.9 h | 75.3 km |
 | 2026-06 | 49 | 24 | 1,683 | 13.9 h | 79.2 km |
-| 2026-07 | 52 | 22 | 2,255 | 35.9 h | 320.5 km |
+| 2026-07 | 79 | 27 | 2,673 | 47.9 h | 438.0 km |
+| 2026-08 | 73 | 23 | 923 | 51.0 h | 550.4 km |
 
 Records: **20 pull-ups** in one set (2026-06-21) and **56 push-ups**
 (2026-07-05). Biggest day was 2026-07-10 — 300 pull-ups over 33 sets *and* 600
-push-ups over 31 sets. Recent resting HR averages about 48 bpm, sleep about
-7.9 h.
+push-ups over 31 sets.
+
+Resting HR and sleep must be quoted with the device in mind. Over Aug-Sep 2026
+(Apple Watch) resting HR averages about **59 bpm** and sleep about **7.2 h**.
+The older Mi Band figures average about 48 bpm — that gap is the two devices
+measuring differently, not a decline. Do not compare across 2026-07-26.
+
+August 2026 shows high duration and distance with low reps: that is a genuine
+shift toward cycling and running, not missing strength data.
 
 ## Known data quirks
 

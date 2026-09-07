@@ -23,6 +23,20 @@ All notable changes to Турникмен / Pullup Bot are documented here.
   mistaken for "this was never measured".
 
 ### Fixed
+- `health_metrics` returned an unbounded number of day rows. Asking for all 52 metrics
+  over all time produced 4,039 rows — 0.73 MB, about 180,000 tokens — which overruns the
+  context window of the model doing the asking long before it troubles the server. Day
+  rows are now capped at 500 per call, most recent kept, with a `note` and a per-metric
+  `days_omitted` so a shortened answer can't be mistaken for a complete one. Summaries are
+  computed *before* the trim and still cover the whole range, so the cap costs resolution
+  and never correctness.
+- Percentages were imported as HealthKit stores them — 0..1 fractions labelled `%` —
+  which shipped 0.2% body fat and 1% blood oxygen. Values that absurd read as medical
+  emergencies rather than as a unit bug. Caught by reading values back after the live
+  import, not by the tests.
+- Stale grounding figures in the claude.ai briefing: the monthly table and the "resting HR
+  ~48 bpm / sleep ~7.9 h" line predated both the Hevy and Apple imports. July was listed as
+  52 sessions and 320 km when it is 79 and 438.
 - `recovery_metrics` returned one row **per source per day**, so a day covered by two
   wearables was counted twice and the same night's sleep averaged in twice. Days are now
   collapsed to a single row, filling each field from the best available source, and the
