@@ -4,6 +4,27 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-09-08]
+
+### Added
+- **Nightly backups of the bot's databases** (`pullup_bot/deploy/`) — the bot had none. Its
+  most recent snapshot was a hand-made copy five weeks old, while fitness-mcp (whose data
+  is largely re-importable from upstream archives) was being snapshotted every night. Every
+  rep, streak and plan in `pullups.db` exists nowhere else. Uses SQLite's online backup API,
+  not a file copy, because copying a live WAL database yields a snapshot that looks fine
+  until you need it. Keeps 14 days of both `pullups.db` and `pullups_fsm.db`, and writes to
+  its own `backups/` directory so pruning can never reach the hand-made checkpoints beside
+  the live database — including deliberately named ones like `...-preweighted`.
+
+### Fixed
+- Two orphaned Python processes from ad-hoc SSH runs (`catchup_notify.py`, `verify_stats.py`)
+  had been hung in interpreter shutdown for 62 and 49 days, holding stale SQLite read locks
+  on the live bot database. That blocked WAL checkpointing: `pullups.db-wal` had grown to
+  4.2 MB against a 405 KB database, and `pullups.db` itself had not been written since
+  2026-08-24 — roughly two weeks of activity lived only in the WAL. Killing them let the
+  checkpoint run; the WAL is now 0 bytes, integrity checks clean, and ~240 MB of swap came
+  back. The scripts themselves no longer existed on disk.
+
 ## [2026-09-07]
 
 ### Added

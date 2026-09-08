@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily snapshot of the pullup bot databases
+
+[Timer]
+OnCalendar=daily
+# Catch up rather than skipping if the VM was down at the scheduled time.
+Persistent=true
+# Offset from the fitness-mcp backup so two SQLite snapshots plus the hourly
+# sync do not all contend on a 1 vCPU box at the same minute.
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target
