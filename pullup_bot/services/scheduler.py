@@ -244,6 +244,8 @@ async def daily_health_summary(bot):
     errors = snap.get("errors", 0)
     unhandled = snap.get("unhandled", 0)
     actions = snap.get("actions", 0)
+    retries = snap.get("api_retries", 0)
+    net_errors = snap.get("network_errors", 0)
     msg = (
         f"📊 Ежедневный отчёт бота\n"
         f"👤 Пользователей: {total_users}\n"
@@ -252,6 +254,8 @@ async def daily_health_summary(bot):
         f"❌ Ошибок: {errors}\n"
         f"❓ Необработанных сообщений: {unhandled}"
     )
+    if retries or net_errors:
+        msg += f"\n📡 Сеть: {retries} повторов, {net_errors} сбоев"
     try:
         await bot.send_message(ADMIN_TG_ID, msg)
     except Exception as e:
