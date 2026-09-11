@@ -3,6 +3,7 @@ import time as _time
 import traceback
 
 from aiogram import Bot, Dispatcher, types
+from aiogram.exceptions import TelegramNetworkError, TelegramServerError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, is_admin_user, logger
@@ -14,11 +15,13 @@ from .services.scheduler import (auto_acknowledge_rest_days, auto_cleanup_inacti
                                   db_integrity_check, watchdog_health_check,
                                   weekly_summary)
 from .services import monitoring
+from .services.net import retry_middleware
 from . import globals as g
 
 g.BOT_START_TIME = _time.monotonic()
 
 bot = Bot(token=BOT_TOKEN)
+bot.session.middleware(retry_middleware)
 storage = SqliteStorage(db_path=FSM_DB_PATH)
 dp = Dispatcher(storage=storage)
 scheduler = AsyncIOScheduler()
@@ -41,6 +44,16 @@ async def errors_handler(event: types.ErrorEvent) -> bool:
         uid = (update.message.from_user.id if update.message and update.message.from_user
                else update.callback_query.from_user.id if update.callback_query else "?")
         context = f"user={uid}{context}"
+
+    if isinstance(exc, (TelegramNetworkError, TelegramServerError)):
+        # Telegram dropped the connection even after retries — nothing to fix on
+        # our side, so log it and skip the admin alert instead of spamming.
+        logger.warning(
+            f"[NETWORK] update={update.update_id if update else '?'} {context} "
+            f"{type(exc).__name__}: {exc}"
+        )
+        monitoring.inc("network_errors")
+        return True
 
     logger.error(
         f"[ERROR] update={update.update_id if update else '?'} {context}\n"
