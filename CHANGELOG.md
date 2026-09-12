@@ -4,6 +4,17 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-09-12]
+
+### Fixed
+- **`CLAUDE.md` pointed at a dead server IP.** The GCP VM's external address is ephemeral and
+  changed on a reboot back in July; this branch still listed the pre-reboot `34.123.71.99` in
+  the server table and in every ssh example, so a session that trusted it spent its first
+  minutes on connection timeouts before finding the live host. Corrected to `35.226.20.162`
+  and, so this stops recurring, the ephemeral-IP warning is back with a pointer to the GCP
+  console. Copied verbatim from the deployed branch, which already had it right — the two
+  files are now identical.
+
 ## [2026-09-08]
 
 ### Added
