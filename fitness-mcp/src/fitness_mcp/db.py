@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS workouts (
@@ -108,7 +108,45 @@ _SCHEMA_V3 = """
 ALTER TABLE sets ADD COLUMN set_type TEXT;
 """
 
-_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3}
+_SCHEMA_V4 = """
+-- General daily health metrics, one row per (source, day, metric).
+--
+-- Why a tall table rather than more columns on daily_metrics: the Apple Health
+-- export carries ~50 different measurement types and Apple adds more with every
+-- iOS release. A column per metric would mean a migration every time the watch
+-- learns a new trick, and ~45 permanently-NULL columns for every non-Apple
+-- source. Rows cost nothing here — a year of every Apple metric is ~15k rows.
+--
+-- daily_metrics is deliberately NOT replaced. It stays the narrow, curated
+-- shape that recovery_metrics reads (resting HR, sleep, steps, stress) and that
+-- the Xiaomi and Apple push adapters already write. This table is the wide,
+-- open-ended companion, and the few metrics that appear in both are written to
+-- both on purpose.
+CREATE TABLE IF NOT EXISTS health_daily (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    source      TEXT    NOT NULL,
+    local_date  TEXT    NOT NULL,           -- 'YYYY-MM-DD' in the configured local zone
+    metric      TEXT    NOT NULL,           -- snake_case, e.g. 'resting_heart_rate'
+    -- 'cumulative' (a daily total is the meaningful figure: steps, kcal) or
+    -- 'discrete' (a reading; the average/min/max are meaningful, the sum is
+    -- nonsense). Readers must not quote total for a discrete metric — summing
+    -- 54,000 heart-rate readings produces a number that means nothing.
+    kind        TEXT    NOT NULL,
+    unit        TEXT,
+    sample_count INTEGER NOT NULL,
+    total       REAL,
+    avg         REAL,
+    min         REAL,
+    max         REAL,
+    imported_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE(source, local_date, metric)
+);
+
+CREATE INDEX IF NOT EXISTS idx_health_daily_date   ON health_daily(local_date);
+CREATE INDEX IF NOT EXISTS idx_health_daily_metric ON health_daily(metric, local_date);
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4}
 
 
 # ── connection ──────────────────────────────────────────────────────────────
@@ -262,7 +300,8 @@ _WORKOUT_COLS = """
 
 
 """Sources currently written by an adapter. Exposed so tools can name them."""
-KNOWN_SOURCES = ("pullup_bot", "hevy_export", "strava_export", "xiaomi_export", "apple_health")
+KNOWN_SOURCES = ("pullup_bot", "hevy_export", "strava_export", "xiaomi_export",
+                 "apple_health", "apple_health_export")
 
 
 def _source_clause(source: str | None, params: list[Any], prefix: str = "") -> str:
@@ -588,8 +627,205 @@ def upsert_daily_metric(conn: sqlite3.Connection, m: DailyMetricRow) -> None:
     )
 
 
+# ── general daily health metrics ────────────────────────────────────────────
+
+@dataclass
+class HealthDailyRow:
+    source: str
+    local_date: str
+    metric: str
+    kind: str                    # 'cumulative' or 'discrete'
+    unit: str | None = None
+    sample_count: int = 0
+    total: float | None = None
+    avg: float | None = None
+    min: float | None = None
+    max: float | None = None
+
+
+def upsert_health_daily(conn: sqlite3.Connection, m: HealthDailyRow) -> None:
+    conn.execute(
+        """
+        INSERT INTO health_daily (source, local_date, metric, kind, unit,
+                                  sample_count, total, avg, min, max)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source, local_date, metric) DO UPDATE SET
+            kind         = excluded.kind,
+            unit         = excluded.unit,
+            sample_count = excluded.sample_count,
+            total        = excluded.total,
+            avg          = excluded.avg,
+            min          = excluded.min,
+            max          = excluded.max,
+            imported_at  = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        """,
+        (m.source, m.local_date, m.metric, m.kind, m.unit,
+         m.sample_count, m.total, m.avg, m.min, m.max),
+    )
+
+
+def list_health_metrics(conn: sqlite3.Connection) -> list[dict]:
+    """Every metric held in health_daily, with its coverage and units.
+
+    This is the discovery call: health_metrics matches metric names exactly, so
+    guessing at a name gives an empty result that looks like "no data". Listing
+    first makes the difference between "not measured" and "misspelled" visible.
+    """
+    return [
+        dict(r)
+        for r in conn.execute(
+            """SELECT metric, kind, unit, source,
+                      COUNT(*)        AS days,
+                      MIN(local_date) AS first_date,
+                      MAX(local_date) AS last_date
+               FROM health_daily
+               GROUP BY metric, kind, unit, source
+               ORDER BY metric, source"""
+        )
+    ]
+
+
+# Ceiling on day rows returned by one health_metrics call, summed across every
+# metric asked for. Without it, requesting all 52 metrics over all time returns
+# 4,039 rows — about 0.73 MB and 180k tokens, which overruns the context window
+# of the model doing the asking long before it troubles the server. Summaries
+# are always computed over the FULL range regardless, so truncation costs
+# resolution, never correctness.
+MAX_HEALTH_DAYS = 500
+
+
+def health_metrics(
+    conn: sqlite3.Connection,
+    metrics: Sequence[str],
+    start_date: str,
+    end_date: str,
+    source: str | None = None,
+) -> dict:
+    """Daily series for one or more named metrics over a date range.
+
+    Returns a per-metric block carrying the day rows and a summary. Cumulative
+    and discrete metrics are summarized differently — a daily total for the
+    former, an average of the daily averages for the latter — because summing
+    discrete readings is meaningless.
+
+    Metrics that exist but have no data in the range, and metrics that are not
+    stored at all, are reported separately in ``unavailable``. Silently omitting
+    them would read as "measured, and it was zero".
+
+    Day rows are capped at ``MAX_HEALTH_DAYS`` in total. Metrics are filled in
+    the order requested; once the budget is spent the remaining ones still carry
+    a full, correct summary with an empty ``days`` list and a ``days_omitted``
+    count, so a truncated answer can never be mistaken for a complete one.
+    """
+    if not metrics:
+        raise ValueError("at least one metric name is required")
+
+    known = {r["metric"] for r in conn.execute("SELECT DISTINCT metric FROM health_daily")}
+
+    out: dict[str, Any] = {"metrics": {}, "unavailable": {}}
+    budget = MAX_HEALTH_DAYS
+    truncated = False
+    for name in metrics:
+        if name not in known:
+            out["unavailable"][name] = "not stored; call list_health_metrics for the real names"
+            continue
+
+        params: list[Any] = [name, start_date, end_date]
+        sql = """SELECT local_date, source, kind, unit, sample_count, total, avg, min, max
+                 FROM health_daily
+                 WHERE metric = ? AND local_date BETWEEN ? AND ?"""
+        sql += _source_clause(source, params)
+        sql += " ORDER BY local_date"
+        days = [dict(r) for r in conn.execute(sql, params)]
+
+        if not days:
+            out["unavailable"][name] = "stored, but no readings fall in this date range"
+            continue
+
+        kind = days[0]["kind"]
+        # Cumulative metrics are summarized by their daily totals, discrete ones
+        # by their daily averages. Mixing the two would be the single easiest
+        # way to report a nonsense number here.
+        values = [d["total"] for d in days if d["total"] is not None] if kind == "cumulative" \
+            else [d["avg"] for d in days if d["avg"] is not None]
+
+        # The summary is computed over every day in range, then the rows are
+        # trimmed. Summarizing the trimmed slice instead would quietly report a
+        # different average than the one the data supports.
+        block: dict[str, Any] = {
+            "kind": kind,
+            "unit": days[0]["unit"],
+            "days_with_data": len(days),
+            "summary": {
+                "daily_avg": _avg(values),
+                "min_day": round(min(values), 2) if values else None,
+                "max_day": round(max(values), 2) if values else None,
+                "range_total": round(sum(values), 2) if kind == "cumulative" and values else None,
+            },
+        }
+        # Most recent days are the ones kept: a partial series is far more
+        # useful ending at today than ending wherever the budget ran out.
+        kept = days[-budget:] if budget else []
+        if len(kept) < len(days):
+            truncated = True
+            block["days_omitted"] = len(days) - len(kept)
+        budget -= len(kept)
+        block["days"] = kept
+        out["metrics"][name] = block
+
+    if truncated:
+        out["note"] = (
+            f"Day-by-day rows were capped at {MAX_HEALTH_DAYS} across this call, so some "
+            "series are shortened or empty — 'days_omitted' says by how much, and the most "
+            "recent days are the ones kept. Every 'summary' still covers the WHOLE range "
+            "and is accurate. Ask for fewer metrics, or a narrower date range, to see the "
+            "full day-by-day series."
+        )
+    return out
+
+
 def _avg(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 1) if values else None
+
+
+_DAILY_METRIC_FIELDS = ("resting_hr", "sleep_minutes", "steps", "stress")
+
+
+def _collapse_daily_metrics(rows: Iterable[sqlite3.Row]) -> list[dict]:
+    """Reduce several sources' rows for one day to a single row.
+
+    daily_metrics is keyed on (source, local_date), so a day covered by both the
+    Mi Fitness and the Apple Health export holds two rows. Returning both would
+    double the day count and let the same night's sleep be averaged in twice.
+
+    Fields are filled independently, best available source first: a source that
+    recorded a resting HR but no sleep does not block a lower-ranked source from
+    supplying the sleep. Losing a real measurement to preserve a tidy
+    single-source rule would be the worse trade.
+    """
+    by_day: dict[str, dict] = {}
+    for row in rows:
+        day = by_day.setdefault(
+            row["local_date"],
+            {"local_date": row["local_date"], "sources": [],
+             **{f: None for f in _DAILY_METRIC_FIELDS}},
+        )
+        day["sources"].append((_priority(row["source"]), row["source"], row))
+
+    out = []
+    for day in by_day.values():
+        contributed: list[str] = []
+        for _, source, row in sorted(day["sources"], key=lambda s: s[0]):
+            used = False
+            for field in _DAILY_METRIC_FIELDS:
+                if day[field] is None and row[field] is not None:
+                    day[field] = row[field]
+                    used = True
+            if used:
+                contributed.append(source)
+        day["sources"] = contributed
+        out.append(day)
+    return sorted(out, key=lambda d: d["local_date"])
 
 
 def recovery_metrics(conn: sqlite3.Connection, start_date: str, end_date: str) -> dict:
@@ -597,24 +833,27 @@ def recovery_metrics(conn: sqlite3.Connection, start_date: str, end_date: str) -
 
     The trend is a plain comparison of the two halves of the range, not a
     regression. It is easy to explain and hard to over-read, which is the point.
+
+    Days covered by more than one wearable are collapsed to a single row before
+    anything is averaged — see :func:`_collapse_daily_metrics`.
     """
-    rows = [
-        dict(r)
-        for r in conn.execute(
-            """SELECT local_date, resting_hr, sleep_minutes, steps, stress
+    rows = _collapse_daily_metrics(
+        conn.execute(
+            """SELECT local_date, source, resting_hr, sleep_minutes, steps, stress
                FROM daily_metrics
                WHERE local_date BETWEEN ? AND ?
                ORDER BY local_date""",
             (start_date, end_date),
         )
-    ]
+    )
 
     if not rows:
         return {
             "days": [],
-            "note": "No daily wellness data is stored for this range. These metrics "
-                    "come from the Xiaomi export only; the pullup bot records none. "
-                    "This means no data source is connected, not that recovery was poor.",
+            "note": "No daily wellness data is stored for this range. These metrics come "
+                    "from the wearable exports (Mi Fitness, and Apple Health from "
+                    "2025-11-05); the pullup bot and Hevy record none of them. This means "
+                    "no data source covers these dates, not that recovery was poor.",
             "resting_hr": None,
             "sleep": None,
             "trend": None,
@@ -670,7 +909,15 @@ _RICHNESS_FIELDS = ("duration_s", "distance_m", "avg_hr", "max_hr", "kcal", "ele
 # hevy_export sits above the wearables for gym sessions because it is the only
 # source that knows what was actually lifted. It rarely gets that far, though:
 # the rule below refuses to supersede a row carrying sets in the first place.
-SOURCE_PRIORITY = ("hevy_export", "xiaomi_export", "apple_health", "strava_export", "pullup_bot")
+SOURCE_PRIORITY = ("hevy_export", "xiaomi_export", "apple_health", "strava_export",
+                   "apple_health_export", "pullup_bot")
+# apple_health_export ranks below every native source on purpose, and below the
+# live apple_health push despite carrying the same measurements. The archive
+# re-exports activities that Strava and Mi Fitness pushed INTO HealthKit, so for
+# those the native export is the original and the Apple copy is a lossy round
+# trip: it keeps a distance and an energy total but drops elevation and per-lap
+# detail. For the ~38 sessions the Apple Watch recorded itself nothing else
+# holds them, so they are never deduplicated away and the ranking costs nothing.
 
 
 def _priority(source: str) -> int:

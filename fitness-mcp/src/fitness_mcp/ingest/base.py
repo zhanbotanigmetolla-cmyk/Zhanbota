@@ -13,7 +13,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Iterable, Protocol, runtime_checkable
 
-from ..db import WorkoutRow, upsert_daily_metric, upsert_workout
+from ..db import WorkoutRow, upsert_daily_metric, upsert_health_daily, upsert_workout
 
 log = logging.getLogger("fitness_mcp.ingest")
 
@@ -40,6 +40,7 @@ class IngestResult:
     created: int = 0
     updated: int = 0
     daily_metrics: int = 0
+    health_daily: int = 0
     failed: bool = False
     error: str | None = None
     warnings: list[str] = field(default_factory=list)
@@ -63,6 +64,9 @@ def run_adapter(conn: sqlite3.Connection, adapter: Adapter) -> IngestResult:
         # sources have. Fetched before the transaction opens so a parse failure
         # here aborts cleanly rather than half-writing the workouts.
         metrics = list(adapter.fetch_daily_metrics()) if hasattr(adapter, "fetch_daily_metrics") else []
+        # Optional third stream: the wide health_daily table. Only the Apple
+        # Health export fills it today.
+        health = list(adapter.fetch_health_daily()) if hasattr(adapter, "fetch_health_daily") else []
     except Exception as exc:  # noqa: BLE001 - fail soft is the whole point
         log.exception("adapter %s failed during fetch", adapter.name)
         result.failed = True
@@ -80,11 +84,14 @@ def run_adapter(conn: sqlite3.Connection, adapter: Adapter) -> IngestResult:
             for metric in metrics:
                 upsert_daily_metric(conn, metric)
                 result.daily_metrics += 1
+            for entry in health:
+                upsert_health_daily(conn, entry)
+                result.health_daily += 1
     except Exception as exc:  # noqa: BLE001
         log.exception("adapter %s failed during write", adapter.name)
         result.failed = True
         result.error = f"{type(exc).__name__}: {exc}"
-        result.created = result.updated = result.daily_metrics = 0
+        result.created = result.updated = result.daily_metrics = result.health_daily = 0
 
     warnings = getattr(adapter, "warnings", None)
     if warnings:

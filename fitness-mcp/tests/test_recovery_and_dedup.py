@@ -104,7 +104,7 @@ def test_no_wellness_data_explains_itself_rather_than_returning_zeros(fitness_db
     r = db.recovery_metrics(fitness_db, "2026-01-01", "2026-12-31")
     assert r["days"] == []
     assert r["resting_hr"] is None and r["sleep"] is None and r["trend"] is None
-    assert "no data source is connected" in r["note"].lower()
+    assert "no data source covers these dates" in r["note"].lower()
 
 
 def test_recovery_metrics_respects_range(wellness):

@@ -4,6 +4,83 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-09-12]
+
+### Fixed
+- **`CLAUDE.md` pointed at a dead server IP.** The GCP VM's external address is ephemeral and
+  changed on a reboot back in July; this branch still listed the pre-reboot `34.123.71.99` in
+  the server table and in every ssh example, so a session that trusted it spent its first
+  minutes on connection timeouts before finding the live host. Corrected to `35.226.20.162`
+  and, so this stops recurring, the ephemeral-IP warning is back with a pointer to the GCP
+  console. Copied verbatim from the deployed branch, which already had it right — the two
+  files are now identical.
+
+## [2026-09-08]
+
+### Added
+- **Nightly backups of the bot's databases** (`pullup_bot/deploy/`) — the bot had none. Its
+  most recent snapshot was a hand-made copy five weeks old, while fitness-mcp (whose data
+  is largely re-importable from upstream archives) was being snapshotted every night. Every
+  rep, streak and plan in `pullups.db` exists nowhere else. Uses SQLite's online backup API,
+  not a file copy, because copying a live WAL database yields a snapshot that looks fine
+  until you need it. Keeps 14 days of both `pullups.db` and `pullups_fsm.db`, and writes to
+  its own `backups/` directory so pruning can never reach the hand-made checkpoints beside
+  the live database — including deliberately named ones like `...-preweighted`.
+
+### Fixed
+- Two orphaned Python processes from ad-hoc SSH runs (`catchup_notify.py`, `verify_stats.py`)
+  had been hung in interpreter shutdown for 62 and 49 days, holding stale SQLite read locks
+  on the live bot database. That blocked WAL checkpointing: `pullups.db-wal` had grown to
+  4.2 MB against a 405 KB database, and `pullups.db` itself had not been written since
+  2026-08-24 — roughly two weeks of activity lived only in the WAL. Killing them let the
+  checkpoint run; the WAL is now 0 bytes, integrity checks clean, and ~240 MB of swap came
+  back. The scripts themselves no longer existed on disk.
+
+## [2026-09-07]
+
+### Added
+- **Apple Health export import** (`--source apple_health_export --apple-dir <dir>`) — the
+  full HealthKit archive, 417,429 records parsed in about 20 seconds. It closes the gap
+  the other sources left: the Xiaomi and Strava exports both stop at 2026-07-26, and this
+  brings 96 sessions running through 2026-09-06, most of them Apple Watch rides and runs
+  that nothing else recorded.
+- **52 daily health metrics across 307 days** in a new `health_daily` table (schema v4) —
+  body mass, body fat, VO2 max, HRV, blood oxygen, respiratory rate, energy burned,
+  walking gait, mindful minutes and more. A tall (source, day, metric) table rather than
+  50 new columns, because Apple adds measurement types with every iOS release and a column
+  each would mean a migration every time.
+- Two MCP tools over that table: `list_health_metrics` to discover what exists and over
+  what dates, and `health_metrics` to pull daily series for named metrics. Metrics that
+  are missing versus misspelled are reported differently, so an empty answer is never
+  mistaken for "this was never measured".
+
+### Fixed
+- `health_metrics` returned an unbounded number of day rows. Asking for all 52 metrics
+  over all time produced 4,039 rows — 0.73 MB, about 180,000 tokens — which overruns the
+  context window of the model doing the asking long before it troubles the server. Day
+  rows are now capped at 500 per call, most recent kept, with a `note` and a per-metric
+  `days_omitted` so a shortened answer can't be mistaken for a complete one. Summaries are
+  computed *before* the trim and still cover the whole range, so the cap costs resolution
+  and never correctness.
+- Percentages were imported as HealthKit stores them — 0..1 fractions labelled `%` —
+  which shipped 0.2% body fat and 1% blood oxygen. Values that absurd read as medical
+  emergencies rather than as a unit bug. Caught by reading values back after the live
+  import, not by the tests.
+- Stale grounding figures in the claude.ai briefing: the monthly table and the "resting HR
+  ~48 bpm / sleep ~7.9 h" line predated both the Hevy and Apple imports. July was listed as
+  52 sessions and 320 km when it is 79 and 438.
+- `recovery_metrics` returned one row **per source per day**, so a day covered by two
+  wearables was counted twice and the same night's sleep averaged in twice. Days are now
+  collapsed to a single row, filling each field from the best available source, and the
+  contributing sources are named on the row. This was latent before and would have become
+  wrong on 259 days the moment Apple Health data landed.
+
+### Changed
+- `recovery_metrics` and the source documentation no longer claim Mi Fitness is the only
+  wellness source, and now warn that resting HR jumps about 10 bpm across 2026-07-26 —
+  that is the Mi Band being replaced by the Apple Watch, not a change in recovery. A trend
+  spanning that date compares hardware.
+
 ## [2026-07-27]
 
 ### Added

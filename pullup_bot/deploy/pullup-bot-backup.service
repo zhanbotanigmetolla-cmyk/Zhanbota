@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily snapshot of the pullup bot databases
+After=network.target
+
+[Service]
+Type=oneshot
+# Uses the bot's own venv so this keeps working even if fitness-mcp is
+# redeployed or removed. The bot's data must not depend on another project.
+ExecStart=/home/nigmetolla_zhanbota/.venv-pullup/bin/python /home/nigmetolla_zhanbota/bin/backup_bot_db.py --keep 14
+MemoryMax=100M
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

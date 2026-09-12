@@ -23,7 +23,7 @@ git push -u origin fix/short-description
 gh pr create --title "..." --body "..." 
 
 # 4. Deploy from the branch
-ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99 "~/deploy.sh"
+ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@35.226.20.162 "~/deploy.sh"
 
 # 5. After approval, merge on GitHub (user clicks Merge) or:
 gh pr merge --squash --delete-branch
@@ -57,9 +57,11 @@ The bot runs on GCP — the old VPS in Germany is no longer used.
 | Machine | e2-micro, 1 vCPU, 1 GB RAM, 30 GB standard disk |
 | Region | us-central1-f (Iowa) |
 | OS | Ubuntu 22.04 LTS |
-| External IP | 34.123.71.99 |
+| External IP | 35.226.20.162 (as of 2026-07-13) |
 | User | nigmetolla_zhanbota |
-| SSH | `ssh nigmetolla_zhanbota@34.123.71.99` (key-based, no password) |
+| SSH | `ssh nigmetolla_zhanbota@35.226.20.162` (key-based, no password) |
+
+⚠️ **The external IP is ephemeral** — it changes when the VM stops/restarts (34.123.71.99 → 35.226.20.162 on 2026-07-07). If SSH *times out*, don't assume the bot is down: the VM likely got a new IP. Check GCP Console → Compute Engine → VM instances (`instance-20260406-162354`, us-central1-f) and update the IP here.
 
 ### Bot locations on server
 
@@ -74,7 +76,7 @@ The bot runs on GCP — the old VPS in Germany is no longer used.
 
 Claude Code connects to the server using a dedicated passphrase-free key:
 - **Private key:** `~/.ssh/id_ed25519_claude`
-- **Always use:** `ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99`
+- **Always use:** `ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@35.226.20.162`
 
 The user's own key (`~/.ssh/id_ed25519`) has a passphrase and cannot be used non-interactively.
 
@@ -82,13 +84,13 @@ The user's own key (`~/.ssh/id_ed25519`) has a passphrase and cannot be used non
 
 ```bash
 # Check status
-ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99 "systemctl --user status pullup-bot.service"
+ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@35.226.20.162 "systemctl --user status pullup-bot.service"
 
 # Restart
-ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99 "systemctl --user restart pullup-bot.service"
+ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@35.226.20.162 "systemctl --user restart pullup-bot.service"
 
 # View logs
-ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@34.123.71.99 "journalctl --user -u pullup-bot.service -n 50"
+ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@35.226.20.162 "journalctl --user -u pullup-bot.service -n 50"
 ```
 
 ## Deploy Workflow

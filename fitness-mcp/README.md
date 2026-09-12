@@ -241,6 +241,48 @@ Stress covers only 69 of 390 days — the band samples it in specific modes only
 Xiaomi's own daily rollup covers exactly the same 69 days, so the per-minute
 mean is used purely for being one consistent method.
 
+## Apple Health export — built
+
+The full HealthKit archive: *Health → profile picture → Export All Health Data*.
+Unzip it and point the adapter at the directory.
+
+```bash
+./.venv/Scripts/python.exe -m fitness_mcp.ingest_cli \
+    --source apple_health_export --apple-dir path/to/apple_health_export --dedupe
+```
+
+This is what makes the server a *health* server rather than a training one. It
+brought **52 daily metrics across 307 days** — body mass and body fat, VO2 max,
+HRV, blood oxygen, respiratory rate, walking gait, energy burned, mindful
+minutes — reachable through the new `health_metrics` and `list_health_metrics`
+tools. It also closed the coverage gap: the Xiaomi and Strava exports both stop
+at 2026-07-26, and its 96 surviving sessions run to 2026-09-06.
+
+Scale forces the shape of the adapter. The XML is 183 MB and 417,429 records, on
+a 1 GB VM, so it is streamed with `iterparse` and the root is cleared as it goes;
+resident memory stays flat and a full import takes about 20 seconds. Everything
+is aggregated to daily figures — keeping 54,562 individual heart-rate samples
+would grow the database a hundredfold to answer questions nobody asks.
+
+### What the real archive taught us
+
+| Trap | Reality |
+|---|---|
+| Multi-device double counting | The worst one. HealthKit keeps the iPhone's, the Watch's *and* Mi Fitness's copy of the same walk. Summing 2026-07-27's steps gives 28,104 for a day of 14,067. Cumulative metrics are totalled per device and the busiest device wins; discrete readings pool instead. |
+| Distance and energy | Live in `WorkoutStatistics` children, **not** in the `Workout` attributes. This archive has no `totalDistance` attribute at all — reading attributes alone loses every distance and calorie in the file. |
+| Filename | Localized. This export's is `экспорт.xml`, not `export.xml`. |
+| `export_cda.xml` | The same data in clinical-document schema. Ignored, not parsed twice. |
+| Duplicate workouts | 30 of 163 share a start second: Mi Fitness and Strava both writing one ride into HealthKit. They collapse onto one `source_id` and the richer copy wins. |
+| Category records | Carry a state name, not a number. Only sleep, `MindfulSession` and `AppleStandHour` convert meaningfully; the rest are reported in a warning rather than dropped silently. |
+| `AppleStandHour` | Two states, stood and idle. Counting both reports a flat 24 every day. |
+
+`kind` on every `health_daily` row says whether a daily **total** or an
+**average** is the meaningful figure. Discrete metrics store a null `total` on
+purpose: adding up 54,000 heart-rate readings is not a number anyone wants.
+
+ECG CSVs and the 40 GPX workout routes in the archive are deliberately not
+imported — neither answers a question these tools are asked.
+
 ## Deduplication in practice
 
 With all three sources loaded, **125 of 129 Strava activities proved to be the
