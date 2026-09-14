@@ -11,6 +11,7 @@ from ..keyboards import ai_chat_kb, back_only_kb, main_kb
 from ..services.xp import (day_type_for, display, fmt_kg, level_info, user_base,
                            user_weight)
 from ..services.gemini import get_manager, RATE_LIMIT_DAILY, RATE_LIMIT_MINUTE
+from ..services.support import support_line
 from ..states import AIChat
 
 router = Router()
@@ -342,10 +343,11 @@ async def _send_reply(message, thinking_msg, reply: str, lang: str, history: lis
         pass
 
     try:
-        await message.answer(f"🤖 {reply}", parse_mode="Markdown",
+        await message.answer(f"🤖 {reply}" + support_line(lang), parse_mode="Markdown",
                              reply_markup=ai_chat_kb(lang))
     except Exception:
-        await message.answer(f"🤖 {reply}", reply_markup=ai_chat_kb(lang))
+        await message.answer(f"🤖 {reply}" + support_line(lang, markdown=False),
+                             reply_markup=ai_chat_kb(lang))
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +396,8 @@ async def ai_chat_start(message: aiogram_types.Message, state: FSMContext):
             "I have all your training data and base my answers on it, so every response is personalised to you. "
             "Tap *💡 Get Advice* and I'll break down your data right away."
         )
-    await message.answer(intro, parse_mode="Markdown", reply_markup=ai_chat_kb(lang))
+    await message.answer(intro + support_line(lang), parse_mode="Markdown",
+                         reply_markup=ai_chat_kb(lang))
 
 
 @router.message(AIChat.chatting, text_filter("btn_back"))

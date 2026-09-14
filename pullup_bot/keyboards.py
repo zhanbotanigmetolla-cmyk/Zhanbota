@@ -6,7 +6,7 @@ from aiogram.types import (InlineKeyboardMarkup, KeyboardButton,
                            ReplyKeyboardMarkup)
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
-from .config import START_MENU_LABEL
+from .config import KASPI_PHONE, START_MENU_LABEL
 from .i18n import t
 
 
@@ -17,7 +17,10 @@ def main_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b.row(KeyboardButton(text=t("btn_stats", lang)), KeyboardButton(text=t("btn_history", lang)))
     b.row(KeyboardButton(text=t("btn_friends", lang)), KeyboardButton(text=t("btn_ai", lang)))
     b.row(KeyboardButton(text=t("btn_settings", lang)), KeyboardButton(text=t("btn_bug", lang)))
-    b.row(KeyboardButton(text=t("btn_leaderboard", lang)))
+    bottom = [KeyboardButton(text=t("btn_leaderboard", lang))]
+    if KASPI_PHONE:
+        bottom.append(KeyboardButton(text=t("btn_support", lang)))
+    b.row(*bottom)
     return b.as_markup(resize_keyboard=True, persistent=True)
 
 

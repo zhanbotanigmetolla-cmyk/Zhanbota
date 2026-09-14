@@ -32,6 +32,10 @@ WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
 # UTC offset for notification time matching (default: UTC+5 = Kazakhstan/Almaty)
 TZ_OFFSET_HOURS = int(os.environ.get("TZ_OFFSET_HOURS", "5"))
+# Kaspi transfer details for the "support the project" note. The number lives in the
+# server .env, not in the repo; while it is unset the support button and note stay hidden.
+KASPI_PHONE = os.environ.get("KASPI_PHONE", "").strip()
+KASPI_NAME = os.environ.get("KASPI_NAME", "Жанбота Н.").strip()
 
 PROGRAMS = {
     "standard": {   # 5x/week — original wave cycle

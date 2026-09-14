@@ -8,6 +8,7 @@ from ..config import EXERCISES, EXERCISE_EMOJI
 from ..db import get_db, get_user
 from ..i18n import t, text_filter, day_name
 from ..keyboards import history_nav_kb
+from ..services.support import support_line
 from ..services.xp import fmt_kg
 
 
@@ -100,7 +101,7 @@ async def _show_week(target, user, offset: int, edit: bool = False):
 
     title = t("history_title", lang, date_from=mo_str, date_to=su_str)
     body = _format_week(rows_by_date, monday, sunday, lang)
-    text = f"{title}\n\n{body}"
+    text = f"{title}\n\n{body}" + support_line(lang)
     kb = history_nav_kb(offset, lang)
 
     if edit:
@@ -189,6 +190,7 @@ async def _show_monthly(target, user, edit: bool = False):
                            days=days_map.get(month, 0)))
         text = "\n".join(lines)
 
+    text += support_line(lang)
     kb = history_nav_kb(0, lang, monthly=True)
     if edit:
         await target.edit_text(text, parse_mode="Markdown", reply_markup=kb)
