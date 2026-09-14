@@ -4,6 +4,18 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
+## [2026-09-14]
+
+### Added
+- **A way to support the project via Kaspi.** Until now there was no way for users who find
+  the bot useful to chip in. Now:
+  - a **☕ Support** button sits in the bottom row of the main menu, next to Leaderboard, and
+    shows the Kaspi number (tap to copy) with the recipient's name;
+  - every finished workout summary (which already shows done/target and the streak) ends with a
+    short bold note: *Want to support the project? You can transfer any amount to my Kaspi.*
+  The number is read from `KASPI_PHONE` in the server's `.env` so it stays out of the public
+  repo. Until it's set, both the button and the note stay hidden.
+
 ## [2026-09-11]
 
 ### Fixed

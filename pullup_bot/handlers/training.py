@@ -9,7 +9,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 
 from ..config import (BASE_COLS, BEST_WEIGHT_COLS, EFFECT_CONFETTI, EFFECT_FIRE,
-                      EXERCISES, EXERCISE_EMOJI, MAX_WEIGHT_KG, PR_COLS, PROGRAMS,
+                      EXERCISES, EXERCISE_EMOJI, KASPI_NAME, KASPI_PHONE,
+                      MAX_WEIGHT_KG, PR_COLS, PROGRAMS,
                       RPE_EASY_DELTA, RPE_HARD_DELTA, RPE_TOO_HARD_DELTA,
                       SET_RECORD_COLS, WEIGHT_COLS, WEIGHT_STEP, expected_rpe,
                       is_weighted, logger, xp_for)
@@ -1165,6 +1166,9 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
                    "\n\n💡 *Recommendation:* You hit less than 60% of target. "
                    "Consider lowering your target in ⚙️ Settings → Change Base.")
             summary += rec
+
+    if KASPI_PHONE:
+        summary += t("support_note", lang, phone=KASPI_PHONE, name=KASPI_NAME)
 
     await _delete_status_message(msg, data)
     # Celebration effect: confetti for records/rank-ups, fire for hitting the target

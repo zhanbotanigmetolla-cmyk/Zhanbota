@@ -537,6 +537,19 @@ STRINGS = {
         "leaderboard_title": "🏆 *Рейтинг — XP за неделю*",
         "leaderboard_empty": "🏆 *Рейтинг*\n\nПока никого нет — ты первый! 💪",
         "leaderboard_you_marker": " ← ты",
+        # Support the project (Kaspi)
+        "btn_support": "☕ Поддержать",
+        "support_note": (
+            "\n\n━━━━━━━━━━━━\n"
+            "❤️ *Хочешь поддержать проект?*\n"
+            "*Можно перевести любую сумму на мой Kaspi:* `{phone}` *({name})*"
+        ),
+        "support_text": (
+            "☕ *Поддержать проект*\n\n"
+            "*Если Турникмен тебе помогает — можно перевести любую сумму на мой Kaspi:*\n\n"
+            "`{phone}` *({name})*\n\n"
+            "_Нажми на номер, чтобы скопировать. Спасибо!_ 🙏"
+        ),
         # Program selection
         "btn_program": "🔧 Программа",
         "program_title": "🔧 *Программа тренировок*\n\nТекущая: *{current}*\n\nВыбери программу:",
@@ -1094,6 +1107,19 @@ STRINGS = {
         "leaderboard_title": "🏆 *Leaderboard — weekly XP*",
         "leaderboard_empty": "🏆 *Leaderboard*\n\nNo one yet — you're first! 💪",
         "leaderboard_you_marker": " ← you",
+        # Support the project (Kaspi)
+        "btn_support": "☕ Support",
+        "support_note": (
+            "\n\n━━━━━━━━━━━━\n"
+            "❤️ *Want to support the project?*\n"
+            "*You can transfer any amount to my Kaspi:* `{phone}` *({name})*"
+        ),
+        "support_text": (
+            "☕ *Support the project*\n\n"
+            "*If Pullup Bot helps you, you can transfer any amount to my Kaspi:*\n\n"
+            "`{phone}` *({name})*\n\n"
+            "_Tap the number to copy it. Thank you!_ 🙏"
+        ),
         # Program selection
         "btn_program": "🔧 Program",
         "program_title": "🔧 *Training Program*\n\nCurrent: *{current}*\n\nChoose a program:",
