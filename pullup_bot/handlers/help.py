@@ -5,6 +5,7 @@ from ..config import KASPI_NAME, KASPI_PHONE
 from ..db import get_lang
 from ..i18n import t, text_filter
 from ..keyboards import main_kb
+from ..services.support import support_line
 
 router = Router()
 
@@ -13,7 +14,7 @@ router = Router()
 async def cmd_help(message: types.Message):
     """Handle /help command: send the localized help text."""
     lang = await get_lang(message.from_user.id)
-    await message.answer(t("help", lang), parse_mode="Markdown",
+    await message.answer(t("help", lang) + support_line(lang), parse_mode="Markdown",
                          reply_markup=main_kb(lang))
 
 

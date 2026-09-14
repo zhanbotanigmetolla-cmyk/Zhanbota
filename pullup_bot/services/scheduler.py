@@ -10,6 +10,7 @@ from ..keyboards import reminder_train_kb
 from ..services.xp import (day_type_for, display, md_escape, send_with_effect,
                            user_base)
 from . import monitoring
+from .support import support_line
 
 
 async def _delete_user(conn, user_id: int, tg_id: int = 0):
@@ -85,6 +86,7 @@ async def daily_reminder(bot):
                     plans="\n".join(plan_lines),
                     status=t("reminder_not_started", lang))
             kb = reminder_train_kb(lang)
+        msg += support_line(lang, markdown=False)
         notify_time = user["notify_time"] or "09:00"
         silent = notify_time >= "22:00" or notify_time < "08:00"
         try:
@@ -162,6 +164,7 @@ async def _announce_weekly_champ(bot, conn, users):
                 f"Top of the week:\n{top3_text}\n\n"
                 f"{suffix}"
             )
+        msg += support_line(lang)
         try:
             if is_winner:
                 await send_with_effect(bot, user["tg_id"], msg, EFFECT_CONFETTI,
@@ -189,7 +192,8 @@ async def weekly_summary(bot):
             rows = await cur.fetchall()
         if not rows or not any((r["completed"] or 0) > 0 for r in rows):
             try:
-                await bot.send_message(user["tg_id"], t("weekly_summary_no_workouts", lang))
+                await bot.send_message(user["tg_id"], t("weekly_summary_no_workouts", lang)
+                                       + support_line(lang, markdown=False))
             except Exception as e:
                 logger.warning(f"[weekly_summary] send failed for {user['tg_id']}: {e}")
             continue
@@ -218,6 +222,7 @@ async def weekly_summary(bot):
               avg_rpe=avg_rpe, streak=user["streak"],
               freeze=user["freeze_tokens"])
         )
+        msg += support_line(lang)
         try:
             await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
         except Exception as e:

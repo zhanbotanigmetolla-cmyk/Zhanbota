@@ -15,6 +15,13 @@ All notable changes to Турникмен / Pullup Bot are documented here.
     short bold note: *Want to support the project? You can transfer any amount to my Kaspi.*
   The number is read from `KASPI_PHONE` in the server's `.env` so it stays out of the public
   repo. Until it's set, both the button and the note stay hidden.
+- **The Kaspi ask now appears on almost every screen**, so more people see it: welcome and
+  `/start`, registration and welcome back, the last About and Guide pages, `/help`, the start
+  of a workout, rest-day prompts, Stats, History (weekly and monthly), Participants,
+  Leaderboard, the AI intro and every AI reply, the daily reminder, the weekly summary and the
+  weekly champion post. It's one short line appended by `services/support.py`, with a plain-text
+  version for messages sent without Markdown. Left out on purpose: the progress update after
+  every set (it would repeat several times a minute), error messages, and admin screens.
 
 ## [2026-09-11]
 

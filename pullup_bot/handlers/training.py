@@ -21,6 +21,7 @@ from ..keyboards import (REST_TIMER_CHOICES, cancel_confirm_kb,
                          exercise_picker_kb, main_kb, parse_rpe, rest_day_kb,
                          rest_timer_kb, rpe_menu_kb, training_kb, weight_kb)
 from ..states import Training
+from ..services.support import support_line
 from ..services.xp import (answer_with_effect, day_type_for, display, fmt_kg,
                            level_info, md_escape, progress_bar, user_base,
                            user_weight)
@@ -142,7 +143,8 @@ async def _start_training_flow(uid: int, message: types.Message, state: FSMConte
     if day_type == "Отдых":
         # Ensure a record exists so this rest day appears in stats history
         await mark_rest_day(user["id"], today_str)
-        await message.answer(t("rest_day_prompt", lang), reply_markup=rest_day_kb(lang))
+        await message.answer(t("rest_day_prompt", lang) + support_line(lang, markdown=False),
+                             reply_markup=rest_day_kb(lang))
         await state.update_data(rest_day_lang=lang)
         await state.set_state(Training.rest_day)
         return
@@ -408,7 +410,8 @@ async def rest_override_rest(message: types.Message, state: FSMContext):
                                          parse_mode="Markdown")
         await mark_rest_day(user["id"], today)
     await state.clear()
-    await message.answer(t("reminder_rest", lang), reply_markup=main_kb(lang))
+    await message.answer(t("reminder_rest", lang) + support_line(lang, markdown=False),
+                         reply_markup=main_kb(lang))
 
 
 async def _begin_training(message, state, user, lang, today_str, exercise, day_type,
@@ -470,7 +473,7 @@ async def _begin_training(message, state, user, lang, today_str, exercise, day_t
         f"{t('train_goal', lang, planned=planned, ex=t(f'ex_gen_{exercise}', lang))}\n"
         f"{t('train_done_today', lang, done=done_today)}\n"
         f"{t('train_done_now', lang, done=0)}"
-        f"{density_note}{hint}",
+        f"{density_note}{hint}" + support_line(lang),
         parse_mode="Markdown",
         reply_markup=training_kb(session_sets, planned, lang, density=is_density))
 

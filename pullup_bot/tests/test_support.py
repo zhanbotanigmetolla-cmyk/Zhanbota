@@ -1,5 +1,22 @@
 from pullup_bot import keyboards
 from pullup_bot.i18n import t
+from pullup_bot.services import support
+
+
+def test_support_line_empty_without_kaspi(monkeypatch):
+    monkeypatch.setattr(support, "KASPI_PHONE", "")
+    assert support.support_line("ru") == ""
+    assert support.support_line("en", markdown=False) == ""
+
+
+def test_support_line_markdown_and_plain(monkeypatch):
+    monkeypatch.setattr(support, "KASPI_PHONE", "+77770000000")
+    for lang in ("ru", "en"):
+        md = support.support_line(lang)
+        plain = support.support_line(lang, markdown=False)
+        assert "+77770000000" in md and "+77770000000" in plain
+        assert md.count("*") % 2 == 0 and md.count("`") == 2
+        assert "*" not in plain and "`" not in plain
 
 
 def _texts(kb):

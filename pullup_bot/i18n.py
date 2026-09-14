@@ -539,6 +539,8 @@ STRINGS = {
         "leaderboard_you_marker": " ← ты",
         # Support the project (Kaspi)
         "btn_support": "☕ Поддержать",
+        "support_line": "\n\n❤️ *Поддержи проект — Kaspi:* `{phone}` *({name})*",
+        "support_line_plain": "\n\n❤️ Поддержи проект — Kaspi: {phone} ({name})",
         "support_note": (
             "\n\n━━━━━━━━━━━━\n"
             "❤️ *Хочешь поддержать проект?*\n"
@@ -1109,6 +1111,8 @@ STRINGS = {
         "leaderboard_you_marker": " ← you",
         # Support the project (Kaspi)
         "btn_support": "☕ Support",
+        "support_line": "\n\n❤️ *Support the project — Kaspi:* `{phone}` *({name})*",
+        "support_line_plain": "\n\n❤️ Support the project — Kaspi: {phone} ({name})",
         "support_note": (
             "\n\n━━━━━━━━━━━━\n"
             "❤️ *Want to support the project?*\n"

@@ -13,6 +13,7 @@ from ..keyboards import (LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
                          about_kb, guide_kb, landing_kb, lang_kb,
                          logout_confirm_kb, main_kb, welcome_new_user_kb)
 from ..states import About, Guide, Login, Logout, Reg
+from ..services.support import support_line
 from ..services.xp import display, md_escape
 
 router = Router()
@@ -62,10 +63,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
     if user and not user["is_logged_out"]:
         # Active user — straight to the main menu, no landing detour
         lang = user["lang"] or "ru"
-        await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+        await message.answer(t("main_menu", lang) + support_line(lang, markdown=False),
+                             reply_markup=main_kb(lang))
     elif user:
         lang = user["lang"] or "ru"
-        await message.answer(t("welcome", lang), parse_mode="Markdown",
+        await message.answer(t("welcome", lang) + support_line(lang), parse_mode="Markdown",
                              reply_markup=landing_kb(lang))
     else:
         await message.answer(
@@ -90,7 +92,8 @@ async def start_pick_lang_toggle(message: types.Message, state: FSMContext):
         current = data.get("lang", "")
         lang = "en" if current == "ru" else "ru"
     await state.update_data(lang=lang)
-    await message.answer(t("welcome", lang), parse_mode="Markdown", reply_markup=landing_kb(lang))
+    await message.answer(t("welcome", lang) + support_line(lang), parse_mode="Markdown",
+                         reply_markup=landing_kb(lang))
 
 
 @router.message(text_filter("btn_about"))
@@ -131,7 +134,7 @@ async def about_page4(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("about_lang", "ru")
     await state.clear()
-    await message.answer(t("about_page4", lang), parse_mode="Markdown",
+    await message.answer(t("about_page4", lang) + support_line(lang), parse_mode="Markdown",
                          reply_markup=await _home_kb(message.from_user.id, lang))
 
 
@@ -213,7 +216,7 @@ async def guide_weighted(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.clear()
-    await message.answer(t("guide_weighted", lang), parse_mode="Markdown",
+    await message.answer(t("guide_weighted", lang) + support_line(lang), parse_mode="Markdown",
                          reply_markup=await _home_kb(message.from_user.id, lang))
 
 
@@ -250,7 +253,7 @@ async def login_start(message: types.Message, state: FSMContext):
               name=md_escape(display(fresh)),
               level=LEVEL_NAMES[fresh["level"]],
               xp=fresh["xp"],
-              streak=fresh["streak"]),
+              streak=fresh["streak"]) + support_line(lang),
             parse_mode="Markdown", reply_markup=main_kb(lang))
     else:
         data = await state.get_data()
@@ -311,7 +314,7 @@ async def reg_max_pullups(message: types.Message, state: FSMContext):
               name=md_escape(new_name),
               max_pullups=max_reps,
               base=base,
-              level=LEVEL_NAMES[0]),
+              level=LEVEL_NAMES[0]) + support_line(lang),
             parse_mode="Markdown", reply_markup=main_kb(lang))
         await _broadcast_new_user(message.from_user.id, new_name)
     except ValueError:

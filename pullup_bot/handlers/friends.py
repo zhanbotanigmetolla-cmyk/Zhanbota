@@ -11,6 +11,7 @@ from aiogram.fsm.context import FSMContext
 from ..db import get_db, get_user
 from ..i18n import t, text_filter
 from ..keyboards import main_kb
+from ..services.support import support_line
 from ..services.xp import day_type_for, display, level_info, md_escape, user_base
 from ..config import EXERCISES, EXERCISE_EMOJI, XP_CASE_SQL, logger
 from ..states import Friends
@@ -34,7 +35,7 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
         all_users = await cur.fetchall()
 
     if not all_users:
-        await message.answer(t("friends_empty", lang), parse_mode="Markdown")
+        await message.answer(t("friends_empty", lang) + support_line(lang), parse_mode="Markdown")
         return
 
     total_pages = max(1, (len(all_users) + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -113,7 +114,7 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
 
     await state.set_state(Friends.viewing)
     await state.update_data(friends_page=page, friends_lang=lang, poke_map=poke_map)
-    await message.answer(text, parse_mode="Markdown",
+    await message.answer(text + support_line(lang), parse_mode="Markdown",
                          reply_markup=b.as_markup(resize_keyboard=True))
 
 
@@ -178,7 +179,7 @@ async def leaderboard(message: types.Message):
         all_users = await cur.fetchall()
 
     if not all_users:
-        await message.answer(t("leaderboard_empty", lang), parse_mode="Markdown",
+        await message.answer(t("leaderboard_empty", lang) + support_line(lang), parse_mode="Markdown",
                              reply_markup=main_kb(lang))
         return
 
@@ -229,7 +230,8 @@ async def leaderboard(message: types.Message):
             delta = ""
         text += f"{medal} *{md_escape(display(u))}*{crown} — {week_xp} XP | 🔥{u['streak']}{delta}{you}\n"
 
-    await message.answer(text, parse_mode="Markdown", reply_markup=main_kb(lang))
+    await message.answer(text + support_line(lang), parse_mode="Markdown",
+                         reply_markup=main_kb(lang))
 
 
 @router.message(Friends.viewing, lambda m: m.text and (m.text.startswith("💪 Пнуть ") or m.text.startswith("💪 Poke ")))

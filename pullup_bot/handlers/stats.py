@@ -6,6 +6,7 @@ from aiogram.filters import Command
 from ..db import get_db, get_user
 from ..i18n import t, text_filter, day_name
 from ..keyboards import stats_analytics_kb, stats_back_kb
+from ..services.support import support_line
 from ..config import (BEST_WEIGHT_COLS, EXERCISES, EXERCISE_EMOJI, LEVEL_NAMES,
                       LEVEL_THRESHOLDS, PR_COLS, PROGRAMS, SET_RECORD_COLS,
                       XP_CASE_SQL, is_weighted)
@@ -29,7 +30,7 @@ async def show_stats(message: types.Message):
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
-    text = await _build_stats_text(user, lang)
+    text = await _build_stats_text(user, lang) + support_line(lang)
     await message.answer(text, parse_mode="Markdown",
                          reply_markup=stats_analytics_kb(lang))
 
@@ -342,7 +343,7 @@ async def stats_analytics_back(callback: types.CallbackQuery):
         await callback.answer()
         return
     lang = user["lang"] or "ru"
-    text = await _build_stats_text(user, lang)
+    text = await _build_stats_text(user, lang) + support_line(lang)
     await callback.message.edit_text(text, parse_mode="Markdown",
                                      reply_markup=stats_analytics_kb(lang))
     await callback.answer()
