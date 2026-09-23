@@ -1,5 +1,3 @@
 @echo off
-git push origin main
-ssh nigmetolla_zhanbota@34.123.71.99 "bash ~/deploy.sh"
-echo Done!
-pause
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy.ps1" %*
+exit /b %ERRORLEVEL%

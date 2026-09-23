@@ -1,3 +1,6 @@
+import asyncio
+from datetime import timedelta
+
 import aiosqlite
 import pytest
 import pytest_asyncio
@@ -7,6 +10,7 @@ from pullup_bot.db import (add_welcome_greeting, add_xp, clear_rest_row,
                            get_day_rows, get_lang, get_user, get_workout,
                            mark_rest_day, update_streak, upsert_workout)
 from pullup_bot.tests.conftest import insert_test_user
+from pullup_bot.timeutils import today
 
 
 # --- init_db / schema ---
@@ -270,3 +274,85 @@ async def test_add_welcome_greeting_once(test_db):
 async def test_add_welcome_greeting_no_self(test_db):
     await insert_test_user(test_db, tg_id=11111, username="u1", first_name="User1")
     assert await add_welcome_greeting(11111, 11111) is False
+
+
+@pytest.mark.asyncio
+async def test_reset_streak_preserves_activity_and_account(test_db):
+    from pullup_bot.services.scheduler import auto_cleanup_inactive
+
+    class FakeBot:
+        async def send_message(self, *args, **kwargs):
+            pass
+
+    yesterday = (today() - timedelta(days=1)).isoformat()
+    joined = (today() - timedelta(days=100)).isoformat()
+    await insert_test_user(test_db, joined=joined, last_workout=yesterday,
+                           streak=20, xp=2500)
+    user = await get_user(12345)
+    await upsert_workout(user["id"], yesterday, "pullups", planned=100, completed=100)
+    await db_mod.reset_streak(12345)
+    user = await get_user(12345)
+    assert user["streak"] == 0
+    assert user["last_workout"] == yesterday
+    await auto_cleanup_inactive(FakeBot())
+    assert await get_user(12345) is not None
+    assert (await get_workout(user["id"], yesterday, "pullups"))["completed"] == 100
+
+
+@pytest.mark.asyncio
+async def test_unban_clears_both_ban_sources(test_db):
+    await insert_test_user(test_db)
+    await db_mod.ban_user(12345)
+    assert await db_mod.is_permanently_banned(12345)
+    await db_mod.unban_user(12345)
+    assert (await get_user(12345))["is_banned"] == 0
+    assert not await db_mod.is_permanently_banned(12345)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("old,expected", [("8:00", "08:00"), ("0:05", "00:05"),
+                                        ("8:0", "08:00"), ("8: 0", "08:00"),
+                                        ("+8:00", "08:00"),
+                                        ("23:59", "23:59"), ("25:00", "25:00")])
+async def test_startup_normalizes_existing_notification_times(test_db, old, expected):
+    await insert_test_user(test_db, notify_time=old)
+    await db_mod.init_db()
+    assert (await get_user(12345))["notify_time"] == expected
+
+
+@pytest.mark.asyncio
+async def test_concurrent_xp_awards_preserve_total_and_rank(test_db):
+    await insert_test_user(test_db, xp=450)
+    await asyncio.gather(*(add_xp(12345, 13) for _ in range(50)))
+    user = await get_user(12345)
+    assert user["xp"] == 1100
+    assert user["level"] == 2
+
+
+@pytest.mark.asyncio
+async def test_finishing_an_old_session_cannot_rewind_activity(test_db):
+    d = today().isoformat()
+    await insert_test_user(test_db, last_workout=d, streak=10, xp=100)
+    await update_streak(12345, (today() - timedelta(days=1)).isoformat())
+    user = await get_user(12345)
+    assert (user["last_workout"], user["streak"], user["xp"]) == (d, 10, 100)
+
+
+@pytest.mark.asyncio
+async def test_decay_does_not_overwrite_a_concurrent_xp_award(test_db, monkeypatch):
+    await insert_test_user(test_db, xp=1000, level=2)
+    original_execute = test_db.execute
+
+    def race_before_decay_update(sql, parameters=()):
+        if sql.startswith("UPDATE users SET xp=?, level=?"):
+            async def award_then_update():
+                await original_execute("UPDATE users SET xp=xp+100 WHERE tg_id=12345")
+                await test_db.commit()
+                return await original_execute(sql, parameters)
+            return award_then_update()
+        return original_execute(sql, parameters)
+
+    monkeypatch.setattr(test_db, "execute", race_before_decay_update)
+    assert await db_mod.apply_xp_decay(12345, 7) is None
+    user = await get_user(12345)
+    assert (user["xp"], user["level"]) == (1100, 2)

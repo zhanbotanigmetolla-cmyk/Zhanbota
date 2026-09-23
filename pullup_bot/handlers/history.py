@@ -1,3 +1,4 @@
+from ..timeutils import today as local_today
 import calendar
 from datetime import date, timedelta
 
@@ -20,7 +21,7 @@ WEEKDAYS_EN = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
 def _week_dates(offset: int):
     """Return (monday, sunday) date objects for the week at the given offset from the current week."""
-    today = date.today()
+    today = local_today()
     monday = today - timedelta(days=today.weekday()) + timedelta(weeks=offset)
     sunday = monday + timedelta(days=6)
     return monday, sunday
@@ -126,7 +127,7 @@ def _day_cell(day_rows: list) -> str:
 
 def _month_heatmap(rows_by_date: dict, year: int, month: int, lang: str) -> str:
     """Emoji calendar for one month: one row per Mon–Sun week, up to today."""
-    today = date.today()
+    today = local_today()
     days_in_month = calendar.monthrange(year, month)[1]
     last_shown = today.day if (year, month) == (today.year, today.month) else days_in_month
     first_wd = date(year, month, 1).weekday()  # 0 = Monday
@@ -166,7 +167,7 @@ async def _show_monthly(target, user, edit: bool = False):
         text = t("history_no_data", lang)
     else:
         # Current-month emoji calendar at the top
-        today = date.today()
+        today = local_today()
         month_start = today.replace(day=1).isoformat()
         async with conn.execute(
             "SELECT * FROM workouts WHERE user_id=? AND date>=? ORDER BY date ASC",

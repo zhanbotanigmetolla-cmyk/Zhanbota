@@ -10,6 +10,7 @@ from aiogram.types import BufferedInputFile
 from ..db import (add_xp, clear_rest_row, get_day_rows, get_db, get_lang,
                   get_user, get_workout, mark_rest_day, upsert_workout)
 from ..i18n import t, text_filter
+from ..timeutils import today
 from ..keyboards import (LANG_BACK_BILINGUAL, LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
                          back_only_kb, delete_confirm_kb, exercise_picker_kb,
                          landing_kb, lang_kb, logout_confirm_kb, main_kb, parse_rpe,
@@ -32,6 +33,15 @@ from .admin import _is_admin
 from .training import ex_label, sync_max_streak
 
 router = Router()
+
+# A day can contain several sets (each set accepts up to 500 reps).
+MAX_EDIT_REPS = 10_000
+
+
+def _edit_reps_prompt(lang: str) -> str:
+    if lang == "en":
+        return "Enter repetitions from 0 to 10,000 (0 deletes the record)."
+    return "Введите число повторений от 0 до 10 000 (0 — удалить запись)."
 
 
 def _bases_block(user, lang: str) -> str:
@@ -389,6 +399,7 @@ async def save_notify_time(message: types.Message, state: FSMContext):
         h, m = map(int, time_str.split(":"))
         if not (0 <= h < 24 and 0 <= m < 60):
             raise ValueError("invalid time")
+        time_str = f"{h:02d}:{m:02d}"
         conn = await get_db()
         await conn.execute("UPDATE users SET notify_time=? WHERE tg_id=?",
                            (time_str, message.from_user.id))
@@ -449,9 +460,9 @@ async def edit_pick_date(message: types.Message, state: FSMContext):
         return
     try:
         day, month = map(int, message.text.strip().split("."))
-        d = date(date.today().year, month, day)
-        if d > date.today():
-            d = date(date.today().year - 1, month, day)
+        d = date(today().year, month, day)
+        if d > today():
+            d = date(today().year - 1, month, day)
         await state.update_data(edit_date=d.isoformat())
         await _edit_prompt_exercise(message, state, user, lang)
     except Exception:
@@ -497,7 +508,7 @@ async def _delete_exercise_record(message, state, user, lang, d: str, exercise: 
                          -xp_for(exercise, old_completed, existing["weight_kg"] or 0))
         # If this was today's only training record, revert program_day and last_workout
         # (program_day was already incremented when the day was acknowledged)
-        if d == date.today().isoformat():
+        if d == today().isoformat():
             remaining = await get_day_rows(user["id"], d)
             still_trained = any(r["exercise"] != "rest" and (r["completed"] or 0) > 0
                                 for r in remaining)
@@ -534,6 +545,9 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
         return
     try:
         done = int(message.text.strip())
+        if not 0 <= done <= MAX_EDIT_REPS:
+            await message.answer(_edit_reps_prompt(lang))
+            return
         if done == 0:
             data = await state.get_data()
             d = data.get("edit_date")
@@ -549,7 +563,7 @@ async def edit_pick_done(message: types.Message, state: FSMContext):
         await message.answer(t("edit_rpe_prompt", lang), reply_markup=rpe_menu_kb(lang))
         await state.set_state(EditDay.pick_rpe)
     except ValueError:
-        await message.answer(t("enter_number", lang, example="50"))
+        await message.answer(_edit_reps_prompt(lang))
 
 
 @router.message(EditDay.pick_rpe)
@@ -569,6 +583,10 @@ async def _save_edit(message: types.Message, state: FSMContext):
     data = await state.get_data()
     user = await get_user(message.from_user.id)
     lang = user["lang"] or "ru" if user else "ru"
+    if not user:
+        await message.answer(t("register_first", lang))
+        await state.clear()
+        return
     d = data.get("edit_date")
     exercise = data.get("edit_exercise", "pullups")
     done = data.get("edit_done", 0)
@@ -576,6 +594,13 @@ async def _save_edit(message: types.Message, state: FSMContext):
     if not d:
         await message.answer(t("edit_no_date", lang))
         await state.clear()
+        return
+    if type(done) is not int or not 0 <= done <= MAX_EDIT_REPS:
+        await state.set_state(EditDay.pick_done)
+        await message.answer(_edit_reps_prompt(lang), reply_markup=back_only_kb(lang))
+        return
+    if done == 0:
+        await _delete_exercise_record(message, state, user, lang, d, exercise)
         return
     existing = await get_workout(user["id"], d, exercise)
     fallback_planned = user_base(user, exercise) or done
@@ -619,10 +644,10 @@ async def skip_reason_date(message: types.Message, state: FSMContext):
         return
     try:
         day, month = map(int, message.text.strip().split("."))
-        d = date(date.today().year, month, day)
-        if d > date.today():
-            d = date(date.today().year - 1, month, day)
-        if (date.today() - d).days > 3:
+        d = date(today().year, month, day)
+        if d > today():
+            d = date(today().year - 1, month, day)
+        if (today() - d).days > 3:
             await message.answer(t("skip_date_range", lang))
             return
         await state.update_data(skip_date=d.isoformat())

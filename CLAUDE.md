@@ -14,23 +14,23 @@ After completing each new feature or fix, always:
 
 ```bash
 # 1. Create and switch to a new branch
-git checkout -b fix/short-description   # or feat/short-description
+git checkout -b codex/fix-short-description
 
 # 2. Commit changes as usual, then push the branch
-git push -u origin fix/short-description
+git push -u origin codex/fix-short-description
 
 # 3. Open a PR (gh CLI)
 gh pr create --title "..." --body "..." 
 
 # 4. Deploy from the branch
-ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@35.226.20.162 "~/deploy.sh"
+./deploy.bat
 
 # 5. After approval, merge on GitHub (user clicks Merge) or:
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 ```
 
-**Branch naming:** `feat/` for new features, `fix/` for bug fixes.
+**Branch naming:** use `codex/` for new agent branches, with a short feature/fix description.
 **gh CLI path (Windows Git Bash):** `/c/Program Files/GitHub CLI/gh.exe`
 
 Remote: https://github.com/zhanbotanigmetolla-cmyk/Zhanbota.git (branch: main)
@@ -57,7 +57,7 @@ The bot runs on GCP — the old VPS in Germany is no longer used.
 | Machine | e2-micro, 1 vCPU, 1 GB RAM, 30 GB standard disk |
 | Region | us-central1-f (Iowa) |
 | OS | Ubuntu 22.04 LTS |
-| External IP | 35.226.20.162 (as of 2026-07-13) |
+| External IP | 35.226.20.162 (verified 2026-09-23) |
 | User | nigmetolla_zhanbota |
 | SSH | `ssh nigmetolla_zhanbota@35.226.20.162` (key-based, no password) |
 
@@ -65,9 +65,10 @@ The bot runs on GCP — the old VPS in Germany is no longer used.
 
 ### Bot locations on server
 
-- **Source code:** `/home/nigmetolla_zhanbota/pullup_bot/`
+- **Active source after release deployment:** `/home/nigmetolla_zhanbota/pullup-current/pullup_bot/`
+- **Release directories:** `/home/nigmetolla_zhanbota/pullup-releases/` (each contains its own `.venv` and SQLite backups)
 - **GitHub repo mirror:** `/home/nigmetolla_zhanbota/repo/`
-- **Virtual env:** `/home/nigmetolla_zhanbota/.venv-pullup/` (Python 3.12)
+- **Active virtual env:** `/home/nigmetolla_zhanbota/pullup-current/.venv/` (Python 3.12); the original `.venv-pullup/` remains available to create new release environments
 - **Live databases:** `/home/nigmetolla_zhanbota/data/pullup-bot/pullups.db` and `pullups_fsm.db`
 - **Secrets:** `/home/nigmetolla_zhanbota/.env.pullup_bot`
 - **Systemd service:** `~/.config/systemd/user/pullup-bot.service`
@@ -95,8 +96,8 @@ ssh -i ~/.ssh/id_ed25519_claude nigmetolla_zhanbota@35.226.20.162 "journalctl --
 
 ## Deploy Workflow
 
-1. Edit code locally
-2. Run `deploy.bat`, which:
-   - Runs `git push origin main`
-   - SSHes into the server and runs `~/deploy.sh`
-3. `deploy.sh` on the server does: `git pull` → `cp -r pullup_bot ~/` → `systemctl --user restart`
+1. Edit code, add the changelog entry, and run `python -m pytest pullup_bot/tests -q` in the locked environment.
+2. Commit relevant files to a feature branch, push it, and open a PR against the appropriate base (the current feature branch for a stacked PR).
+3. Run `deploy.bat` (or `deploy.ps1` with explicit `-Server`/`-SshKey`). It refuses main/master and uncommitted tracked changes, pushes the branch, and deploys its exact commit.
+4. `scripts/deploy_server.sh` builds a release and venv, runs tests, validates configuration, backs up both SQLite databases with the bot stopped, switches the systemd release, and checks Telegram startup. On failure it restores the previous service configuration and retains database snapshots for manual recovery.
+5. The server's `~/deploy.sh` is a wrapper requiring two arguments: branch and full commit SHA. It never pulls main into another branch. Merge only after user approval.

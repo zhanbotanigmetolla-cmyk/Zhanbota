@@ -1,3 +1,4 @@
+from ..timeutils import today as local_today
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.filters import Command, StateFilter
@@ -239,7 +240,7 @@ async def login_start(message: types.Message, state: FSMContext):
     if user:
         if user["is_logged_out"]:
             conn = await get_db()
-            yesterday = (date.today() - timedelta(days=1)).isoformat()
+            yesterday = (local_today() - timedelta(days=1)).isoformat()
             await conn.execute(
                 "UPDATE users SET is_logged_out=0, last_workout=? WHERE tg_id=?",
                 (yesterday, message.from_user.id)
@@ -300,12 +301,12 @@ async def reg_max_pullups(message: types.Message, state: FSMContext):
         base = max(5, max_reps * 3)
         conn = await get_db()
         await conn.execute(
-            "INSERT INTO users (tg_id, username, first_name, base_pullups, start_day, lang, program_day) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO users (tg_id, username, first_name, base_pullups, start_day, lang, program_day, joined) "
+            "VALUES (?,?,?,?,?,?,?,?)",
             (message.from_user.id,
              message.from_user.username or data.get("first_name"),
              data.get("first_name", message.from_user.first_name),
-             base, 0, lang, 0))
+             base, 0, lang, 0, local_today().isoformat()))
         await conn.commit()
         await state.clear()
         new_name = data.get("first_name", "атлет")

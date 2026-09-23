@@ -2,10 +2,10 @@ import os
 
 # Set test env vars BEFORE any pullup_bot imports so config.py doesn't hard-fail
 os.environ.setdefault("PULLUP_TESTING", "1")
-os.environ.setdefault("PULLUP_BOT_TOKEN", "test_token")
+os.environ.setdefault("PULLUP_BOT_TOKEN", "123456:test_token")
 os.environ.setdefault("PULLUP_SECRET", "TESTCODE")
 os.environ.setdefault("ADMIN_TG_ID", "999")
-os.environ.setdefault("GROQ_API_KEY", "test_groq_key")
+os.environ.setdefault("GEMINI_API_KEY", "test_gemini_key")
 
 import pytest
 import pytest_asyncio

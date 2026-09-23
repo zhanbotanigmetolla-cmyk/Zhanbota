@@ -1,3 +1,4 @@
+from ..timeutils import today as local_today
 import random
 from datetime import date, timedelta
 
@@ -25,7 +26,7 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
     """Render the friends-list page with today's progress, streak, and poke buttons."""
     lang = user["lang"] or "ru"
     conn = await get_db()
-    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    week_ago = (local_today() - timedelta(days=7)).isoformat()
     async with conn.execute(
         "SELECT * FROM users WHERE id=? OR id IN ("
         "  SELECT DISTINCT user_id FROM workouts WHERE date>=? AND completed > 0"
@@ -42,7 +43,7 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
     page = max(0, min(page, total_pages - 1))
     page_users = all_users[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
 
-    today_str = date.today().isoformat()
+    today_str = local_today().isoformat()
     you_label = "Вы" if lang == "ru" else "You"
 
     # Batch-fetch today's workouts for all page users in one query
@@ -169,7 +170,7 @@ async def leaderboard(message: types.Message):
         return
     lang = user["lang"] or "ru"
     conn = await get_db()
-    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    week_ago = (local_today() - timedelta(days=7)).isoformat()
     async with conn.execute(
         "SELECT * FROM users WHERE id IN ("
         "  SELECT DISTINCT user_id FROM workouts WHERE date>=? AND completed > 0"
@@ -193,7 +194,7 @@ async def leaderboard(message: types.Message):
     weekly_map = {r["user_id"]: int(round(r["week_xp"])) for r in weekly_rows}
 
     # Previous week's standings (days 8–14 ago) for ▲/▼ movement markers
-    two_weeks_ago = (date.today() - timedelta(days=14)).isoformat()
+    two_weeks_ago = (local_today() - timedelta(days=14)).isoformat()
     async with conn.execute(
         f"SELECT user_id, COALESCE(SUM({XP_CASE_SQL}), 0) as week_xp "
         "FROM workouts WHERE date>=? AND date<? GROUP BY user_id",
@@ -258,7 +259,7 @@ async def poke_friend(message: types.Message, state: FSMContext):
         await message.answer(t("friends_not_found", lang))
         return
 
-    today = date.today().isoformat()
+    today = local_today().isoformat()
     async with conn.execute(
         "SELECT 1 FROM pokes WHERE from_user_id=? AND to_user_id=? AND date=?",
         (user["id"], friend["id"], today)

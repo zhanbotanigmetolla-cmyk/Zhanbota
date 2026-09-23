@@ -1,3 +1,4 @@
+from ..timeutils import today as local_today
 from datetime import date, timedelta
 
 from aiogram import F, Router, types
@@ -37,7 +38,7 @@ async def show_stats(message: types.Message):
 
 async def _build_stats_text(user, lang: str) -> str:
     """Build the full stats message: rank, XP bar, streak, per-exercise summary, last/next 7 days."""
-    today = date.today()
+    today = local_today()
     today_str = today.isoformat()
     week_ago = (today - timedelta(days=7)).isoformat()
     conn = await get_db()
