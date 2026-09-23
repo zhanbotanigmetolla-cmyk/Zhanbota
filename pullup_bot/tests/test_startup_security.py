@@ -65,6 +65,7 @@ async def test_polling_preserves_queue_and_closes_resources_on_failure(monkeypat
                         "storage": storage, "close_db": close_db,
                         "init_db": AsyncMock(), "_set_bot_commands": AsyncMock(),
                         "configure_scheduler": Mock(), "WEBHOOK_URL": "",
+                        "MINI_APP_URL": "",
                         "validate_webhook_config": Mock()}.items():
         monkeypatch.setattr(app, name, value)
     with pytest.raises(RuntimeError, match="polling failed"):

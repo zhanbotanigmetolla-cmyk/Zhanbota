@@ -7,7 +7,7 @@ from aiogram.types import ReplyKeyboardRemove
 
 from datetime import date, timedelta
 
-from ..config import LEVEL_NAMES, logger
+from ..config import LEVEL_NAMES, MINI_APP_URL, logger
 from ..db import add_welcome_greeting, get_db, get_lang, get_user, is_permanently_banned
 from ..i18n import t, text_filter
 from ..keyboards import (LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
@@ -18,6 +18,30 @@ from ..services.support import support_line
 from ..services.xp import display, md_escape
 
 router = Router()
+
+
+@router.message(Command("app"))
+async def cmd_app(message: types.Message):
+    """Inline/menu launches supply signed initData; reply-keyboard launches do not."""
+    lang = await get_lang(message.from_user.id)
+    if not MINI_APP_URL:
+        await message.answer("Приложение пока недоступно." if lang == "ru"
+                             else "The app is not available yet.")
+        return
+    if message.chat.type != "private":
+        await message.answer("Открой приложение в личном чате с ботом." if lang == "ru"
+                             else "Open the app in a private chat with the bot.")
+        return
+    await message.answer(
+        "Твой план, тренировки и прогресс — всё в одном месте." if lang == "ru"
+        else "Your plan, workouts and progress — all in one place.",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton(
+                text="Открыть Турникмен" if lang == "ru" else "Open Turnikmen",
+                web_app=types.WebAppInfo(url=MINI_APP_URL),
+            )
+        ]]),
+    )
 
 
 @router.message(Command("cancel"))
