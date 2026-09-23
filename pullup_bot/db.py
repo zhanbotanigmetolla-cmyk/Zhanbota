@@ -1,12 +1,77 @@
+import asyncio
 import json
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 import aiosqlite
 
 from .config import DB_PATH, LEVEL_THRESHOLDS, XP_PER_STREAK_DAY, logger
+from .timeutils import today as local_today
 
 _conn: Optional[aiosqlite.Connection] = None
+_transaction_conn: ContextVar = ContextVar("workout_transaction_conn", default=None)
+
+
+class _TransactionConnection:
+    """Keep helper-level commits inside the enclosing workout transaction."""
+
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+    async def commit(self):
+        pass
+
+
+@asynccontextmanager
+async def workout_transaction():
+    """Atomically finish a workout without sharing its transaction with other tasks.
+
+    A task-local facade lets existing DB helpers participate without committing
+    early. Disk databases use a dedicated connection; isolated in-memory tests
+    reuse their connection under a lock because a second connection is empty.
+    """
+    current = _transaction_conn.get()
+    if current is not None:
+        yield current
+        return
+    shared = await get_db()
+    async with shared.execute("PRAGMA database_list") as cursor:
+        databases = await cursor.fetchall()
+    path = next(row[2] for row in databases if row[1] == "main")
+    if path:
+        connection = await aiosqlite.connect(path, timeout=30)
+        connection.row_factory = aiosqlite.Row
+        await connection.execute("PRAGMA foreign_keys=ON")
+        lock = None
+    else:
+        connection = shared
+        lock = getattr(shared, "_workout_lock", None)
+        if lock is None:
+            lock = shared._workout_lock = asyncio.Lock()
+        await lock.acquire()
+    token = None
+    try:
+        await connection.execute("BEGIN IMMEDIATE")
+        facade = _TransactionConnection(connection)
+        token = _transaction_conn.set(facade)
+        yield facade
+        await connection.commit()
+    except BaseException:
+        await connection.rollback()
+        raise
+    finally:
+        if token is not None:
+            _transaction_conn.reset(token)
+        if lock is not None:
+            lock.release()
+        else:
+            await connection.close()
+
 
 MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN lang TEXT DEFAULT 'ru'",
@@ -166,6 +231,9 @@ async def _migrate_workouts_exercise(conn):
 
 async def get_db() -> aiosqlite.Connection:
     """Return the shared singleton DB connection, opening it on first call."""
+    transaction_connection = _transaction_conn.get()
+    if transaction_connection is not None:
+        return transaction_connection
     global _conn
     if _conn is None:
         _conn = await aiosqlite.connect(DB_PATH)
@@ -238,6 +306,11 @@ async def init_db():
             created  TEXT DEFAULT (datetime('now')),
             status   TEXT DEFAULT 'new'
         );
+        CREATE TABLE IF NOT EXISTS workout_completions (
+            session_id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            result_json TEXT NOT NULL
+        );
     """)
     # Run migrations
     await conn.execute(
@@ -301,6 +374,19 @@ async def init_db():
             "UPDATE users SET set_record = ? WHERE id = ? AND set_record < ?",
             (top_set, uid, top_set)
         )
+    # Older settings accepted H:MM, while the reminder compares against HH:MM.
+    async with conn.execute("SELECT id, notify_time FROM users") as cur:
+        notification_times = await cur.fetchall()
+    for uid, notify_time in notification_times:
+        try:
+            hour, minute = map(int, (notify_time or "").split(":"))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            normalized = f"{hour:02d}:{minute:02d}"
+            if normalized != notify_time:
+                await conn.execute("UPDATE users SET notify_time=? WHERE id=?",
+                                   (normalized, uid))
     await conn.commit()
 
 
@@ -330,7 +416,7 @@ async def get_workout(user_id: int, d: str, exercise: str) -> Optional[aiosqlite
 async def get_day_rows(user_id: int, d: str = None) -> list:
     """Return all workout rows (any exercise, incl. rest markers) for the given date."""
     if d is None:
-        d = date.today().isoformat()
+        d = local_today().isoformat()
     conn = await get_db()
     async with conn.execute(
         "SELECT * FROM workouts WHERE user_id=? AND date=?", (user_id, d)
@@ -393,13 +479,15 @@ def _level_from_xp(xp: int) -> int:
 async def add_xp(tg_id: int, amount: int):
     """Add (or subtract) XP for a user and recalculate their level."""
     conn = await get_db()
-    await conn.execute("UPDATE users SET xp = xp + ? WHERE tg_id = ?", (amount, tg_id))
-    async with conn.execute("SELECT xp FROM users WHERE tg_id = ?", (tg_id,)) as cur:
-        row = await cur.fetchone()
-    if row:
-        xp = max(0, row[0])
-        lvl = _level_from_xp(xp)
-        await conn.execute("UPDATE users SET level=?, xp=? WHERE tg_id=?", (lvl, xp, tg_id))
+    # One statement prevents a stale SELECT from overwriting a concurrent award.
+    xp_expr = "MAX(0, COALESCE(xp, 0) + :amount)"
+    cases = " ".join(
+        f"WHEN {xp_expr} >= {threshold} THEN {level}"
+        for level, threshold in reversed(list(enumerate(LEVEL_THRESHOLDS[:-1])))
+    )
+    await conn.execute(
+        f"UPDATE users SET xp={xp_expr}, level=CASE {cases} ELSE 0 END "
+        "WHERE tg_id=:tg_id", {"amount": amount, "tg_id": tg_id})
     await conn.commit()
 
 
@@ -409,12 +497,14 @@ async def update_streak(tg_id: int, today: str = None):
     if not user:
         return
     if today is None:
-        today = date.today().isoformat()
+        today = local_today().isoformat()
     last = user["last_workout"]
     today_d = date.fromisoformat(today)
     yesterday = (today_d - timedelta(days=1)).isoformat()
     conn = await get_db()
-    if last == today:
+    if last is not None and last >= today:
+        # A session kept open across midnight can finish after a newer one.
+        # Recording it must not rewind the cursor used by streaks and cleanup.
         return
 
     old_streak = user["streak"] or 0
@@ -519,6 +609,7 @@ async def unban_user(tg_id: int) -> None:
     """Clear the is_banned flag for the given user."""
     conn = await get_db()
     await conn.execute("UPDATE users SET is_banned=0 WHERE tg_id=?", (tg_id,))
+    await conn.execute("DELETE FROM banned_ids WHERE tg_id=?", (tg_id,))
     await conn.commit()
 
 
@@ -551,9 +642,9 @@ async def is_muted(tg_id: int) -> bool:
 
 
 async def reset_streak(tg_id: int) -> None:
-    """Zero out the streak and clear last_workout for the given user."""
+    """Zero the streak while preserving the date used to measure inactivity."""
     conn = await get_db()
-    await conn.execute("UPDATE users SET streak=0, last_workout=NULL WHERE tg_id=?", (tg_id,))
+    await conn.execute("UPDATE users SET streak=0 WHERE tg_id=?", (tg_id,))
     await conn.commit()
 
 
@@ -600,11 +691,16 @@ async def apply_xp_decay(tg_id: int, days_inactive: int):
     if new_xp == current_xp:
         return None
     new_level = _level_from_xp(new_xp)
-    await conn.execute(
-        "UPDATE users SET xp=?, level=? WHERE tg_id=?",
-        (new_xp, new_level, tg_id)
+    cursor = await conn.execute(
+        "UPDATE users SET xp=?, level=? WHERE tg_id=? "
+        "AND COALESCE(xp, 0)=? AND COALESCE(level, 0)=?",
+        (new_xp, new_level, tg_id, current_xp, current_level)
     )
     await conn.commit()
+    if cursor.rowcount == 0:
+        # A workout/admin update won the race. Leave its new XP untouched and
+        # reconsider decay on the next scheduled run.
+        return None
     return current_xp, new_xp, current_level, new_level
 
 
@@ -620,13 +716,12 @@ async def give_freeze_tokens(tg_id: int, delta: int, max_tokens: int = 5) -> Non
 
 async def get_bot_stats() -> dict:
     """Return aggregate bot statistics: total users, banned count, active today, and total workouts."""
-    from datetime import date as _date
     conn = await get_db()
     async with conn.execute("SELECT COUNT(*) FROM users") as cur:
         total_users = (await cur.fetchone())[0]
     async with conn.execute("SELECT COUNT(*) FROM users WHERE is_banned=1") as cur:
         banned_count = (await cur.fetchone())[0]
-    today = _date.today().isoformat()
+    today = local_today().isoformat()
     async with conn.execute(
         "SELECT COUNT(DISTINCT user_id) FROM workouts WHERE date=?", (today,)
     ) as cur:
@@ -685,20 +780,18 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
 
 async def log_ai_usage(user_id: int, model: str, question: str = "", answer: str = "") -> None:
     """Insert an AI usage record with the question and answer for analytics."""
-    from datetime import date as _date
     conn = await get_db()
     await conn.execute(
         "INSERT INTO ai_usage_log (date, user_id, model, question, answer) VALUES (?, ?, ?, ?, ?)",
-        (str(_date.today()), user_id, model, question, answer),
+        (str(local_today()), user_id, model, question, answer),
     )
     await conn.commit()
 
 
 async def get_ai_usage_stats() -> dict:
     """Return today's and all-time AI request counts, plus per-user and per-model breakdowns."""
-    from datetime import date as _date
     conn = await get_db()
-    today = str(_date.today())
+    today = str(local_today())
     async with conn.execute(
         "SELECT COUNT(*) as cnt FROM ai_usage_log WHERE date=?", (today,)
     ) as cur:

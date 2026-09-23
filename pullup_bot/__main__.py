@@ -6,12 +6,13 @@ import sys
 def _check_systemd():
     """Block launch unless we are running under the pullup-bot systemd user service."""
     # INVOCATION_ID is set by systemd for every service unit it starts
-    if os.environ.get("INVOCATION_ID"):
+    if os.environ.get("INVOCATION_ID") or "--allow-local" in sys.argv[1:]:
         return  # running under systemd — OK
 
     print(
         "ERROR: The bot must be started via systemd:\n"
         "  systemctl --user start pullup-bot.service\n"
+        "For a separate development bot: python -m pullup_bot --allow-local\n"
         "\n"
         "Do NOT launch it directly with `python -m pullup_bot` or `nohup …`.\n"
         "Running multiple instances causes TelegramConflictError.",

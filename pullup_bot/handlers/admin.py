@@ -27,12 +27,12 @@ from .. import globals as g
 
 
 def _is_admin(message) -> bool:
-    """Return True if the message sender is the configured admin (by ID or username)."""
+    """Return True if the message sender has the configured admin Telegram ID."""
     return is_admin_user(message.from_user.id, message.from_user.username)
 
 
 def _is_admin_cb(callback: types.CallbackQuery) -> bool:
-    """Return True if the callback sender is the configured admin (by ID or username)."""
+    """Return True if the callback sender has the configured admin Telegram ID."""
     return is_admin_user(callback.from_user.id, callback.from_user.username)
 
 router = Router()

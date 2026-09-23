@@ -1,3 +1,4 @@
+from ..timeutils import today as local_today
 import asyncio
 import random
 
@@ -233,7 +234,6 @@ If the user describes something that sounds like a bug, unexpected behavior, mis
 
 def _user_data_block(user, workouts) -> str:
     """Build the structured user-data section injected into the AI system prompt."""
-    from datetime import date as _date
     lang = user["lang"] or "ru"
     lvl, lname, to_nxt, _ = level_info(user["xp"] or 0)
     lang_label = "Russian" if lang == "ru" else "English"
@@ -249,7 +249,7 @@ def _user_data_block(user, workouts) -> str:
 
     # Use today's actual DB rows if they exist (program_day may already be advanced
     # past a rest day that was just acknowledged, making the cycle lookup lie).
-    today_str = str(_date.today())
+    today_str = str(local_today())
     today_rows = [r for r in workouts if r["date"] == today_str]
     today_training = [r for r in today_rows if r["exercise"] != "rest"]
     if today_training:

@@ -1,5 +1,5 @@
 import json
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
@@ -10,10 +10,11 @@ from pullup_bot.handlers.training import (_apply_rpe_adjustment,
                                           _check_weighted_progression)
 from pullup_bot.keyboards import weight_choices
 from .conftest import insert_test_user
+from pullup_bot.timeutils import today
 
 
 def days_ago(n: int) -> str:
-    return (date.today() - timedelta(days=n)).isoformat()
+    return (today() - timedelta(days=n)).isoformat()
 
 
 async def add_session(conn, user_id, exercise, day_offset, planned, completed,
@@ -81,6 +82,21 @@ async def test_easy_day_at_rpe_8_does_cut_the_base(test_db):
     new_base, _, delta = await _apply_rpe_adjustment(1, 1, "pullups", 100)
     assert delta == 3.0
     assert new_base == 95  # −5%
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("base", [5, 6, 9])
+@pytest.mark.parametrize("rpe", [6, 10])
+async def test_high_rpe_never_increases_a_small_base(test_db, base, rpe):
+    await insert_test_user(test_db, tg_id=1, base=base)
+    for offset in [1, 2, 3]:
+        await add_session(test_db, 1, "pullups", offset, base, 3,
+                          rpe=rpe, day_type="Лёгкий")
+    new_base, _, _ = await _apply_rpe_adjustment(1, 1, "pullups", base)
+    async with test_db.execute("SELECT base_pullups FROM users WHERE tg_id=1") as cursor:
+        saved_base = (await cursor.fetchone())[0]
+    assert 5 <= saved_base <= base
+    assert new_base is None or new_base <= base
 
 
 @pytest.mark.asyncio

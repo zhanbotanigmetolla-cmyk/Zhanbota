@@ -1,79 +1,73 @@
 import time
-from datetime import datetime
 
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 
 from ..config import logger
 from ..db import get_user
+from ..i18n import t
+from ..keyboards import landing_kb, main_kb
 from ..services import monitoring
-from ..services.gemini import get_manager, RATE_LIMIT_DAILY, RATE_LIMIT_MINUTE
+from ..timeutils import now
 from .. import globals as g
 
 router = Router()
 
-# Cooldown: 1 fallback Gemini call per user per 60 seconds max
+# Avoid repeating the same navigation hint during a burst of messages.
 _fallback_cooldown: dict[int, float] = {}
 _FALLBACK_COOLDOWN_SECS = 60
-
-_FALLBACK_SYSTEM = (
-    "You are Turnikmen Bot — a Telegram pull-up training bot assistant. "
-    "The user sent a free-form message outside the bot's normal flow. "
-    "Give a short, helpful response (1-3 sentences). "
-    "If the message looks like a bug report or feature request, suggest they use the 🐛 button in the main menu. "
-    "If it looks like a question about training or the bot, answer briefly. "
-    "Match the user's language. Be friendly and concise."
-)
 
 
 @router.message()
 async def unhandled_message(message: types.Message, state: FSMContext):
-    """Catch-all for messages that no other handler claimed; logs the event and may send a Gemini fallback reply."""
+    """Log unhandled messages and offer local navigation without sending text to AI."""
     current_state = await state.get_state()
     text = message.text or f"[{message.content_type}]"
+    uid = message.from_user.id if message.from_user else None
     if current_state:
         logger.warning(
-            f"[STATE GAP] user={message.from_user.id} "
+            f"[STATE GAP] user={uid} "
             f"state={current_state!r} unexpected text={text!r}"
         )
     else:
         logger.warning(
-            f"[UNHANDLED] user={message.from_user.id} "
+            f"[UNHANDLED] user={uid} "
             f"no-state text={text!r}"
         )
     monitoring.inc("unhandled")
     g.security_events.appendleft({
-        "ts": datetime.now().isoformat(timespec="seconds"),
-        "uid": message.from_user.id if message.from_user else "?",
+        "ts": now().isoformat(timespec="seconds"),
+        "uid": uid if uid is not None else "?",
         "type": "state_gap" if current_state else "unhandled",
         "text": text[:50],
     })
 
-    # Smart fallback: reply via Gemini only when user sends actual text with no active state
-    if (not current_state
-            and message.text
-            and len(message.text) >= 3
-            and not message.text.startswith("/")):
-        uid = message.from_user.id if message.from_user else 0
-        now = time.monotonic()
-        last = _fallback_cooldown.get(uid, 0)
-        if now - last < _FALLBACK_COOLDOWN_SECS:
-            return  # cooldown active — stay silent
-        # Prune expired entries so the dict doesn't grow forever
-        if len(_fallback_cooldown) > 200:
-            for k in [k for k, v in _fallback_cooldown.items()
-                      if now - v >= _FALLBACK_COOLDOWN_SECS]:
-                del _fallback_cooldown[k]
-        manager = get_manager()
-        if manager.is_daily_exhausted():
-            return  # no quota left — stay silent
-        _fallback_cooldown[uid] = now
-        try:
-            raw, _ = await manager.chat(_FALLBACK_SYSTEM, [], message.text)
-            if raw and raw not in (RATE_LIMIT_DAILY, RATE_LIMIT_MINUTE):
-                await message.answer(raw)
-        except Exception as e:
-            logger.warning(f"[fallback_gemini] {e}")
+    if current_state or not message.text or uid is None:
+        return
+
+    tick = time.monotonic()
+    last = _fallback_cooldown.get(uid)
+    if last is not None and tick - last < _FALLBACK_COOLDOWN_SECS:
+        return
+    if len(_fallback_cooldown) > 200:
+        for key in [key for key, value in _fallback_cooldown.items()
+                    if tick - value >= _FALLBACK_COOLDOWN_SECS]:
+            del _fallback_cooldown[key]
+    _fallback_cooldown[uid] = tick
+
+    user = await get_user(uid)
+    language_code = (message.from_user.language_code or "ru").lower()
+    lang = (user["lang"] or "ru") if user else ("ru" if language_code.startswith("ru") else "en")
+    if not user:
+        await message.answer(t("register_first", lang), reply_markup=landing_kb(lang))
+    elif user["is_logged_out"]:
+        reply = (f"Чтобы продолжить, нажми «{t('btn_login', lang)}»." if lang == "ru" else
+                 f"To continue, tap {t('btn_login', lang)}.")
+        await message.answer(reply, reply_markup=landing_kb(lang))
+    else:
+        reply = (f"Выбери действие в меню. Для вопросов открой «{t('btn_ai', lang)}»." if lang == "ru" else
+                 f"Choose an action from the menu. For questions, open {t('btn_ai', lang)}.")
+        await message.answer(reply, reply_markup=main_kb(lang))
 
 
 @router.callback_query()

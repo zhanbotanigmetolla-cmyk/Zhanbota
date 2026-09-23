@@ -1,5 +1,8 @@
 import os
 import logging
+import re
+from datetime import timedelta, timezone
+from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/.env.pullup_bot"))
@@ -27,11 +30,11 @@ DB_PATH = os.environ.get("PULLUP_DB", os.path.expanduser("~/pullups.db"))
 FSM_DB_PATH = os.environ.get("PULLUP_FSM_DB", os.path.expanduser("~/pullups_fsm.db"))
 SECRET_CODE_NORM = SECRET_CODE.strip().upper()
 ADMIN_TG_ID = int(os.environ.get("ADMIN_TG_ID", "0"))
-ADMIN_USERNAMES = {"zhanbota102"}  # Always-admin usernames regardless of tg_id
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "").strip()
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
 # UTC offset for notification time matching (default: UTC+5 = Kazakhstan/Almaty)
 TZ_OFFSET_HOURS = int(os.environ.get("TZ_OFFSET_HOURS", "5"))
+BOT_TIMEZONE = timezone(timedelta(hours=TZ_OFFSET_HOURS))
 # Kaspi transfer details for the "support the project" note. The number lives in the
 # server .env, not in the repo; while it is unset the support button and note stay hidden.
 KASPI_PHONE = os.environ.get("KASPI_PHONE", "").strip()
@@ -244,14 +247,25 @@ EFFECT_CONFETTI = "5046509860389126442"  # 🎉
 
 def is_admin_id(tg_id: int) -> bool:
     """Return True if the given Telegram ID matches the configured admin."""
-    return tg_id == ADMIN_TG_ID
+    return ADMIN_TG_ID > 0 and tg_id == ADMIN_TG_ID
 
 
 def is_admin_user(tg_id: int, username: str | None = None) -> bool:
-    """Return True if the Telegram ID or username matches the configured admin."""
-    if tg_id == ADMIN_TG_ID:
-        return True
-    return (username or "").lower() in {u.lower() for u in ADMIN_USERNAMES}
+    """Authorize only the immutable Telegram ID; usernames confer no privileges."""
+    return is_admin_id(tg_id)
+
+
+def validate_webhook_config() -> None:
+    """Reject an unauthenticated or invalid webhook before any startup effects."""
+    if not WEBHOOK_URL:
+        return
+    parsed = urlsplit(WEBHOOK_URL)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise RuntimeError("WEBHOOK_URL must be an absolute HTTPS URL")
+    if parsed.path != "/webhook" or parsed.query or parsed.fragment or parsed.username:
+        raise RuntimeError("WEBHOOK_URL must point to /webhook without credentials, query or fragment")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", WEBHOOK_SECRET):
+        raise RuntimeError("WEBHOOK_SECRET is required in webhook mode (1-256 letters, digits, _ or -)")
 
 logging.basicConfig(
     level=logging.INFO,

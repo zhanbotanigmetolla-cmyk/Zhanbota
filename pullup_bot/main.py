@@ -4,9 +4,12 @@ import traceback
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.exceptions import TelegramNetworkError, TelegramServerError
+from aiogram.fsm.storage.memory import SimpleEventIsolation
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, is_admin_user, logger
+from .config import (ADMIN_TG_ID, BOT_TIMEZONE, BOT_TOKEN, FSM_DB_PATH,
+                     WEBHOOK_SECRET, WEBHOOK_URL, is_admin_user, logger,
+                     validate_webhook_config)
 from .db import close_db, get_user, init_db, is_muted, is_permanently_banned
 from .handlers import register_all
 from .storage import SqliteStorage
@@ -23,8 +26,8 @@ g.BOT_START_TIME = _time.monotonic()
 bot = Bot(token=BOT_TOKEN)
 bot.session.middleware(retry_middleware)
 storage = SqliteStorage(db_path=FSM_DB_PATH)
-dp = Dispatcher(storage=storage)
-scheduler = AsyncIOScheduler()
+dp = Dispatcher(storage=storage, events_isolation=SimpleEventIsolation())
+scheduler = AsyncIOScheduler(timezone=BOT_TIMEZONE)
 
 
 @dp.errors()
@@ -191,12 +194,8 @@ async def _set_bot_commands():
         logger.warning(f"[startup] set_my_commands failed: {e}")
 
 
-async def main():
-    """Initialize the DB, register scheduled jobs, and start polling or webhook mode."""
-    await init_db()
-    await bot.delete_webhook(drop_pending_updates=True)
-    await _set_bot_commands()
-
+def configure_scheduler():
+    """Use the same calendar timezone for every scheduled job and handler."""
     # Cron at second 0 of every minute so each HH:MM is matched exactly once;
     # grace period lets a late tick still fire instead of silently skipping a minute
     scheduler.add_job(daily_reminder, "cron", minute="*", args=[bot],
@@ -208,27 +207,44 @@ async def main():
     scheduler.add_job(daily_xp_decay, "cron", hour=10, minute=0, args=[bot])
     scheduler.add_job(watchdog_health_check, "interval", minutes=5, args=[bot])
     scheduler.add_job(auto_acknowledge_rest_days, "cron", hour=23, minute=55, args=[bot])
-    scheduler.start()
-    logger.info("✅ Turnikmen Bot запущен!")
 
-    if WEBHOOK_URL:
-        if not WEBHOOK_URL.startswith("https://"):
-            raise RuntimeError("WEBHOOK_URL must use HTTPS")
-        from aiohttp import web
-        from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-        await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
-        app = web.Application()
-        handler = SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=WEBHOOK_SECRET)
-        handler.register(app, path="/webhook")
-        setup_application(app, dp, bot=bot)
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, "0.0.0.0", 8080)
-        await site.start()
-        logger.info(f"Webhook mode on {WEBHOOK_URL}")
-        await asyncio.Event().wait()
-    else:
-        await dp.start_polling(bot)
 
-    await close_db()
-    await storage.close()
+async def main():
+    """Validate first, preserve queued updates, and close resources on shutdown."""
+    validate_webhook_config()
+    runner = None
+    try:
+        await init_db()
+        await storage.open()
+        if not WEBHOOK_URL:
+            await bot.delete_webhook(drop_pending_updates=False)
+        await _set_bot_commands()
+        configure_scheduler()
+        scheduler.start()
+        logger.info("✅ Turnikmen Bot запущен!")
+
+        if WEBHOOK_URL:
+            from aiohttp import web
+            from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+            app = web.Application()
+            handler = SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=WEBHOOK_SECRET)
+            handler.register(app, path="/webhook")
+            setup_application(app, dp, bot=bot)
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, "0.0.0.0", 8080)
+            await site.start()
+            await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET,
+                                  drop_pending_updates=False)
+            logger.info(f"Webhook mode on {WEBHOOK_URL}")
+            await asyncio.Event().wait()
+        else:
+            await dp.start_polling(bot)
+    finally:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+        if runner is not None:
+            await runner.cleanup()
+        await close_db()
+        await storage.close()
+        await bot.session.close()
