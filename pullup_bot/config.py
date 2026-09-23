@@ -32,6 +32,9 @@ SECRET_CODE_NORM = SECRET_CODE.strip().upper()
 ADMIN_TG_ID = int(os.environ.get("ADMIN_TG_ID", "0"))
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "").strip()
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
+MINI_APP_URL = os.environ.get("MINI_APP_URL", "").strip().rstrip("/")
+WEB_BIND = os.environ.get("WEB_BIND", "0.0.0.0" if WEBHOOK_URL else "127.0.0.1")
+WEB_PORT = int(os.environ.get("WEB_PORT", "8080"))
 # UTC offset for notification time matching (default: UTC+5 = Kazakhstan/Almaty)
 TZ_OFFSET_HOURS = int(os.environ.get("TZ_OFFSET_HOURS", "5"))
 BOT_TIMEZONE = timezone(timedelta(hours=TZ_OFFSET_HOURS))
@@ -266,6 +269,19 @@ def validate_webhook_config() -> None:
         raise RuntimeError("WEBHOOK_URL must point to /webhook without credentials, query or fragment")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", WEBHOOK_SECRET):
         raise RuntimeError("WEBHOOK_SECRET is required in webhook mode (1-256 letters, digits, _ or -)")
+
+
+def validate_miniapp_config() -> None:
+    """The Telegram launch URL must resolve to our HTTPS app entry point."""
+    if not 1 <= WEB_PORT <= 65535:
+        raise RuntimeError("WEB_PORT must be between 1 and 65535")
+    if not MINI_APP_URL:
+        return
+    parsed = urlsplit(MINI_APP_URL)
+    if (parsed.scheme != "https" or not parsed.hostname
+            or parsed.path != "/app" or parsed.query or parsed.fragment
+            or parsed.username or parsed.password):
+        raise RuntimeError("MINI_APP_URL must be an HTTPS URL ending in /app without credentials, query or fragment")
 
 logging.basicConfig(
     level=logging.INFO,

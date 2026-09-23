@@ -44,7 +44,7 @@ python="$release/.venv/bin/python"
 (
     cd "$release"
     PULLUP_TESTING=1 "$python" -m pytest pullup_bot/tests -q
-    env -u PULLUP_TESTING "$python" -c 'from pullup_bot.config import validate_webhook_config; validate_webhook_config()'
+    env -u PULLUP_TESTING "$python" -c 'from pullup_bot.config import validate_webhook_config, validate_miniapp_config; validate_webhook_config(); validate_miniapp_config()'
 )
 
 mkdir -p "$override_dir" "$release/backups"
@@ -142,6 +142,20 @@ for attempt in {1..10}; do
     fi
 done
 [[ "$ready" == 1 ]] || { echo "No successful Telegram startup within 30 seconds." >&2; exit 1; }
+(
+    cd "$release"
+    "$python" - <<'PY'
+import json
+from urllib.request import urlopen
+from pullup_bot.config import MINI_APP_URL, WEB_PORT
+if MINI_APP_URL:
+    with urlopen(f"http://127.0.0.1:{WEB_PORT}/healthz", timeout=10) as response:
+        assert json.load(response) == {"ok": True, "service": "turnikmen"}
+    with urlopen(MINI_APP_URL, timeout=20) as response:
+        assert response.status == 200 and b"telegram-web-app.js" in response.read()
+    print("Mini App health and public HTTPS verified.")
+PY
+)
 # Keep the repository checkout on the deployed branch, without pulling main into it.
 git -C "$repo" checkout -B "$branch" "$expected"
 printf '#!/usr/bin/env bash\nset -euo pipefail\nexec bash "$HOME/repo/scripts/deploy_server.sh" "$@"\n' >"$HOME/deploy.sh"

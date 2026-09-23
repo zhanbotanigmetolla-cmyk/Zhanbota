@@ -8,8 +8,9 @@ from aiogram.fsm.storage.memory import SimpleEventIsolation
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .config import (ADMIN_TG_ID, BOT_TIMEZONE, BOT_TOKEN, FSM_DB_PATH,
-                     WEBHOOK_SECRET, WEBHOOK_URL, is_admin_user, logger,
-                     validate_webhook_config)
+                     MINI_APP_URL, WEB_BIND, WEB_PORT, WEBHOOK_SECRET,
+                     WEBHOOK_URL, is_admin_user, logger,
+                     validate_miniapp_config, validate_webhook_config)
 from .db import close_db, get_user, init_db, is_muted, is_permanently_banned
 from .handlers import register_all
 from .storage import SqliteStorage
@@ -172,6 +173,7 @@ register_all(dp)
 async def _set_bot_commands():
     """Register the command menu (shown when typing / and under the Menu button)."""
     ru = [
+        types.BotCommand(command="app", description="Открыть приложение Турникмен"),
         types.BotCommand(command="train", description="🏋️ Начать тренировку"),
         types.BotCommand(command="stats", description="📊 Моя статистика"),
         types.BotCommand(command="history", description="📋 История тренировок"),
@@ -180,6 +182,7 @@ async def _set_bot_commands():
         types.BotCommand(command="cancel", description="❌ Отменить действие"),
     ]
     en = [
+        types.BotCommand(command="app", description="Open the Turnikmen app"),
         types.BotCommand(command="train", description="🏋️ Start training"),
         types.BotCommand(command="stats", description="📊 My statistics"),
         types.BotCommand(command="history", description="📋 Workout history"),
@@ -188,8 +191,14 @@ async def _set_bot_commands():
         types.BotCommand(command="cancel", description="❌ Cancel action"),
     ]
     try:
+        if not MINI_APP_URL:
+            ru = [command for command in ru if command.command != "app"]
+            en = [command for command in en if command.command != "app"]
         await bot.set_my_commands(ru)
         await bot.set_my_commands(en, language_code="en")
+        menu = (types.MenuButtonWebApp(text="Турникмен", web_app=types.WebAppInfo(url=MINI_APP_URL))
+                if MINI_APP_URL else types.MenuButtonCommands())
+        await bot.set_chat_menu_button(menu_button=menu)
     except Exception as e:
         logger.warning(f"[startup] set_my_commands failed: {e}")
 
@@ -212,28 +221,39 @@ def configure_scheduler():
 async def main():
     """Validate first, preserve queued updates, and close resources on shutdown."""
     validate_webhook_config()
+    validate_miniapp_config()
     runner = None
     try:
         await init_db()
         await storage.open()
         if not WEBHOOK_URL:
             await bot.delete_webhook(drop_pending_updates=False)
-        await _set_bot_commands()
         configure_scheduler()
         scheduler.start()
         logger.info("✅ Turnikmen Bot запущен!")
 
-        if WEBHOOK_URL:
+        if WEBHOOK_URL or MINI_APP_URL:
             from aiohttp import web
-            from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-            app = web.Application()
-            handler = SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=WEBHOOK_SECRET)
-            handler.register(app, path="/webhook")
-            setup_application(app, dp, bot=bot)
+            app = web.Application(client_max_size=64 * 1024)
+            if MINI_APP_URL:
+                from .miniapp import setup_miniapp
+                from .miniapp_server import setup_static
+                setup_static(app)
+                setup_miniapp(app, storage=storage,
+                              events_isolation=dp.fsm.events_isolation, bot_id=bot.id)
+            if WEBHOOK_URL:
+                from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+                handler = SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=WEBHOOK_SECRET)
+                handler.register(app, path="/webhook")
+                setup_application(app, dp, bot=bot)
             runner = web.AppRunner(app)
             await runner.setup()
-            site = web.TCPSite(runner, "0.0.0.0", 8080)
+            site = web.TCPSite(runner, WEB_BIND, WEB_PORT)
             await site.start()
+            if MINI_APP_URL:
+                logger.info("Mini App listening on %s:%s", WEB_BIND, WEB_PORT)
+        await _set_bot_commands()
+        if WEBHOOK_URL:
             await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET,
                                   drop_pending_updates=False)
             logger.info(f"Webhook mode on {WEBHOOK_URL}")
