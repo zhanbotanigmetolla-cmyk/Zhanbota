@@ -130,7 +130,9 @@ systemctl --user daemon-reload
 systemctl --user reset-failed "$service"
 systemctl --user start "$service"
 ready=0
-for attempt in {1..10}; do
+# A cold Python/aiogram import on the shared-core e2-micro takes ~45 seconds.
+# Keep the same readiness/restart checks while allowing two minutes to start.
+for attempt in {1..40}; do
     sleep 3
     systemctl --user is-active --quiet "$service"
     restarts=$(systemctl --user show "$service" -p NRestarts --value)
@@ -141,7 +143,7 @@ for attempt in {1..10}; do
         break
     fi
 done
-[[ "$ready" == 1 ]] || { echo "No successful Telegram startup within 30 seconds." >&2; exit 1; }
+[[ "$ready" == 1 ]] || { echo "No successful Telegram startup within 120 seconds." >&2; exit 1; }
 (
     cd "$release"
     "$python" - <<'PY'
