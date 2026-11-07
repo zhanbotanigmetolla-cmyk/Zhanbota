@@ -81,3 +81,24 @@ async def test_watchdog_reminds_once_without_discarding_old_workout(test_db, tmp
         assert "/cancel" in bot.sent[0][1]
     finally:
         await storage.close()
+
+
+async def test_owner_xp_never_decays_while_other_users_still_do(test_db):
+    """XP decay, rank loss and their messages skip the owner's account only."""
+    nine_days_ago = (timeutils.today() - timedelta(days=9)).isoformat()
+    await insert_test_user(test_db, tg_id=config.ADMIN_TG_ID, xp=9855, level=7,
+                           last_workout=nine_days_ago)
+    await insert_test_user(test_db, tg_id=43, xp=9855, level=7, last_workout=nine_days_ago)
+    bot = FakeBot()
+    await scheduler.daily_xp_decay(bot)
+    async with test_db.execute("SELECT tg_id, xp FROM users") as cur:
+        xp = {row[0]: row[1] for row in await cur.fetchall()}
+    assert xp[config.ADMIN_TG_ID] == 9855
+    assert xp[43] < 9855
+    assert [chat for chat, _ in bot.sent] == []  # day 9 is not the first decay day: nobody is messaged
+
+    await test_db.execute("UPDATE users SET xp=9855, level=7, last_workout=?",
+                          ((timeutils.today() - timedelta(days=7)).isoformat(),))
+    await test_db.commit()
+    await scheduler.daily_xp_decay(bot)
+    assert [chat for chat, _ in bot.sent] == [43]  # first decay day: only the other user hears about it

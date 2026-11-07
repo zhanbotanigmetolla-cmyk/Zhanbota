@@ -4,7 +4,7 @@ import time
 from aiogram.exceptions import TelegramForbiddenError
 
 from ..config import (ADMIN_TG_ID, EFFECT_CONFETTI, EXERCISES, EXERCISE_EMOJI,
-                      XP_CASE_SQL, logger, xp_for)
+                      XP_CASE_SQL, is_admin_id, logger, xp_for)
 from .. import timeutils
 from ..db import get_db, get_day_rows, mark_rest_day
 from ..i18n import t, day_name
@@ -29,6 +29,16 @@ async def _delete_user(conn, user_id: int, tg_id: int = 0):
                            (tg_id, tg_id))
     await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     await conn.commit()
+
+
+def _exempt_from_inactivity_penalties(tg_id: int) -> bool:
+    """The owner's account keeps its XP, rank and data however long the break is.
+
+    Inactivity nudges exist to keep participants engaged. The project owner asked
+    not to receive them, so XP decay, rank loss, deletion warnings and automatic
+    removal all skip ADMIN_TG_ID; every other account is treated as before.
+    """
+    return is_admin_id(tg_id)
 
 
 async def daily_reminder(bot):
@@ -104,11 +114,11 @@ async def daily_reminder(bot):
             dates = [d for d in (user["last_workout"], user["joined"], recorded) if d]
             last = max(dates) if dates else None
             inactive = bool(last and (timeutils.today() - date.fromisoformat(last)).days >= 7)
-            if inactive:
+            if inactive and not _exempt_from_inactivity_penalties(user["tg_id"]):
                 logger.info(f"[reminder] blocked+inactive 7d, removing user {user['tg_id']}")
                 await _delete_user(conn, user["id"], user["tg_id"])
             else:
-                logger.info(f"[reminder] user {user['tg_id']} blocked the bot but still active")
+                logger.info(f"[reminder] user {user['tg_id']} blocked the bot; keeping the account")
         except Exception as e:
             logger.warning(f"[reminder] {user['tg_id']}: {e}")
 
@@ -330,7 +340,7 @@ async def daily_xp_decay(bot):
             days_inactive = (today - date.fromisoformat(user["last_workout"])).days
         except Exception:
             continue
-        if days_inactive < 7:
+        if days_inactive < 7 or _exempt_from_inactivity_penalties(user["tg_id"]):
             continue
         result = await apply_xp_decay(user["tg_id"], days_inactive)
         if result is None:
@@ -405,6 +415,8 @@ async def auto_cleanup_inactive(bot):
         stale = await cur.fetchall()
     deleted = 0
     for user in stale:
+        if _exempt_from_inactivity_penalties(user["tg_id"]):
+            continue
         logger.info(f"[cleanup] deleting inactive 30d user {user['tg_id']}")
         await _delete_user(conn, user["id"], user["tg_id"])
         deleted += 1
@@ -418,6 +430,8 @@ async def auto_cleanup_inactive(bot):
         to_warn = await cur.fetchall()
     warned = 0
     for user in to_warn:
+        if _exempt_from_inactivity_penalties(user["tg_id"]):
+            continue
         lang = user["lang"] or "ru"
         never_trained = not user["last_workout"] and not user["last_recorded_activity"]
         idle_since = user["idle_since"]

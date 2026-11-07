@@ -123,3 +123,23 @@ async def test_cleanup_deletes_on_thirtieth_day(test_db):
     await insert_test_user(test_db, tg_id=10, joined=days_ago(30), last_workout=None)
     await auto_cleanup_inactive(FakeBot())
     assert await _tg_ids(test_db) == []
+
+
+async def test_owner_account_is_never_warned_or_deleted(test_db):
+    """The project owner opted out of inactivity penalties; other accounts are unaffected."""
+    from pullup_bot.config import ADMIN_TG_ID
+    await insert_test_user(test_db, tg_id=ADMIN_TG_ID, joined=days_ago(200), last_workout=days_ago(28))
+    await insert_test_user(test_db, tg_id=11, joined=days_ago(200), last_workout=days_ago(28))
+    bot = FakeBot()
+    await auto_cleanup_inactive(bot)
+    assert await _tg_ids(test_db) == sorted([ADMIN_TG_ID, 11])
+    assert [chat for chat, _ in bot.sent if chat != ADMIN_TG_ID] == [11]  # only the other user is warned
+    assert all("Через" not in text for chat, text in bot.sent if chat == ADMIN_TG_ID)  # admin summary only
+
+    await test_db.execute("UPDATE users SET last_workout=?", (days_ago(45),))
+    await test_db.commit()
+    bot = FakeBot()
+    await auto_cleanup_inactive(bot)
+    assert await _tg_ids(test_db) == [ADMIN_TG_ID]
+    assert [chat for chat, _ in bot.sent] == [ADMIN_TG_ID]  # the cleanup summary, not a warning
+    assert "Удалено: 1" in bot.sent[0][1]
