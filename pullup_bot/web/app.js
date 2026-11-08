@@ -236,7 +236,27 @@
     } catch (error) { if (error.name === 'AbortError' || error instanceof TypeError) { const e = new Error(tr('Связь прервалась. Подходы на месте — повтори сохранение.', 'Connection lost. Your sets are safe here — retry saving.')); e.code = 'network'; throw e; } throw error; }
     finally { clearTimeout(timeout); }
   }
-  const friendlyError = error => ({ bot_session_active: tr('Заверши текущий диалог в боте или отправь /cancel.', 'Finish your current bot conversation or send /cancel.'), expired_auth: tr('Сессия Telegram истекла. Закрой и снова открой приложение из бота.', 'Your Telegram session expired. Reopen the app from the bot.'), invalid_auth: tr('Открой приложение через кнопку в Telegram-боте.', 'Open the app using the button in the Telegram bot.'), date_changed: tr('Начался новый день. Подходы сохранены на экране; обнови дату и отправь их за сегодня.', 'A new day has started. Your sets are still here; update the date and save them for today.'), weight_locked: tr('Вес уже зафиксирован сегодняшней тренировкой. Обнови приложение.', 'Today’s workout already locked the weight. Refresh the app.'), maintenance: tr('Небольшой перерыв на обслуживание. Попробуй чуть позже.', 'A short maintenance break. Please try again later.'), rate_limited: tr('Слишком быстро. Подожди немного и повтори.', 'A little too fast. Wait a moment and try again.') })[error.code] || error.message;
+  // Every API error code has a text in both languages; the server's messages are English only.
+  const ERROR_TEXTS = {
+    bot_session_active: () => tr('Заверши текущий диалог в боте или отправь /cancel.', 'Finish your current bot conversation or send /cancel.'),
+    expired_auth: () => tr('Сессия Telegram истекла. Закрой и снова открой приложение из бота.', 'Your Telegram session expired. Reopen the app from the bot.'),
+    invalid_auth: () => tr('Открой приложение через кнопку в Telegram-боте.', 'Open the app using the button in the Telegram bot.'),
+    date_changed: () => tr('Начался новый день. Подходы сохранены на экране; обнови дату и отправь их за сегодня.', 'A new day has started. Your sets are still here; update the date and save them for today.'),
+    weight_locked: () => tr('Вес уже зафиксирован сегодняшней тренировкой. Обнови приложение.', 'Today’s workout already locked the weight. Refresh the app.'),
+    maintenance: () => tr('Небольшой перерыв на обслуживание. Попробуй чуть позже.', 'A short maintenance break. Please try again later.'),
+    rate_limited: () => tr('Слишком быстро. Подожди немного и повтори.', 'A little too fast. Wait a moment and try again.'),
+    rest_not_available: () => tr('Сегодня уже есть тренировка или это тренировочный день — отдых не отметить.', 'Today already has a workout or is a training day, so a rest day can’t be saved.'),
+    exercise_not_configured: () => tr('Сначала укажи свой максимум для этого упражнения.', 'Set your maximum reps for this exercise first.'),
+    registration_required: () => tr('Сначала заверши регистрацию.', 'Complete your profile first.'),
+    account_paused: () => tr('Аккаунт на паузе. Нажми «Продолжить», чтобы снова тренироваться.', 'Your account is paused. Tap “Resume” to train again.'),
+    banned: () => tr('Доступ к боту закрыт.', 'Access to the bot is blocked.'),
+    muted: () => tr('Аккаунт временно заглушён. Попробуй позже.', 'This account is temporarily muted. Try again later.'),
+    idempotency_conflict: () => tr('Эта тренировка уже была сохранена с другими данными. Начни новую.', 'This workout was already saved with different data. Start a new one.'),
+    server_error: () => tr('Не получилось выполнить запрос. Попробуй ещё раз.', 'Unable to complete the request. Please try again.'),
+    http_error: () => tr('Сервер ответил ошибкой. Попробуй ещё раз.', 'The server returned an error. Please try again.'),
+    invalid_input: error => lang() === 'en' ? error.message : 'Проверь введённые данные и попробуй ещё раз.',
+  };
+  const friendlyError = error => (ERROR_TEXTS[error.code] || (() => error.message))(error);
   function setBusy(value) { ui.busy = value; document.querySelectorAll('dialog button,dialog input,dialog select').forEach(el => { el.disabled = value; }); modal.setAttribute('aria-busy', String(value)); }
   async function saveWorkout() {
     if (ui.busy || !ui.session) return;
@@ -252,7 +272,7 @@
       const target = document.querySelector('#save-error'); if (target) target.textContent = ui.error; else toast(ui.error);
       // A definitive rejection permits editing. Network errors retain the exact
       // request and UUID so a lost successful response cannot duplicate a workout.
-      if (['date_changed', 'weight_locked', 'exercise_not_configured', 'rest_not_available'].includes(error.code)) { s.pending = null; persistSession(); }
+      if (['date_changed', 'weight_locked', 'exercise_not_configured', 'rest_not_available', 'invalid_input', 'idempotency_conflict', 'account_paused', 'registration_required', 'banned', 'muted'].includes(error.code)) { if (error.code === 'idempotency_conflict') s.id = uid(); s.pending = null; persistSession(); }
       if (s.pending) {
         modal.querySelectorAll('[data-action=rpe]').forEach(button => { button.disabled = true; });
         const retry = modal.querySelector('[data-action=save-workout]');
@@ -267,7 +287,17 @@
     const data = new FormData(form); let payload; let endpoint; let errorId;
     if (form.id === 'onboarding-form') { endpoint = 'onboarding'; errorId = 'onboarding-error'; payload = { name: data.get('name').trim(), max_pullups: Number(data.get('max_pullups')), language: data.get('language'), program_type: data.get('program_type') }; }
     else if (form.id === 'settings-form') { endpoint = 'settings'; errorId = 'settings-error'; payload = { name: data.get('name').trim(), language: data.get('language'), program_type: data.get('program_type'), notify_time: data.get('notify_time'), notify_workouts: data.has('notify_workouts') }; }
-    else if (form.id === 'exercise-form') { endpoint = 'settings'; errorId = 'exercise-error'; const config = { max_reps: Number(data.get('max_reps')) }; if (data.has('weight_kg')) config.weight_kg = Number(data.get('weight_kg')); payload = { exercises: { [form.dataset.exercise]: config } }; }
+    else if (form.id === 'exercise-form') {
+      endpoint = 'settings'; errorId = 'exercise-error';
+      // The server derives the daily base from max_reps × 3, which would overwrite a base
+      // earned through progression. Send max_reps only when the user actually changed it.
+      const maxInput = form.querySelector('[name=max_reps]'); const ex = state.exercises.find(item => item.id === form.dataset.exercise);
+      const config = {};
+      if (!ex?.configured || maxInput.value !== maxInput.defaultValue) config.max_reps = Number(maxInput.value);
+      if (data.has('weight_kg') && (!ex?.configured || Number(data.get('weight_kg')) !== number(ex.weight_kg))) config.weight_kg = Number(data.get('weight_kg'));
+      if (!Object.keys(config).length) { closeModal(); toast(tr('Без изменений.', 'Nothing changed.')); return; }
+      payload = { exercises: { [form.dataset.exercise]: config } };
+    }
     else if (form.id === 'edit-set-form') { const reps = Number(data.get('reps')); const index = Number(form.dataset.index); if (ui.session.pending) return; if (sum(ui.session.sets) - ui.session.sets[index] + reps > (state.limits.max_total_reps || 10000)) return toast(tr('Превышен лимит повторов.', 'Repetition limit exceeded.')); ui.session.sets[index] = reps; persistSession(); closeModal(); render(); return; }
     else return;
     const button = form.querySelector('button[type=submit]'); const oldText = button.innerHTML; button.disabled = true; button.innerHTML = `<span class="spinner"></span>${tr('Сохраняем…', 'Saving…')}`; ui.busy = true;

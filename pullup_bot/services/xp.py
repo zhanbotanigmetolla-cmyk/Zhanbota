@@ -105,3 +105,35 @@ def planned_for_day(user, exercise: str = "pullups"):
     """Return (planned_count, day_type_name) for the user's cycle position and exercise."""
     name, coeff = day_type_for(user)
     return int(user_base(user, exercise) * coeff), name
+
+
+def reconcile_sets(sets, done: int) -> list:
+    """Make the per-set breakdown add up to an edited daily total.
+
+    Editing a day rewrites ``completed`` but the Mini App shows the sets next to it
+    and later sessions append to the list, so the two must agree. Reps are trimmed
+    from the last set backwards, or added in chunks no larger than the biggest set
+    already logged, so a corrected total can never invent a new single-set record.
+    """
+    sets = [int(s) for s in (sets or []) if isinstance(s, int) and not isinstance(s, bool) and s > 0]
+    done = max(0, int(done))
+    total = sum(sets)
+    if total == done:
+        return sets
+    if total > done:
+        trimmed, remaining = [], done
+        for reps in sets:
+            if remaining <= 0:
+                break
+            take = min(reps, remaining)
+            trimmed.append(take)
+            remaining -= take
+        return trimmed
+    chunk = max(sets) if sets else done
+    extra = done - total
+    result = list(sets)
+    while extra > 0:
+        take = min(chunk, extra)
+        result.append(take)
+        extra -= take
+    return result

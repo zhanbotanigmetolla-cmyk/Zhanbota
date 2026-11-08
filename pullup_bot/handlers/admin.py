@@ -24,6 +24,7 @@ from ..keyboards import (admin_bugs_kb, admin_confirm_kb, admin_confirm_restart_
 from ..states import AdminPanel, BugReport, Settings
 from ..services.xp import md_escape
 from .. import globals as g
+from .. import timeutils
 
 
 def _is_admin(message) -> bool:
@@ -46,7 +47,7 @@ async def show_version(message: types.Message):
         return
     await message.answer(
         f"🧾 *Версия бота*\nPID: `{os.getpid()}`\nPython: `{sys.version.split()[0]}`\n"
-        f"Время: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`",
+        f"Время: `{timeutils.now().strftime('%Y-%m-%d %H:%M:%S %Z')}`",
         parse_mode="Markdown")
 
 
@@ -177,7 +178,7 @@ async def show_bugs(message: types.Message):
         e = "🔴" if r["status"] == "new" else "✅"
         safe_user = md_escape(r['username'] or 'unknown')
         safe_text = md_escape((r['text'] or '')[:100])
-        text += f"{e} #{r['id']} — *{safe_user}*\n{safe_text}\n_{r['created']}_\n\n"
+        text += f"{e} #{r['id']} — *{safe_user}*\n{safe_text}\n_{timeutils.display(r['created'])}_\n\n"
     await message.answer(text, parse_mode="Markdown")
 
 
@@ -268,7 +269,7 @@ async def _show_user_profile(callback: types.CallbackQuery, state: FSMContext, t
         await callback.answer()
         return
     muted = await is_muted(tg_id)
-    muted_until = user["muted_until"] or "—"
+    muted_until = timeutils.display(user["muted_until"])
     text = (
         f"<b>👤 Профиль пользователя</b>\n\n"
         f"ID: <code>{user['tg_id']}</code>\n"
@@ -616,7 +617,7 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         else:
             lines = []
             for r in rows:
-                ts = (r["created"] or "")[:16]
+                ts = timeutils.display(r["created"])
                 name = html.escape(r["name"] or "unknown")
                 model_short = (r["model"] or "?").replace("gemini-", "").replace("-preview", "★")
                 q = html.escape((r["question"] or "")[:200])
@@ -849,12 +850,14 @@ async def admin_mute_duration_input(message: types.Message, state: FSMContext):
     if delta.total_seconds() > 30 * 24 * 3600:
         await message.answer("Максимальный срок мута — 30 дней.")
         return
-    until = (datetime.now() + delta).isoformat()
+    # Bot time, with the offset stored, so the shown end matches the bot's calendar.
+    until = (timeutils.now() + delta).isoformat()
     fsm_data = await state.get_data()
     tg_id = fsm_data.get("ap_target_tg_id")
     if tg_id:
         await mute_user(tg_id, until)
-        await message.answer(f"🔇 Пользователь <code>{tg_id}</code> замучен до {until[:16]}", parse_mode="HTML")
+        await message.answer(f"🔇 Пользователь <code>{tg_id}</code> замучен до {timeutils.display(until)}",
+                             parse_mode="HTML")
     await state.set_state(AdminPanel.main)
     text_panel, kb = await _build_main_panel_view()
     await message.answer(text_panel, reply_markup=kb, parse_mode="HTML")

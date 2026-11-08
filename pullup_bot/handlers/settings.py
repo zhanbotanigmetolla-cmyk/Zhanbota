@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 from datetime import date
 
 from aiogram import F, Router, types
@@ -27,8 +28,8 @@ _INPUT_STATES = (
     SkipReason.pick_date, SkipReason.enter_reason,
 )
 # EditDay states are intentionally excluded — each step has its own back handler
-from ..services.xp import fmt_kg, level_info, md_escape, user_base, user_weight
-from ..config import (BASE_COLS, EXERCISES, EXERCISE_EMOJI, is_weighted, xp_for)
+from ..services.xp import fmt_kg, level_info, md_escape, reconcile_sets, user_base, user_weight
+from ..config import (BASE_COLS, EXERCISES, EXERCISE_EMOJI, XP_PER_STREAK_DAY, is_weighted, xp_for)
 from .admin import _is_admin
 from .training import ex_label, sync_max_streak
 
@@ -519,16 +520,22 @@ async def _delete_exercise_record(message, state, user, lang, d: str, exercise: 
                 new_pd = max(0, (user["program_day"] or 0) - 1)
                 async with conn.execute(
                     "SELECT date FROM workouts WHERE user_id=? AND date<? "
-                    "ORDER BY date DESC LIMIT 1",
+                    "AND (completed>0 OR exercise='rest') ORDER BY date DESC LIMIT 1",
                     (user["id"], d)
                 ) as cur:
                     prev_row = await cur.fetchone()
                 last_workout = prev_row[0] if prev_row else None
+                # The deleted workout also extended the streak and, when it continued
+                # an existing run, paid the daily bonus. Take both back; otherwise the
+                # corrected session earns them again and the day counts twice.
+                streak = user["streak"] or 0
                 await conn.execute(
-                    "UPDATE users SET program_day=?, last_workout=? WHERE id=?",
-                    (new_pd, last_workout, user["id"])
+                    "UPDATE users SET program_day=?, last_workout=?, streak=? WHERE id=?",
+                    (new_pd, last_workout, max(0, streak - 1), user["id"])
                 )
                 await conn.commit()
+                if streak > 1:
+                    await add_xp(message.from_user.id, -XP_PER_STREAK_DAY)
     date_display = date.fromisoformat(d).strftime("%d.%m.%Y")
     await message.answer(
         t("edit_deleted", lang, date=date_display, ex=t(f"ex_gen_{exercise}", lang)),
@@ -621,8 +628,15 @@ async def _save_edit(message: types.Message, state: FSMContext):
     weight = (existing["weight_kg"] if existing and existing["weight_kg"]
               else user_weight(user, exercise))
     xp_diff = xp_for(exercise, done, weight) - xp_for(exercise, old, weight)
+    # Keep the per-set breakdown in step with the edited total: the Mini App shows
+    # both side by side, and later sessions append their sets to this list.
+    try:
+        old_sets = json.loads(existing["sets_json"] or "[]") if existing else []
+    except (TypeError, ValueError):
+        old_sets = []
     await upsert_workout(user["id"], d, exercise, completed=done, planned=planned,
-                         day_type=day_type, rpe=rpe, weight_kg=weight)
+                         day_type=day_type, rpe=rpe, weight_kg=weight,
+                         sets_json=json.dumps(reconcile_sets(old_sets, done)))
     # The day now has real training — the rest marker no longer applies
     await clear_rest_row(user["id"], d)
     if xp_diff != 0:

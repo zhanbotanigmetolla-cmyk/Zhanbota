@@ -5,12 +5,14 @@ import traceback
 from aiogram import Bot, Dispatcher, types
 from aiogram.exceptions import TelegramNetworkError, TelegramServerError
 from aiogram.fsm.storage.memory import SimpleEventIsolation
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MAX_INSTANCES, EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .config import (ADMIN_TG_ID, BOT_TIMEZONE, BOT_TOKEN, FSM_DB_PATH,
                      MINI_APP_URL, WEB_BIND, WEB_PORT, WEBHOOK_SECRET,
                      WEBHOOK_URL, is_admin_user, logger,
                      validate_miniapp_config, validate_webhook_config)
+from . import db as db_module
 from .db import close_db, get_user, init_db, is_muted, is_permanently_banned
 from .handlers import register_all
 from .storage import SqliteStorage
@@ -27,6 +29,9 @@ g.BOT_START_TIME = _time.monotonic()
 bot = Bot(token=BOT_TOKEN)
 bot.session.middleware(retry_middleware)
 storage = SqliteStorage(db_path=FSM_DB_PATH)
+# Deleting an account (self-service, admin panel, inactivity cleanup) also forgets
+# its FSM row, which can hold a whole AI conversation.
+db_module.fsm_cleanup_hook = storage.delete_user_state
 dp = Dispatcher(storage=storage, events_isolation=SimpleEventIsolation())
 scheduler = AsyncIOScheduler(timezone=BOT_TIMEZONE)
 
@@ -170,6 +175,29 @@ async def callback_logging_middleware(handler, event: types.CallbackQuery, data)
 register_all(dp)
 
 
+async def _welcome_app_registration(tg_id: int, name: str, max_reps: int, base: int, lang: str):
+    """Finish a Mini App registration the way the bot's own flow does.
+
+    The new member gets the welcome message with the main keyboard in the chat and
+    the other participants hear about them, exactly as after registering in the bot.
+    """
+    from .config import LEVEL_NAMES
+    from .handlers.start import _broadcast_new_user
+    from .i18n import t
+    from .keyboards import main_kb
+    from .services.support import support_line
+    from .services.xp import md_escape
+    try:
+        await bot.send_message(
+            tg_id,
+            t("welcome_user", lang, name=md_escape(name), max_pullups=max_reps, base=base,
+              level=LEVEL_NAMES[0]) + support_line(lang),
+            parse_mode="Markdown", reply_markup=main_kb(lang))
+    except Exception as e:
+        logger.warning(f"[miniapp] welcome message for {tg_id}: {e}")
+    await _broadcast_new_user(tg_id, name)
+
+
 async def _set_bot_commands():
     """Register the command menu (shown when typing / and under the Menu button)."""
     ru = [
@@ -203,12 +231,47 @@ async def _set_bot_commands():
         logger.warning(f"[startup] set_my_commands failed: {e}")
 
 
+def _scheduled_job_failed(event) -> None:
+    """A crashed or skipped job is as serious as a handler error: count it, alert the admin.
+
+    APScheduler only writes such failures to the journal, so a weekly summary that
+    raised on Monday morning used to pass unnoticed by the daily report and the watchdog.
+    """
+    job = scheduler.get_job(event.job_id)
+    name = job.name if job is not None else event.job_id
+    exc = getattr(event, "exception", None)
+    if exc is not None:
+        detail = f"{type(exc).__name__}: {exc}"
+    elif event.code == EVENT_JOB_MISSED:
+        detail = "пропущен запуск (misfire)"
+    else:
+        detail = "пропущен запуск: предыдущий ещё выполняется"
+    logger.error(f"[scheduler] job {name}: {detail}")
+    monitoring.inc("errors")
+    text = f"🚨 Задача планировщика «{name}»\n{detail}"[:4000]
+
+    async def alert():
+        try:
+            await bot.send_message(ADMIN_TG_ID, text)
+        except Exception as e:
+            logger.warning(f"[scheduler] failed to notify admin: {e}")
+
+    try:
+        asyncio.get_running_loop().create_task(alert())
+    except RuntimeError:
+        logger.warning("[scheduler] no running event loop for the admin alert")
+
+
 def configure_scheduler():
     """Use the same calendar timezone for every scheduled job and handler."""
+    scheduler.add_listener(_scheduled_job_failed,
+                           EVENT_JOB_ERROR | EVENT_JOB_MISSED | EVENT_JOB_MAX_INSTANCES)
     # Cron at second 0 of every minute so each HH:MM is matched exactly once;
-    # grace period lets a late tick still fire instead of silently skipping a minute
+    # grace period lets a late tick still fire instead of silently skipping a minute.
+    # A run stalled on one slow Telegram send (up to three 60 s attempts) must not
+    # make the following minutes' reminders disappear, hence several instances.
     scheduler.add_job(daily_reminder, "cron", minute="*", args=[bot],
-                      misfire_grace_time=30)
+                      misfire_grace_time=30, max_instances=3)
     # APScheduler drops a job that fires more than one second late by default.
     # A busy event loop at 08:00 on Monday would silently skip the weekly
     # summary, so daily and weekly jobs may run up to an hour late instead.
@@ -244,8 +307,11 @@ async def main():
                 from .miniapp import setup_miniapp
                 from .miniapp_server import setup_static
                 setup_static(app)
+                from .handlers.training import _notify_friends
                 setup_miniapp(app, storage=storage,
-                              events_isolation=dp.fsm.events_isolation, bot_id=bot.id)
+                              events_isolation=dp.fsm.events_isolation, bot_id=bot.id,
+                              notify_workout=_notify_friends,
+                              on_registered=_welcome_app_registration)
             if WEBHOOK_URL:
                 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
                 handler = SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=WEBHOOK_SECRET)

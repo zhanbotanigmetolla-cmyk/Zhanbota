@@ -102,3 +102,30 @@ async def test_skip_reason_on_a_trained_day_adds_no_streak_and_no_rest_row(test_
         assert [r[0] for r in await cur.fetchall()] == ["pullups"]
     async with test_db.execute("SELECT reason FROM streak_recoveries") as cur:
         assert len((await cur.fetchone())[0]) == settings.MAX_REASON_LEN
+
+
+async def test_deleting_todays_only_workout_takes_back_the_streak_day_and_bonus(test_db):
+    """Edit day -> 0 used to refund only the rep XP; the streak day and its 50 XP
+    stayed, and re-logging the corrected number counted the day twice."""
+    today = timeutils.today().isoformat()
+    yesterday = (timeutils.today() - timedelta(days=1)).isoformat()
+    await insert_test_user(test_db, tg_id=7, streak=6, xp=1060, level=2, last_workout=today,
+                           program_day=3)
+    user = await settings.get_user(7)
+    await settings.upsert_workout(user["id"], yesterday, "pullups", completed=20, planned=30)
+    await settings.upsert_workout(user["id"], today, "pullups", completed=25, planned=30,
+                                  sets_json="[10, 8, 7]")
+    await settings._delete_exercise_record(FakeMessage(7, "0"), FakeState(), user, "ru", today, "pullups")
+    fresh = await settings.get_user(7)
+    assert (fresh["streak"], fresh["xp"]) == (5, 1060 - 25 - 50)
+    assert (fresh["last_workout"], fresh["program_day"]) == (yesterday, 2)
+
+
+def test_reconcile_sets_trims_or_adds_without_inventing_a_record_set():
+    from pullup_bot.services.xp import reconcile_sets
+    assert reconcile_sets([10, 8, 7], 25) == [10, 8, 7]
+    assert reconcile_sets([10, 8, 7], 20) == [10, 8, 2]
+    assert reconcile_sets([10, 8, 7], 60) == [10, 8, 7, 10, 10, 10, 5]
+    assert reconcile_sets([], 30) == [30]
+    assert reconcile_sets([10, 8, 7], 0) == []
+    assert reconcile_sets(["bad", True, 5], 5) == [5]

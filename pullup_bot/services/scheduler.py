@@ -134,7 +134,10 @@ async def _announce_weekly_champ(bot, conn, users):
     entries = [(user, totals_map.get(user["id"], 0)) for user in users]
     entries.sort(key=lambda x: x[1], reverse=True)
     if not entries or entries[0][1] == 0:
-        return  # nobody trained — skip the ceremony
+        # Nobody trained: no ceremony, and last week's crown expires as promised.
+        await conn.execute("UPDATE users SET is_weekly_champ=0 WHERE is_weekly_champ=1")
+        await conn.commit()
+        return
 
     champ, champ_total = entries[0]
 
@@ -251,13 +254,14 @@ async def daily_health_summary(bot):
     async with conn.execute("SELECT COUNT(*) FROM users") as cur:
         row = await cur.fetchone()
         total_users = row[0] if row else 0
-    today = timeutils.today().isoformat()
+    # The report goes out at 08:00 and, like the counters below, sums up yesterday.
+    yesterday = (timeutils.today() - timedelta(days=1)).isoformat()
     async with conn.execute(
         "SELECT COUNT(DISTINCT user_id) FROM workouts WHERE date=? AND completed > 0",
-        (today,)
+        (yesterday,)
     ) as cur:
         row = await cur.fetchone()
-        workouts_today = row[0] if row else 0
+        workouts_yesterday = row[0] if row else 0
     errors = snap.get("errors", 0)
     unhandled = snap.get("unhandled", 0)
     actions = snap.get("actions", 0)
@@ -266,7 +270,7 @@ async def daily_health_summary(bot):
     msg = (
         f"📊 Ежедневный отчёт бота\n"
         f"👤 Пользователей: {total_users}\n"
-        f"🏋️ Тренировок сегодня: {workouts_today}\n"
+        f"🏋️ Тренировались вчера: {workouts_yesterday}\n"
         f"⚡ Действий за сутки: {actions}\n"
         f"❌ Ошибок: {errors}\n"
         f"❓ Необработанных сообщений: {unhandled}"
@@ -338,8 +342,11 @@ async def daily_xp_decay(bot):
             continue
         if days_inactive < 7:
             if user["decay_notified"]:
-                # Active again: the next long break deserves a fresh notice.
-                await conn.execute("UPDATE users SET decay_notified=0 WHERE id=?", (user["id"],))
+                # Active again: the next long break deserves a fresh notice and a
+                # floor measured from the rank held at that time.
+                await conn.execute(
+                    "UPDATE users SET decay_notified=0, decay_floor_level=NULL WHERE id=?",
+                    (user["id"],))
                 await conn.commit()
             continue
         result = await apply_xp_decay(user["tg_id"], days_inactive)
@@ -424,10 +431,13 @@ async def auto_cleanup_inactive(bot):
         await _delete_user(conn, user["id"], user["tg_id"])
         deleted += 1
 
-    # Step 2: warn accounts inactive 27–29 days (warning not yet sent, skip logged-out)
+    # Step 2: warn accounts inactive 27–29 days (skip logged-out). A warning dated
+    # before the latest activity belongs to an earlier break, so the user is warned
+    # again instead of being deleted silently the second time.
     async with conn.execute(
         f"SELECT * FROM ({activity_query}) WHERE idle_since <= ? "
-        "AND idle_since > ? AND inactivity_warned IS NULL AND is_logged_out=0 AND is_banned=0",
+        "AND idle_since > ? AND (inactivity_warned IS NULL OR inactivity_warned < idle_since) "
+        "AND is_logged_out=0 AND is_banned=0",
         (cutoff_warn, cutoff_delete)
     ) as cur:
         to_warn = await cur.fetchall()
@@ -498,26 +508,30 @@ async def auto_acknowledge_rest_days(bot):
 
     acknowledged = 0
     for user in users:
-        name, _ = day_type_for(user)
-        if name != "Отдых":
-            continue
-        # Don't clobber a day the user actually interacted with (e.g. an
-        # in-progress rest-day-override training session)
-        day_rows = await get_day_rows(user["id"], today_str)
-        if any((r["planned"] or 0) > 0 or (r["completed"] or 0) > 0 for r in day_rows):
-            continue
-        program_day = user["program_day"] or 0
-        # Advance program_day and mark last_workout=today so the streak stays intact
-        new_pd = program_day + 1
-        await conn.execute(
-            "UPDATE users SET program_day=?, last_workout=? WHERE id=?",
-            (new_pd, today_str, user["id"])
-        )
-        await mark_rest_day(user["id"], today_str)
-        if new_pd % 7 == 0:
-            from ..handlers.training import _run_cycle_progressions
-            await _run_cycle_progressions(user["tg_id"], user["id"])
-        acknowledged += 1
+        try:
+            name, _ = day_type_for(user)
+            if name != "Отдых":
+                continue
+            # Don't clobber a day the user actually interacted with (e.g. an
+            # in-progress rest-day-override training session)
+            day_rows = await get_day_rows(user["id"], today_str)
+            if any((r["planned"] or 0) > 0 or (r["completed"] or 0) > 0 for r in day_rows):
+                continue
+            program_day = user["program_day"] or 0
+            # Advance program_day and mark last_workout=today so the streak stays intact
+            new_pd = program_day + 1
+            await conn.execute(
+                "UPDATE users SET program_day=?, last_workout=? WHERE id=?",
+                (new_pd, today_str, user["id"])
+            )
+            await mark_rest_day(user["id"], today_str)
+            if new_pd % 7 == 0:
+                from ..handlers.training import _run_cycle_progressions
+                await _run_cycle_progressions(user["tg_id"], user["id"])
+            acknowledged += 1
+        except Exception as e:
+            # One broken profile must not leave everyone else's rest day unacknowledged.
+            logger.warning(f"[auto_rest] {user['tg_id']}: {e}")
 
     if acknowledged:
         await conn.commit()
@@ -614,9 +628,10 @@ async def watchdog_health_check(bot):
 
     # ── Alert admin if issues found ─────────────────────────────────────────
     if issues:
-        msg = "🩺 *Watchdog alert*\n\n" + "\n".join(f"• {i}" for i in issues)
+        # Plain text: an exception message with `_` or `*` must not break the alert itself.
+        msg = "🩺 Watchdog alert\n\n" + "\n".join(f"• {i}" for i in issues)
         try:
-            await bot.send_message(ADMIN_TG_ID, msg, parse_mode="Markdown")
+            await bot.send_message(ADMIN_TG_ID, msg)
         except Exception as e:
             logger.warning(f"[watchdog] alert failed: {e}")
 

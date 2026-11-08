@@ -264,10 +264,15 @@ async def login_start(message: types.Message, state: FSMContext):
     if user:
         if user["is_logged_out"]:
             conn = await get_db()
+            # A deliberate pause grants a fresh inactivity window, but resuming on the
+            # day of a workout must not rewind the cursor: the next session would count
+            # the day's streak, bonus XP and cycle step a second time.
             yesterday = (local_today() - timedelta(days=1)).isoformat()
+            last = max(user["last_workout"] or yesterday, yesterday)
             await conn.execute(
-                "UPDATE users SET is_logged_out=0, last_workout=? WHERE tg_id=?",
-                (yesterday, message.from_user.id)
+                "UPDATE users SET is_logged_out=0, last_workout=?, inactivity_warned=NULL "
+                "WHERE tg_id=?",
+                (last, message.from_user.id)
             )
             await conn.commit()
         await state.clear()

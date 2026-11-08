@@ -288,3 +288,36 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger("pullup_bot")
+
+
+class _PollingNoiseFilter(logging.Filter):
+    """aiogram logs every failed GetUpdates poll at ERROR and then retries by itself.
+
+    Telegram answers Bad Gateway or resets the connection a few times a day; nothing is
+    wrong on our side, so those records become WARNING. Real errors are left alone.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno == logging.ERROR and str(record.msg).startswith("Failed to fetch updates"):
+            record.levelno = logging.WARNING
+            record.levelname = logging.getLevelName(logging.WARNING)
+        return True
+
+
+class _FrequentJobFilter(logging.Filter):
+    """Hide the per-minute reminder tick and the five-minute watchdog from the executor log.
+
+    They would add thousands of "Running job" / "executed successfully" lines a day and bury
+    the daily jobs, whose records (and every failure) stay visible.
+    """
+
+    QUIET_JOBS = ("daily_reminder", "watchdog_health_check")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno > logging.INFO or not isinstance(record.args, tuple) or not record.args:
+            return True
+        return not str(record.args[0]).startswith(self.QUIET_JOBS)
+
+
+logging.getLogger("aiogram.dispatcher").addFilter(_PollingNoiseFilter())
+logging.getLogger("apscheduler.executors.default").addFilter(_FrequentJobFilter())

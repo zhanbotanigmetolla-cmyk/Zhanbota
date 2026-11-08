@@ -516,3 +516,64 @@ async def test_state_uses_real_history_and_limits_other_participants_data(api):
     public = json.dumps([state["leaderboard"], state["friends"]])
     assert "54321" not in public
     assert "tg_id" not in public and "username" not in public and "notify_time" not in public
+
+
+@pytest.mark.asyncio
+async def test_guest_reading_the_guide_can_still_register_in_the_app(api):
+    """The guide and about pagers keep an FSM state but write nothing, so they must
+    not block the app's registration form with 'finish the conversation'."""
+    await api.storage.set_state(api.runtime.key(UID), "Guide:step2")
+    response = await api.client.post("/api/miniapp/onboarding", headers=auth(), json={
+        "name": "Новичок", "max_pullups": 6, "language": "ru", "program_type": "standard"})
+    assert response.status == 200
+    assert await api.storage.get_state(api.runtime.key(UID)) is None
+
+
+@pytest.mark.asyncio
+async def test_passive_bot_screens_do_not_block_app_workouts(api):
+    await insert_test_user(api.db)
+    await api.storage.set_state(api.runtime.key(UID), "Settings:viewing")
+    state = (await (await api.client.get("/api/miniapp/state", headers=auth())).json())["state"]
+    assert state["bot_session"] == {"active": False, "state": "Settings:viewing"}
+    response = await api.client.post("/api/miniapp/workout", headers=auth(), json=workout_payload())
+    assert response.status == 200
+
+
+@pytest.mark.asyncio
+async def test_app_workouts_notify_friends_once_and_registration_is_welcomed(test_db):
+    notices, welcomes = [], []
+
+    async def notify(uid, **kwargs):
+        notices.append((uid, kwargs))
+
+    async def registered(uid, name, max_reps, base, lang):
+        welcomes.append((uid, name, max_reps, base, lang))
+
+    storage, isolation = MemoryStorage(), SimpleEventIsolation()
+    app = web.Application()
+    miniapp.setup_miniapp(app, storage=storage, events_isolation=isolation, bot_id=123456,
+                          bot_token=TOKEN, notify_workout=notify, on_registered=registered)
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        response = await client.post("/api/miniapp/onboarding", headers=auth(), json={
+            "name": "Новичок", "max_pullups": 10, "language": "ru", "program_type": "standard"})
+        assert response.status == 200
+        assert welcomes == [(UID, "Новичок", 10, 30, "ru")]
+        payload = workout_payload()
+        assert (await client.post("/api/miniapp/workout", headers=auth(), json=payload)).status == 200
+        assert (await client.post("/api/miniapp/workout", headers=auth(), json=payload)).status == 200
+        assert len(notices) == 1  # the retry returned the stored receipt and told nobody twice
+        uid, kwargs = notices[0]
+        assert uid == UID
+        assert (kwargs["exercise"], kwargs["done"], kwargs["sets_count"]) == ("pullups", 25, 3)
+    finally:
+        await client.close()
+        await storage.close()
+        await isolation.close()
+
+
+def test_top_rank_has_no_next_threshold():
+    from pullup_bot.config import LEVEL_THRESHOLDS
+    top = len(LEVEL_THRESHOLDS) - 2
+    assert (LEVEL_THRESHOLDS[top + 1] if top + 2 < len(LEVEL_THRESHOLDS) else None) is None

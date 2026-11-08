@@ -395,3 +395,42 @@ async def test_delete_user_data_clears_every_table_including_receipts(test_db):
     async with test_db.execute("SELECT COUNT(*) FROM banned_ids WHERE tg_id=777") as cur:
         assert (await cur.fetchone())[0] == 0
     assert await db_mod.get_user(778) is not None
+
+
+async def test_active_today_counts_only_completed_training(test_db):
+    """Rest markers and abandoned plans made the admin panel show activity on days
+    when nobody trained."""
+    await insert_test_user(test_db, tg_id=1)
+    await insert_test_user(test_db, tg_id=2)
+    today = db_mod.local_today().isoformat()
+    first, second = (await get_user(1))["id"], (await get_user(2))["id"]
+    await db_mod.mark_rest_day(first, today)
+    await db_mod.upsert_workout(second, today, "pullups", completed=0, planned=30)
+    assert (await db_mod.get_bot_stats())["active_today"] == 0
+    await db_mod.upsert_workout(second, today, "pullups", completed=12, planned=30)
+    assert (await db_mod.get_bot_stats())["active_today"] == 1
+
+
+async def test_deleting_a_user_also_forgets_the_fsm_row(test_db, monkeypatch):
+    cleaned = []
+
+    async def hook(tg_id):
+        cleaned.append(tg_id)
+
+    monkeypatch.setattr(db_mod, "fsm_cleanup_hook", hook)
+    await insert_test_user(test_db, tg_id=777)
+    await db_mod.delete_user_by_tg_id(777, permanent_ban=False)
+    assert cleaned == [777]
+    assert await get_user(777) is None
+
+
+async def test_mute_in_bot_time_is_enforced_and_legacy_values_still_work(test_db):
+    from datetime import datetime, timedelta
+    from pullup_bot import timeutils
+    await insert_test_user(test_db, tg_id=5)
+    await db_mod.mute_user(5, (timeutils.now() + timedelta(hours=1)).isoformat())
+    assert await db_mod.is_muted(5) is True
+    await db_mod.mute_user(5, (timeutils.now() - timedelta(hours=1)).isoformat())
+    assert await db_mod.is_muted(5) is False
+    await db_mod.mute_user(5, (datetime.now() + timedelta(hours=1)).isoformat())  # legacy naive value
+    assert await db_mod.is_muted(5) is True

@@ -123,6 +123,10 @@ class MiniAppRuntime:
     bot_id: int
     bot_token: str
     rate_windows: OrderedDict = field(default_factory=OrderedDict)
+    # Optional bot-side follow-ups (set by main.py): friend notifications after a
+    # saved workout and the welcome/announcement after an in-app registration.
+    notify_workout: object = None
+    on_registered: object = None
 
     def key(self, uid):
         return StorageKey(bot_id=self.bot_id, chat_id=uid, user_id=uid)
@@ -143,7 +147,7 @@ class MiniAppRuntime:
 
 
 RUNTIME = web.AppKey("miniapp_runtime", MiniAppRuntime)
-IDENTITY = "miniapp_verified_identity"
+IDENTITY = web.RequestKey("miniapp_verified_identity", dict)
 
 
 async def _check_access(identity):
@@ -245,9 +249,25 @@ def _weight(value):
     return float(value)
 
 
+# Bot dialogs that only show information: a save from the app cannot conflict with them.
+PASSIVE_STATES = {"Guide", "About", "Friends", "AIChat", "Settings:viewing"}
+# Guest screens that the app's own registration form is allowed to complete.
+GUEST_STATES = {"Login", "Reg", "Guide", "About"}
+
+
+def blocks_app_writes(state, *, onboarding=False) -> bool:
+    """Decide whether an open bot dialog has to finish before the app may write."""
+    if not state:
+        return False
+    group = state.split(":", 1)[0]
+    if onboarding and group in GUEST_STATES:
+        return False
+    return group not in PASSIVE_STATES and state not in PASSIVE_STATES
+
+
 async def _assert_idle(runtime, uid, *, onboarding=False):
     state = await runtime.storage.get_state(runtime.key(uid))
-    if state and not (onboarding and state.split(":", 1)[0] in ("Login", "Reg")):
+    if blocks_app_writes(state, onboarding=onboarding):
         raise ApiError(409, "bot_session_active", "Finish the current conversation in the bot or send /cancel first.")
     return state
 
@@ -313,7 +333,7 @@ async def _state(identity, runtime):
                   "week_reps": 0, "week_xp": 0, "totals": {}},
         "settings": {"language": lang, "notify_time": "09:00", "notify_workouts": False,
                      "program_type": "standard", "name": identity["first_name"]},
-        "bot_session": {"active": bool(bot_state), "state": bot_state},
+        "bot_session": {"active": blocks_app_writes(bot_state, onboarding=user is None), "state": bot_state},
         "limits": {"max_sets": MAX_SETS, "max_reps": MAX_REPS,
                    "max_total_reps": MAX_TOTAL_REPS, "max_weight_kg": MAX_WEIGHT_KG},
     }
@@ -343,7 +363,9 @@ async def _state(identity, runtime):
     state["user"] = {
         "id": user["id"], "name": display(user), "username": user["username"] or "",
         "xp": user["xp"] or 0, "level": level, "level_name": name,
-        "next_level_xp": LEVEL_THRESHOLDS[level + 1], "xp_to_next": max(0, to_next),
+        # The last real rank has no next threshold (the table ends with a sentinel).
+        "next_level_xp": LEVEL_THRESHOLDS[level + 1] if level + 2 < len(LEVEL_THRESHOLDS) else None,
+        "xp_to_next": max(0, to_next),
         "level_progress": min(100, max(0, progress)), "streak": user["streak"] or 0,
         "max_streak": user["max_streak"] or 0, "freeze_tokens": user["freeze_tokens"] or 0,
         "joined": user["joined"], "program_day": user["program_day"] or 0,
@@ -394,15 +416,19 @@ async def _state(identity, runtime):
                       "week_xp": sum(xp_for(r["exercise"], r["completed"], r["weight_kg"]) for r in week)}
     # Participants already appear in the bot. Expose only display names and
     # public training totals, never other users' Telegram IDs or account settings.
+    # Sum per user inside a subquery so XP_CASE_SQL's bare column names can never
+    # collide with a users column (a restored pre-2026 snapshot still has weight_kg).
     async with conn.execute(
-        f"SELECT u.id, u.first_name, u.username, u.streak, u.is_weekly_champ, COALESCE(SUM({XP_CASE_SQL}),0) AS weekly_xp "
-        "FROM users u LEFT JOIN workouts w ON w.user_id=u.id AND w.date>=? AND w.date<=? "
+        f"SELECT u.id, u.first_name, u.username, u.streak, u.is_weekly_champ, w.weekly_xp "
+        f"FROM users u JOIN (SELECT user_id, SUM({XP_CASE_SQL}) AS weekly_xp FROM workouts "
+        "WHERE date>=? AND date<=? GROUP BY user_id) w ON w.user_id=u.id "
         "WHERE u.is_banned=0 AND u.is_logged_out=0 AND u.tg_id NOT IN (SELECT tg_id FROM banned_ids) "
-        "GROUP BY u.id HAVING weekly_xp>0 ORDER BY weekly_xp DESC, u.id ASC LIMIT 50",
+        "AND w.weekly_xp>0 ORDER BY w.weekly_xp DESC, u.id ASC LIMIT 50",
         (monday, ds),
     ) as cur:
         leaders = await cur.fetchall()
-    state["leaderboard"] = [{"rank": rank, "name": display(row), "xp": round(row["weekly_xp"], 2),
+    # Whole XP, like the bot's /top and the "+N XP" receipts.
+    state["leaderboard"] = [{"rank": rank, "name": display(row), "xp": int(round(row["weekly_xp"])),
                              "streak": row["streak"] or 0, "is_me": row["id"] == user["id"],
                              "is_weekly_champ": bool(row["is_weekly_champ"])} for rank, row in enumerate(leaders, 1)]
     async with conn.execute(
@@ -429,6 +455,7 @@ async def onboarding(request):
     data = await _read_json(request, {"name", "language", "max_pullups", "program_type"})
     identity, runtime = request[IDENTITY], request.app[RUNTIME]
     uid = identity["id"]
+    registered = None
     async with runtime.events_isolation.lock(runtime.key(uid)):
         await _assert_idle(runtime, uid, onboarding=True)
         async with workout_transaction() as conn:
@@ -441,7 +468,8 @@ async def onboarding(request):
                     # Keep a newer activity date when resuming on the same day.
                     yesterday = (today() - timedelta(days=1)).isoformat()
                     last = max(user["last_workout"] or yesterday, yesterday)
-                    await conn.execute("UPDATE users SET is_logged_out=0,last_workout=? WHERE tg_id=?", (last, uid))
+                    await conn.execute("UPDATE users SET is_logged_out=0,last_workout=?,inactivity_warned=NULL "
+                                       "WHERE tg_id=?", (last, uid))
             else:
                 name = _name(data.get("name"))
                 lang = _language(data.get("language", "ru" if identity["language_code"].startswith("ru") else "en"))
@@ -451,9 +479,17 @@ async def onboarding(request):
                     "INSERT INTO users (tg_id,username,first_name,base_pullups,start_day,lang,program_day,joined,program_type) "
                     "VALUES (?,?,?,?,0,?,0,?,?)",
                     (uid, identity["username"] or name, name, max(5, maximum * 3), lang, today().isoformat(), program))
+                registered = (name, maximum, max(5, maximum * 3), lang)
         # Registration through the app completes the corresponding bot dialog.
         await FSMContext(runtime.storage, runtime.key(uid)).clear()
         state = await _state(identity, runtime)
+    if registered and runtime.on_registered is not None:
+        # The welcome message and the announcement are courtesies: a Telegram hiccup
+        # must not undo a registration that is already committed.
+        try:
+            await runtime.on_registered(uid, *registered)
+        except Exception as e:
+            logger.warning(f"[miniapp] registration follow-up for {uid}: {e}")
     return web.json_response({"ok": True, "state": state})
 
 
@@ -558,7 +594,7 @@ async def _save_api_workout(uid, payload):
             saved = json.loads(existing_receipt["result_json"])
             if saved["request"] != payload:
                 raise ApiError(409, "idempotency_conflict", "This session ID was already used for different workout data.")
-            return dict(saved["receipt"], duplicate=True)
+            return dict(saved["receipt"], duplicate=True), None
         d = payload["date"]
         if d != today().isoformat():
             raise ApiError(409, "date_changed", "The training date changed. Refresh the app before saving.")
@@ -573,6 +609,7 @@ async def _save_api_workout(uid, payload):
             user = await get_user(uid)
         lang = user["lang"] or "ru"
         xp_before = user["xp"] or 0
+        notice = None
         if exercise == "rest":
             if dtype != "Отдых" or any((r["completed"] or 0) > 0 for r in rows):
                 raise ApiError(409, "rest_not_available", "Today already has a workout or is a training day.")
@@ -605,13 +642,15 @@ async def _save_api_workout(uid, payload):
                                              "planned": planned, "rpe": payload["rpe"], "weight": weight,
                                              "lang": lang, "pick_day_type": dtype,
                                              "session_set_pr": top_set if top_set > old_record else None}, uid)
+            notice = {"exercise": exercise, "done": result["done"], "planned": result["planned"],
+                      "sets_count": result["sets_count"], "lang": lang, "set_pr": result["set_pr"]}
         updated = await get_user(uid)
         receipt = {"session_id": payload["session_id"], "duplicate": False, "exercise": exercise,
                    "date": d, "completed": result["done"], "xp_gained": (updated["xp"] or 0) - xp_before,
                    "xp_total": updated["xp"] or 0, "summary": result["summary"]}
         await conn.execute("INSERT INTO workout_completions (session_id,user_id,result_json) VALUES (?,?,?)",
                            (key, user["id"], json.dumps({"request": payload, "receipt": receipt})))
-        return receipt
+        return receipt, notice
 
 
 async def workout(request):
@@ -622,14 +661,23 @@ async def workout(request):
     async with runtime.events_isolation.lock(runtime.key(uid)):
         await _assert_idle(runtime, uid)
         await _check_access(identity)
-        receipt = await _save_api_workout(uid, payload)
+        receipt, notice = await _save_api_workout(uid, payload)
         state = await _state(identity, runtime)
+    if notice and runtime.notify_workout is not None:
+        # Participants who opted in hear about app workouts exactly like bot workouts.
+        # Delivery problems must not fail a workout that is already saved.
+        try:
+            await runtime.notify_workout(uid, **notice)
+        except Exception as e:
+            logger.warning(f"[miniapp] workout notification for {uid}: {e}")
     return web.json_response({"ok": True, "receipt": receipt, "state": state})
 
 
-def setup_miniapp(app: web.Application, *, storage, events_isolation, bot_id: int, bot_token: str | None = None):
+def setup_miniapp(app: web.Application, *, storage, events_isolation, bot_id: int, bot_token: str | None = None,
+                  notify_workout=None, on_registered=None):
     """Register only API routes; share the bot's private-chat FSM lock and storage."""
-    app[RUNTIME] = MiniAppRuntime(storage, events_isolation, bot_id, BOT_TOKEN if bot_token is None else bot_token)
+    app[RUNTIME] = MiniAppRuntime(storage, events_isolation, bot_id, BOT_TOKEN if bot_token is None else bot_token,
+                                  notify_workout=notify_workout, on_registered=on_registered)
     app.middlewares.append(miniapp_security)
     app.router.add_get("/api/miniapp/state", get_state)
     app.router.add_post("/api/miniapp/onboarding", onboarding)

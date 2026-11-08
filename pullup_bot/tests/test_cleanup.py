@@ -143,3 +143,25 @@ async def test_owner_account_is_never_warned_or_deleted(test_db):
     assert await _tg_ids(test_db) == [ADMIN_TG_ID]
     assert [chat for chat, _ in bot.sent] == [ADMIN_TG_ID]  # the cleanup summary, not a warning
     assert "Удалено: 1" in bot.sent[0][1]
+
+
+@pytest.mark.asyncio
+async def test_warning_is_sent_again_for_a_new_break_after_an_old_warning(test_db):
+    """The flag used to be cleared only by a completed workout: a user warned once and
+    resumed through Join (which only moves last_workout) was deleted silently at the
+    end of the next 30-day gap."""
+    await insert_test_user(test_db, tg_id=5, joined=days_ago(200), last_workout=days_ago(28),
+                           inactivity_warned=days_ago(70))
+    bot = FakeBot()
+    await auto_cleanup_inactive(bot)
+    assert await _tg_ids(test_db) == [5]
+    assert bot.sent[0][0] == 5 and "28 дней" in bot.sent[0][1]
+
+
+@pytest.mark.asyncio
+async def test_warning_for_the_current_break_is_not_repeated(test_db):
+    await insert_test_user(test_db, tg_id=6, joined=days_ago(200), last_workout=days_ago(28),
+                           inactivity_warned=days_ago(1))
+    bot = FakeBot()
+    await auto_cleanup_inactive(bot)
+    assert bot.sent == []

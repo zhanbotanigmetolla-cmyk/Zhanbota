@@ -21,3 +21,11 @@ def test_calendar_uses_configured_timezone_across_utc_midnight(monkeypatch, offs
     assert timeutils.today() == expected_day
     assert timeutils.now().utcoffset() == timedelta(hours=offset)
     assert timeutils.now().astimezone(timezone.utc) == instant
+
+
+def test_display_shows_stored_timestamps_in_bot_time(monkeypatch):
+    monkeypatch.setattr(timeutils, "BOT_TIMEZONE", timezone(timedelta(hours=5)))
+    assert timeutils.display("2026-11-08 10:00:00") == "08.11.2026 15:00"       # SQLite datetime('now') is UTC
+    assert timeutils.display("2026-11-08T11:00:00+05:00") == "08.11.2026 11:00"  # already carries the offset
+    assert timeutils.display(None) == "—"
+    assert timeutils.display("not a date") == "not a date"

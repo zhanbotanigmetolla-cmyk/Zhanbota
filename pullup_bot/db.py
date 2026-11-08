@@ -2,7 +2,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import aiosqlite
@@ -12,6 +12,9 @@ from .timeutils import today as local_today
 
 _conn: Optional[aiosqlite.Connection] = None
 _transaction_conn: ContextVar = ContextVar("workout_transaction_conn", default=None)
+# Set by main.py: removes the user's row from the separate FSM database (unfinished
+# dialogs, AI chat history) whenever an account is deleted by any path.
+fsm_cleanup_hook = None
 
 
 class _TransactionConnection:
@@ -166,6 +169,7 @@ MIGRATIONS = [
     # index 45 — set once the "XP started to decay" notice went out; cleared when
     # the user is active again, so the next long break is announced afresh
     "ALTER TABLE users ADD COLUMN decay_notified INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN decay_floor_level INTEGER DEFAULT NULL",
 ]
 
 
@@ -330,8 +334,11 @@ async def init_db():
         try:
             await conn.executescript(MIGRATIONS[i])
         except Exception as e:
-            # Column/index may already exist — log for visibility
-            logger.debug(f"[migration {i}] skipped: {e}")
+            # Re-adding an existing column is expected on every start; anything else
+            # deserves attention because the version counter advances regardless.
+            text = str(e).lower()
+            benign = any(part in text for part in ("duplicate column", "no such column", "already exists"))
+            (logger.debug if benign else logger.warning)(f"[migration {i}] skipped: {e}")
     if current < len(MIGRATIONS):
         await conn.execute("UPDATE migrations SET version=?", (len(MIGRATIONS),))
     # Structural rebuild — must run after column migrations, raises on failure
@@ -639,9 +646,11 @@ async def is_muted(tg_id: int) -> bool:
     if not row or not row[0]:
         return False
     try:
-        return datetime.fromisoformat(row[0]) > datetime.now()
-    except Exception:
+        until = datetime.fromisoformat(row[0])
+    except (TypeError, ValueError):
         return False
+    # New mutes carry the bot's timezone; legacy values were naive server time.
+    return until > (datetime.now(until.tzinfo) if until.tzinfo else datetime.now())
 
 
 async def reset_streak(tg_id: int) -> None:
@@ -667,20 +676,25 @@ async def apply_xp_decay(tg_id: int, days_inactive: int):
       days 14–20: 1.0% of XP/day (min 30 XP)
       days 21+:   1.5% of XP/day (min 50 XP)
 
-    Floor: XP cannot drop below the threshold of one rank below current.
+    Floor: XP cannot drop below the threshold of one rank below the rank held when
+    the break began, so a single absence costs at most one rank.
     Returns (old_xp, new_xp, old_level, new_level) or None if no decay applied.
     """
     if days_inactive < 7:
         return None
     conn = await get_db()
-    async with conn.execute("SELECT xp, level FROM users WHERE tg_id=?", (tg_id,)) as cur:
+    async with conn.execute("SELECT xp, level, decay_floor_level FROM users WHERE tg_id=?",
+                            (tg_id,)) as cur:
         row = await cur.fetchone()
     if not row:
         return None
     current_xp = row[0] or 0
     current_level = row[1] or 0
-    # Floor: one rank below current — cap the loss at a single rank per absence
-    floor_xp = LEVEL_THRESHOLDS[max(0, current_level - 1)] if current_level > 0 else 0
+    # Remember the rank held when the break began. Deriving the floor from the current
+    # level would lower it by a rank every time a rank is lost, and a long absence
+    # would walk the user all the way down to zero.
+    floor_level = row[2] if row[2] is not None else current_level
+    floor_xp = LEVEL_THRESHOLDS[max(0, floor_level - 1)] if floor_level > 0 else 0
     if current_xp <= floor_xp:
         return None
     if days_inactive < 14:
@@ -695,9 +709,9 @@ async def apply_xp_decay(tg_id: int, days_inactive: int):
         return None
     new_level = _level_from_xp(new_xp)
     cursor = await conn.execute(
-        "UPDATE users SET xp=?, level=? WHERE tg_id=? "
+        "UPDATE users SET xp=?, level=?, decay_floor_level=? WHERE tg_id=? "
         "AND COALESCE(xp, 0)=? AND COALESCE(level, 0)=?",
-        (new_xp, new_level, tg_id, current_xp, current_level)
+        (new_xp, new_level, floor_level, tg_id, current_xp, current_level)
     )
     await conn.commit()
     if cursor.rowcount == 0:
@@ -726,7 +740,7 @@ async def get_bot_stats() -> dict:
         banned_count = (await cur.fetchone())[0]
     today = local_today().isoformat()
     async with conn.execute(
-        "SELECT COUNT(DISTINCT user_id) FROM workouts WHERE date=?", (today,)
+        "SELECT COUNT(DISTINCT user_id) FROM workouts WHERE date=? AND completed > 0", (today,)
     ) as cur:
         active_today = (await cur.fetchone())[0]
     async with conn.execute(
@@ -767,6 +781,11 @@ async def delete_user_data(conn, user_id: int, tg_id: int) -> None:
     await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
                        (tg_id, tg_id))
     await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    if fsm_cleanup_hook is not None:
+        try:
+            await fsm_cleanup_hook(tg_id)
+        except Exception as e:  # the account deletion must not fail because of the FSM file
+            logger.warning(f"[delete_user] FSM cleanup for {tg_id}: {e}")
 
 
 async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:

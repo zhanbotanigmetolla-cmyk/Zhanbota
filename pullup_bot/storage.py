@@ -108,6 +108,16 @@ class SqliteStorage(BaseStorage):
                 await self._conn.close()
                 self._conn = None
 
+    async def delete_user_state(self, tg_id: int) -> None:
+        """Drop everything stored for a private chat once the account is deleted.
+
+        The FSM row keeps the last dialog's data — for the AI chat that is the whole
+        conversation plus the personal data block — so it must go with the account.
+        """
+        conn = await self._get_conn()
+        await conn.execute("DELETE FROM fsm_states WHERE chat_id=? AND user_id=?", (tg_id, tg_id))
+        await conn.commit()
+
     async def get_inactive_states(self, before: float) -> list:
         """Find sessions needing a reminder, without changing their saved data."""
         conn = await self._get_conn()

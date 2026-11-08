@@ -73,3 +73,18 @@ async def test_concurrent_first_requests_share_one_initialized_connection(tmp_pa
         assert await asyncio.gather(*(storage.get_state(key) for key in keys)) == ["Training:active"] * 10
     finally:
         await storage.close()
+
+
+async def test_delete_user_state_removes_only_that_chat(tmp_path):
+    storage = SqliteStorage(str(tmp_path / "fsm.db"))
+    gone, kept = StorageKey(bot_id=1, chat_id=42, user_id=42), StorageKey(bot_id=1, chat_id=43, user_id=43)
+    try:
+        await storage.set_state(gone, "AIChat:chatting")
+        await storage.set_data(gone, {"ai_history": ["a private question"]})
+        await storage.set_state(kept, "Training:active")
+        await storage.delete_user_state(42)
+        assert await storage.get_state(gone) is None
+        assert await storage.get_data(gone) == {}
+        assert await storage.get_state(kept) == "Training:active"
+    finally:
+        await storage.close()
