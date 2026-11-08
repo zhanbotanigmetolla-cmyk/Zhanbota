@@ -133,3 +133,9 @@ async def test_reminder_allows_overlapping_minutes_and_job_failures_alert_the_ad
         assert "daily_reminder" in sent[0][1] and "boom" in sent[0][1]
     finally:
         scheduler.shutdown(wait=False)
+
+
+def test_account_deletion_is_wired_to_fsm_cleanup(fsm_hook_isolation):
+    """main.py must register the FSM storage's delete so every deletion path
+    (self-service, admin panel, inactivity cleanup) also forgets the dialog row."""
+    assert fsm_hook_isolation == app.storage.delete_user_state
