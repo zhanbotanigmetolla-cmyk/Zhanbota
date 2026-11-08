@@ -28,9 +28,9 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
     conn = await get_db()
     week_ago = (local_today() - timedelta(days=7)).isoformat()
     async with conn.execute(
-        "SELECT * FROM users WHERE id=? OR id IN ("
+        "SELECT * FROM users WHERE is_banned=0 AND (id=? OR id IN ("
         "  SELECT DISTINCT user_id FROM workouts WHERE date>=? AND completed > 0"
-        ") ORDER BY id ASC",
+        ")) ORDER BY id ASC",
         (user["id"], week_ago)
     ) as cur:
         all_users = await cur.fetchall()
@@ -163,19 +163,26 @@ async def friends_menu(message: types.Message, state: FSMContext):
 @router.message(Command("top"))
 @router.message(text_filter("btn_leaderboard"))
 async def leaderboard(message: types.Message):
-    """Show the weekly leaderboard ranked by XP earned over the last 7 days (all exercises)."""
+    """Show this week's leaderboard: XP earned since Monday, all exercises.
+
+    The Mini App and the Monday "Beast of the Week" post count calendar weeks,
+    so the bot does too; a rolling seven days used to rank people differently
+    in the two interfaces on the same evening.
+    """
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
     conn = await get_db()
-    week_ago = (local_today() - timedelta(days=7)).isoformat()
+    today = local_today()
+    monday = today - timedelta(days=today.weekday())
+    week_start = monday.isoformat()
     async with conn.execute(
-        "SELECT * FROM users WHERE id IN ("
+        "SELECT * FROM users WHERE is_banned=0 AND is_logged_out=0 AND id IN ("
         "  SELECT DISTINCT user_id FROM workouts WHERE date>=? AND completed > 0"
         ")",
-        (week_ago,)
+        (week_start,)
     ) as cur:
         all_users = await cur.fetchall()
 
@@ -184,21 +191,21 @@ async def leaderboard(message: types.Message):
                              reply_markup=main_kb(lang))
         return
 
-    # Batch query: weekly XP totals for all users in one go
+    # Batch query: this week's XP totals for all users in one go
     async with conn.execute(
         f"SELECT user_id, COALESCE(SUM({XP_CASE_SQL}), 0) as week_xp "
         "FROM workouts WHERE date>=? GROUP BY user_id",
-        (week_ago,)
+        (week_start,)
     ) as cur:
         weekly_rows = await cur.fetchall()
     weekly_map = {r["user_id"]: int(round(r["week_xp"])) for r in weekly_rows}
 
-    # Previous week's standings (days 8–14 ago) for ▲/▼ movement markers
-    two_weeks_ago = (local_today() - timedelta(days=14)).isoformat()
+    # Previous calendar week's standings for the ▲/▼ movement markers
+    previous_start = (monday - timedelta(days=7)).isoformat()
     async with conn.execute(
         f"SELECT user_id, COALESCE(SUM({XP_CASE_SQL}), 0) as week_xp "
         "FROM workouts WHERE date>=? AND date<? GROUP BY user_id",
-        (two_weeks_ago, week_ago)
+        (previous_start, week_start)
     ) as cur:
         prev_rows = await cur.fetchall()
     prev_sorted = sorted(

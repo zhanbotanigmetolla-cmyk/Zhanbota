@@ -163,6 +163,9 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN set_record_dips_weighted INTEGER DEFAULT 0",
     # index 44 — added load for a weighted session, in kg (0 for bodyweight rows)
     "ALTER TABLE workouts ADD COLUMN weight_kg REAL DEFAULT 0",
+    # index 45 — set once the "XP started to decay" notice went out; cleared when
+    # the user is active again, so the next long break is announced afresh
+    "ALTER TABLE users ADD COLUMN decay_notified INTEGER DEFAULT 0",
 ]
 
 
@@ -746,6 +749,26 @@ async def is_permanently_banned(tg_id: int) -> bool:
     return row is not None
 
 
+async def delete_user_data(conn, user_id: int, tg_id: int) -> None:
+    """Remove every row that belongs to a user; the caller commits.
+
+    Self-service deletion, the admin panel and the inactivity cleanup used to
+    carry three copies of this list, and the receipts table was missing from
+    all of them (only the foreign key kept it clean).
+    """
+    await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM workout_completions WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?", (user_id, user_id))
+    await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
+                       (user_id, user_id))
+    await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
+                       (tg_id, tg_id))
+    await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+
+
 async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
     """Delete all data for a user and optionally add them to the permanent ban list."""
     conn = await get_db()
@@ -754,18 +777,7 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
     # Wrap all deletes in a single transaction to avoid orphaned data on crash
     try:
         if row:
-            user_id = row[0]
-            await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
-            await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?",
-                               (user_id, user_id))
-            await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
-            await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
-            await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
-            await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
-                               (user_id, user_id))
-            await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
-                               (tg_id, tg_id))
-            await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+            await delete_user_data(conn, row[0], tg_id)
         if permanent_ban:
             await conn.execute(
                 "INSERT OR REPLACE INTO banned_ids (tg_id, reason) VALUES (?, ?)",

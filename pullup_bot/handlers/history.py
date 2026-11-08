@@ -235,7 +235,11 @@ async def history_switch_weekly(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("hist_"))
 async def history_nav(callback: types.CallbackQuery):
     """Handle prev/next week navigation callbacks and update the history message in place."""
-    offset = int(callback.data[5:])
+    try:
+        offset = int((callback.data or "")[5:])
+    except ValueError:
+        await callback.answer()  # stale or malformed button data
+        return
     user = await get_user(callback.from_user.id)
     if not user:
         await callback.answer()

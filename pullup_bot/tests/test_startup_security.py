@@ -85,3 +85,20 @@ def test_every_job_uses_the_bot_calendar(monkeypatch):
     assert len(cron_jobs) == 7
     assert all(j.trigger.timezone == config.BOT_TIMEZONE for j in cron_jobs)
     assert isinstance(app.dp.fsm.events_isolation, SimpleEventIsolation)
+
+
+async def test_daily_jobs_tolerate_a_late_tick(monkeypatch):
+    """APScheduler skips a job that fires more than 1 s late by default; a busy
+    loop at 08:00 on Monday would silently drop the weekly summary."""
+    scheduler = AsyncIOScheduler(timezone=config.BOT_TIMEZONE)
+    monkeypatch.setattr(app, "scheduler", scheduler)
+    app.configure_scheduler()
+    scheduler.start(paused=True)  # pending jobs only get their defaults on start
+    try:
+        for job in scheduler.get_jobs():
+            if job.func is app.daily_reminder:
+                continue
+            assert job.misfire_grace_time >= 120, job.name  # an hour for daily jobs, 2 min for the watchdog
+            assert job.coalesce is True, job.name
+    finally:
+        scheduler.shutdown(wait=False)

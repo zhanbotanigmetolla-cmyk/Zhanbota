@@ -356,3 +356,42 @@ async def test_decay_does_not_overwrite_a_concurrent_xp_award(test_db, monkeypat
     assert await db_mod.apply_xp_decay(12345, 7) is None
     user = await get_user(12345)
     assert (user["xp"], user["level"]) == (1100, 2)
+
+
+async def test_delete_user_data_clears_every_table_including_receipts(test_db):
+    await insert_test_user(test_db, tg_id=777)
+    await insert_test_user(test_db, tg_id=778)
+    async with test_db.execute("SELECT id FROM users WHERE tg_id=777") as cur:
+        uid = (await cur.fetchone())[0]
+    async with test_db.execute("SELECT id FROM users WHERE tg_id=778") as cur:
+        other = (await cur.fetchone())[0]
+    await test_db.execute("PRAGMA foreign_keys=OFF")  # prove the explicit delete, not the cascade
+    await test_db.execute("INSERT INTO workouts (user_id,date,exercise,completed) VALUES (?,?,?,?)",
+                          (uid, "2026-01-01", "pullups", 10))
+    await test_db.execute("INSERT INTO workout_completions (session_id,user_id,result_json) VALUES (?,?,?)",
+                          ("s1", uid, "{}"))
+    await test_db.execute("INSERT INTO streak_recoveries (user_id,date,reason) VALUES (?,?,?)",
+                          (uid, "2026-01-02", "sick"))
+    await test_db.execute("INSERT INTO pokes (from_user_id,to_user_id,date) VALUES (?,?,?)",
+                          (other, uid, "2026-01-03"))
+    await test_db.execute("INSERT INTO welcome_greetings (from_tg_id,to_tg_id) VALUES (?,?)", (778, 777))
+    await test_db.execute("INSERT INTO ai_usage_log (date,user_id,model) VALUES (?,?,?)",
+                          ("2026-01-01", uid, "m"))
+    await test_db.execute("INSERT INTO bug_reports (user_id,username,text) VALUES (?,?,?)",
+                          (uid, "u", "bug"))
+    await test_db.commit()
+
+    await db_mod.delete_user_by_tg_id(777, permanent_ban=False)
+
+    for table, column in [("workouts", "user_id"), ("workout_completions", "user_id"),
+                          ("streak_recoveries", "user_id"), ("ai_usage_log", "user_id"),
+                          ("bug_reports", "user_id"), ("users", "id")]:
+        async with test_db.execute(f"SELECT COUNT(*) FROM {table} WHERE {column}=?", (uid,)) as cur:
+            assert (await cur.fetchone())[0] == 0, table
+    async with test_db.execute("SELECT COUNT(*) FROM pokes WHERE to_user_id=?", (uid,)) as cur:
+        assert (await cur.fetchone())[0] == 0
+    async with test_db.execute("SELECT COUNT(*) FROM welcome_greetings WHERE to_tg_id=777") as cur:
+        assert (await cur.fetchone())[0] == 0
+    async with test_db.execute("SELECT COUNT(*) FROM banned_ids WHERE tg_id=777") as cur:
+        assert (await cur.fetchone())[0] == 0
+    assert await db_mod.get_user(778) is not None

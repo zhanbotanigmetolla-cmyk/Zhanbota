@@ -33,7 +33,10 @@ async def retry_middleware(make_request, bot, method):
             await asyncio.sleep(e.retry_after)
         except (TelegramNetworkError, TelegramServerError) as e:
             if attempt == MAX_ATTEMPTS:
-                logger.error(f"[net] {type(method).__name__} failed after {attempt} attempts: {e}")
+                # Polling fetches updates again on its own, so a dead GetUpdates is a
+                # warning; a lost outgoing message is a real error.
+                log = logger.warning if type(method).__name__ == "GetUpdates" else logger.error
+                log(f"[net] {type(method).__name__} failed after {attempt} attempts: {e}")
                 raise
             monitoring.inc("api_retries")
             logger.warning(

@@ -98,3 +98,14 @@ async def test_polling_and_miniapp_share_one_process(monkeypatch):
     assert setup_api.call_args.kwargs["storage"] is storage
     runner.cleanup.assert_awaited_once()
     storage.close.assert_awaited_once()
+
+
+async def test_privacy_policy_is_served_publicly():
+    app = web.Application()
+    setup_static(app)
+    async with TestClient(TestServer(app)) as client:
+        response = await client.get("/privacy")
+        assert response.status == 200
+        body = await response.text()
+        assert "Privacy Policy" in body and "Gemini" in body and "Mini App" in body
+        assert response.headers["X-Content-Type-Options"] == "nosniff"

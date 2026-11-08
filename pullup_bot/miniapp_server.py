@@ -30,6 +30,13 @@ async def app_index(request: web.Request) -> web.FileResponse:
     })
 
 
+async def privacy_policy(request: web.Request) -> web.FileResponse:
+    """The public privacy policy: link it in BotFather → Bot Settings → Privacy Policy."""
+    return web.FileResponse(WEB_ROOT / "privacy.html", headers={
+        **SECURITY_HEADERS, "Content-Type": "text/html; charset=utf-8",
+    })
+
+
 async def app_asset(request: web.Request) -> web.FileResponse:
     # An explicit allowlist keeps Python, configuration and databases unreachable.
     asset = request.match_info["asset"]
@@ -47,6 +54,7 @@ def setup_static(app: web.Application) -> None:
     app.router.add_get("/app/", app_index)
     app.router.add_get("/app/{asset:app\\.css|app\\.js|icon\\.svg}", app_asset)
     app.router.add_get("/healthz", health)
+    app.router.add_get("/privacy", privacy_policy)
 
 
 async def _redirect(request: web.Request) -> web.Response:

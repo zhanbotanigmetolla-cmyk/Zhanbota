@@ -100,7 +100,7 @@ STRINGS = {
             "📩 По вопросам о боте: @zhanbota102"
         ),
         "about": (
-            "ℹ️ *О боте — 1/3*\n\n"
+            "ℹ️ *О боте — 1/4*\n\n"
             "💪 Привет! Я — Турникмен, твой персональный тренер по подтягиваниям, отжиманиям, "
             "брусьям и приседаниям. Помогу следить за прогрессом, адаптировать план тренировок "
             "и не терять мотивацию.\n\n"
@@ -110,7 +110,7 @@ STRINGS = {
             "🔄 *7-дневный волновой цикл:*\n"
             "Средний → Лёгкий → Тяжёлый → Отдых → Плотность → Лёгкий → Отдых\n\n"
             "Тип дня один для всех упражнений: он задаёт, насколько тяжело сегодня. "
-            "А какое упражнение делать — выбираешь ты: одно, два или все четыре. "
+            "А какое упражнение делать — выбираешь ты: одно, два или все сразу. "
             "День засчитан, если сделал хотя бы одно.\n\n"
             "📈 *Автоматическая прогрессия:*\n"
             "У каждого упражнения своя норма. Стабильно выполняешь цикл — норма +5%.\n"
@@ -119,7 +119,7 @@ STRINGS = {
             "📩 По вопросам о боте: @zhanbota102"
         ),
         "about_page2": (
-            "ℹ️ *О боте — 2/3*\n\n"
+            "ℹ️ *О боте — 2/4*\n\n"
             "📊 *RPE — оценка усилия:*\n"
             "После каждой тренировки оцени от 1 до 10 насколько было тяжело.\n"
             "Бот корректирует норму упражнения автоматически на основе скользящего среднего.\n\n"
@@ -296,8 +296,8 @@ STRINGS = {
         ),
         "guide_extra": (
             "🔥 *Стрик и токены заморозки*\n\n"
-            "Стрик — количество дней подряд с тренировкой (любое упражнение) "
-            "или подтверждённым отдыхом. Не прерывай его!\n"
+            "Стрик — количество дней подряд с тренировкой (любое упражнение). "
+            "Подтверждённый день отдыха серию не прерывает, но день и XP не добавляет.\n"
             "Пропустил день — бот сам потратит токен заморозки, и серия сохранится.\n\n"
             "Как заработать новый токен:\n"
             "• 🔥 каждые 7 дней стрика подряд\n"
@@ -461,7 +461,7 @@ STRINGS = {
         "btn_change_name": "✏️ Изменить имя",
         "set_name_prompt": "Текущее имя: *{name}*\n\nВведи новое имя:",
         "set_name_ok": "✅ Имя изменено на *{name}*",
-        "set_name_bad": "❌ Имя не может быть пустым.",
+        "set_name_bad": "❌ Имя должно быть от 3 до 64 символов.",
         "btn_delete_account": "🗑 Удалить аккаунт",
         "delete_account_warning": (
             "⚠️ *Удаление аккаунта*\n\n"
@@ -475,15 +475,19 @@ STRINGS = {
         "delete_account_done": "✅ Аккаунт удалён. Все данные стёрты.\n\nЕсли захочешь вернуться — нажми «Войти в Турникмен». 💪",
         # Help
         "help": (
-            "📖 *Команды бота:*\n\n"
-            "/start — главное меню\n"
+            "📖 *Команды*\n\n"
+            "/train — начать тренировку\n"
+            "/stats — статистика\n"
+            "/history — история тренировок\n"
+            "/top — рейтинг недели\n"
+            "/app — открыть приложение\n"
+            "/edit — исправить прошлый день\n"
             "/cancel — отменить текущее действие\n"
-            "/edit — редактировать прошлый день\n"
-            "/help — список команд\n"
-            "/version — версия бота (admin)\n"
-            "/bugs — баг-репорты (admin)\n"
-            "/fixbug — закрыть баг (admin)"
+            "/help — эта подсказка\n\n"
+            "Всё остальное — в меню внизу экрана. "
+            "Нашёл ошибку или есть идея — ⚙️ Настройки → 🐛 Сообщить о баге."
         ),
+        "help_admin": "\n\n🛡 *Админ:* /version · /bugs · /fixbug <id>",
         # Reminders
         "reminder_rest": "😴 Сегодня день отдыха. Восстанавливайся!",
         "reminder_train": "🔔 Не забудь про тренировку!\n📋 {day_type} день:\n{plans}\n{status}",
@@ -679,7 +683,7 @@ STRINGS = {
             "📩 For questions about the bot: @zhanbota102"
         ),
         "about": (
-            "ℹ️ *About — 1/3*\n\n"
+            "ℹ️ *About — 1/4*\n\n"
             "💪 Hey! I'm Pullup Pro — your personal coach for pull-ups, push-ups, dips and squats. "
             "I'll help you track progress, adapt your training plan, and stay motivated.\n\n"
             "The bot is completely free. Forever.\n\n"
@@ -688,7 +692,7 @@ STRINGS = {
             "🔄 *7-day wave cycle:*\n"
             "Medium → Light → Heavy → Rest → Density → Light → Rest\n\n"
             "The day type is shared by all exercises: it sets how hard today is. "
-            "Which exercise to do is up to you — one, two, or all four. "
+            "Which exercise to do is up to you — one, two, or all of them. "
             "The day counts as long as you do at least one.\n\n"
             "📈 *Automatic progression:*\n"
             "Each exercise has its own daily target. Complete cycles consistently — target +5%.\n"
@@ -697,7 +701,7 @@ STRINGS = {
             "📩 Questions about the bot: @zhanbota102"
         ),
         "about_page2": (
-            "ℹ️ *About — 2/3*\n\n"
+            "ℹ️ *About — 2/4*\n\n"
             "📊 *RPE — effort rating:*\n"
             "After each workout rate how hard it was from 1 to 10.\n"
             "The bot adjusts the exercise's target automatically using a rolling average.\n\n"
@@ -870,8 +874,8 @@ STRINGS = {
         ),
         "guide_extra": (
             "🔥 *Streak & Freeze Tokens*\n\n"
-            "Your streak counts consecutive days with a workout (any exercise) "
-            "or a confirmed rest day. Keep it alive!\n"
+            "Your streak counts consecutive days with a workout (any exercise). "
+            "A confirmed rest day keeps the streak alive but adds no day and no XP.\n"
             "Miss a day? The bot spends a freeze token automatically and your streak survives.\n\n"
             "How to earn tokens:\n"
             "• 🔥 every 7-day streak milestone\n"
@@ -1033,7 +1037,7 @@ STRINGS = {
         "btn_change_name": "✏️ Change Name",
         "set_name_prompt": "Current name: *{name}*\n\nEnter new name:",
         "set_name_ok": "✅ Name changed to *{name}*",
-        "set_name_bad": "❌ Name cannot be empty.",
+        "set_name_bad": "❌ The name must be 3–64 characters long.",
         "btn_delete_account": "🗑 Delete Account",
         "delete_account_warning": (
             "⚠️ *Delete Account*\n\n"
@@ -1047,15 +1051,19 @@ STRINGS = {
         "delete_account_done": "✅ Account deleted. All data erased.\n\nIf you want to come back — tap «Join Turnikmen». 💪",
         # Help
         "help": (
-            "📖 *Bot commands:*\n\n"
-            "/start — main menu\n"
-            "/cancel — cancel current action\n"
-            "/edit — edit a past day\n"
-            "/help — command list\n"
-            "/version — bot version (admin)\n"
-            "/bugs — bug reports (admin)\n"
-            "/fixbug — close bug (admin)"
+            "📖 *Commands*\n\n"
+            "/train — start a workout\n"
+            "/stats — statistics\n"
+            "/history — workout history\n"
+            "/top — weekly leaderboard\n"
+            "/app — open the app\n"
+            "/edit — fix a past day\n"
+            "/cancel — cancel the current action\n"
+            "/help — this hint\n\n"
+            "Everything else is in the menu at the bottom of the screen. "
+            "Found a bug or have an idea — ⚙️ Settings → 🐛 Report a Bug."
         ),
+        "help_admin": "\n\n🛡 *Admin:* /version · /bugs · /fixbug <id>",
         # Reminders
         "reminder_rest": "😴 Today is a rest day. Recover!",
         "reminder_train": "🔔 Don't forget your workout!\n📋 {day_type} day:\n{plans}\n{status}",

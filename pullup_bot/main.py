@@ -209,13 +209,18 @@ def configure_scheduler():
     # grace period lets a late tick still fire instead of silently skipping a minute
     scheduler.add_job(daily_reminder, "cron", minute="*", args=[bot],
                       misfire_grace_time=30)
-    scheduler.add_job(daily_health_summary, "cron", hour=8, minute=0, args=[bot])
-    scheduler.add_job(db_integrity_check, "cron", hour=3, minute=0, args=[bot])
-    scheduler.add_job(weekly_summary, "cron", day_of_week="mon", hour=8, minute=0, args=[bot])
-    scheduler.add_job(auto_cleanup_inactive, "cron", hour=4, minute=0, args=[bot])
-    scheduler.add_job(daily_xp_decay, "cron", hour=10, minute=0, args=[bot])
-    scheduler.add_job(watchdog_health_check, "interval", minutes=5, args=[bot])
-    scheduler.add_job(auto_acknowledge_rest_days, "cron", hour=23, minute=55, args=[bot])
+    # APScheduler drops a job that fires more than one second late by default.
+    # A busy event loop at 08:00 on Monday would silently skip the weekly
+    # summary, so daily and weekly jobs may run up to an hour late instead.
+    daily = {"args": [bot], "misfire_grace_time": 3600, "coalesce": True}
+    scheduler.add_job(daily_health_summary, "cron", hour=8, minute=0, **daily)
+    scheduler.add_job(db_integrity_check, "cron", hour=3, minute=0, **daily)
+    scheduler.add_job(weekly_summary, "cron", day_of_week="mon", hour=8, minute=0, **daily)
+    scheduler.add_job(auto_cleanup_inactive, "cron", hour=4, minute=0, **daily)
+    scheduler.add_job(daily_xp_decay, "cron", hour=10, minute=0, **daily)
+    scheduler.add_job(watchdog_health_check, "interval", minutes=5, args=[bot],
+                      misfire_grace_time=120, coalesce=True)
+    scheduler.add_job(auto_acknowledge_rest_days, "cron", hour=23, minute=55, **daily)
 
 
 async def main():

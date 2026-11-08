@@ -162,5 +162,12 @@ PY
 git -C "$repo" checkout -B "$branch" "$expected"
 printf '#!/usr/bin/env bash\nset -euo pipefail\nexec bash "$HOME/repo/scripts/deploy_server.sh" "$@"\n' >"$HOME/deploy.sh"
 chmod 700 "$HOME/deploy.sh"
+# Each release carries its own virtualenv (~100 MB). Keep the newest three
+# besides the active one so old releases do not slowly fill the 30 GB disk.
+find "$HOME/pullup-releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+    | sort -rn | awk 'NR>3 {print $2}' | while read -r old; do
+    [[ "$(readlink -f "$old")" == "$(readlink -f "$current")" ]] && continue
+    rm -rf -- "$old"
+done
 stopped=0
 echo "Deployed $expected from $branch. Service is active. Backups: $release/backups"

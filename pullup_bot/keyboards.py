@@ -12,15 +12,14 @@ from .i18n import t
 
 def main_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     """Return the persistent main menu keyboard for logged-in users."""
+    # Daily actions first; rarely used things (bug reports, guide) live in Settings.
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text=t("btn_train", lang)))
     b.row(KeyboardButton(text=t("btn_stats", lang)), KeyboardButton(text=t("btn_history", lang)))
-    b.row(KeyboardButton(text=t("btn_friends", lang)), KeyboardButton(text=t("btn_ai", lang)))
-    b.row(KeyboardButton(text=t("btn_settings", lang)), KeyboardButton(text=t("btn_bug", lang)))
-    bottom = [KeyboardButton(text=t("btn_leaderboard", lang))]
+    b.row(KeyboardButton(text=t("btn_friends", lang)), KeyboardButton(text=t("btn_leaderboard", lang)))
+    b.row(KeyboardButton(text=t("btn_ai", lang)), KeyboardButton(text=t("btn_settings", lang)))
     if KASPI_PHONE:
-        bottom.append(KeyboardButton(text=t("btn_support", lang)))
-    b.row(*bottom)
+        b.row(KeyboardButton(text=t("btn_support", lang)))
     return b.as_markup(resize_keyboard=True, persistent=True)
 
 
@@ -70,6 +69,7 @@ def settings_kb(lang: str = "ru", is_admin: bool = False, notify_workouts: bool 
     nw_key = "btn_notify_workouts_on" if notify_workouts else "btn_notify_workouts_off"
     b.row(KeyboardButton(text=t(nw_key, lang)))
     b.row(KeyboardButton(text=t("btn_guide", lang)), KeyboardButton(text=t("btn_about", lang)))
+    b.row(KeyboardButton(text=t("btn_bug", lang)))
     b.row(KeyboardButton(text=t("btn_logout", lang)), KeyboardButton(text=t("btn_language", lang)))
     b.row(KeyboardButton(text=t("btn_delete_account", lang)))
     if is_admin:

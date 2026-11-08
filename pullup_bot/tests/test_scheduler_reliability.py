@@ -95,10 +95,47 @@ async def test_owner_xp_never_decays_while_other_users_still_do(test_db):
         xp = {row[0]: row[1] for row in await cur.fetchall()}
     assert xp[config.ADMIN_TG_ID] == 9855
     assert xp[43] < 9855
-    assert [chat for chat, _ in bot.sent] == []  # day 9 is not the first decay day: nobody is messaged
+    assert [chat for chat, _ in bot.sent] == [43]  # only the other user hears about it
 
-    await test_db.execute("UPDATE users SET xp=9855, level=7, last_workout=?",
-                          ((timeutils.today() - timedelta(days=7)).isoformat(),))
+
+async def test_decay_notice_is_sent_once_whenever_decay_is_first_seen(test_db):
+    """The notice used to require days_inactive == 7 exactly, so a user first
+    processed on day 9 never heard that XP had started to drop."""
+    nine_days_ago = (timeutils.today() - timedelta(days=9)).isoformat()
+    await insert_test_user(test_db, tg_id=43, xp=9855, level=7, last_workout=nine_days_ago)
+    bot = FakeBot()
+    await scheduler.daily_xp_decay(bot)
+    assert [chat for chat, _ in bot.sent] == [43]
+    assert "убывать" in bot.sent[0][1]
+    await scheduler.daily_xp_decay(bot)
+    assert len(bot.sent) == 1  # no daily repeat
+
+    # Training again clears the flag; the next long break is announced afresh.
+    await test_db.execute("UPDATE users SET last_workout=?, xp=9855, level=7 WHERE tg_id=43",
+                          (timeutils.today().isoformat(),))
     await test_db.commit()
     await scheduler.daily_xp_decay(bot)
-    assert [chat for chat, _ in bot.sent] == [43]  # first decay day: only the other user hears about it
+    await test_db.execute("UPDATE users SET last_workout=? WHERE tg_id=43",
+                          ((timeutils.today() - timedelta(days=8)).isoformat(),))
+    await test_db.commit()
+    await scheduler.daily_xp_decay(bot)
+    assert [chat for chat, _ in bot.sent] == [43, 43]
+
+
+async def test_reminder_skips_a_broken_profile_and_still_reaches_the_others(test_db, monkeypatch):
+    current = timeutils.now()
+    monkeypatch.setattr(timeutils, "now", lambda: current)
+    at = current.strftime("%H:%M")
+    await insert_test_user(test_db, tg_id=1, notify_time=at, program_type="standard")
+    await insert_test_user(test_db, tg_id=2, notify_time=at, program_type="standard")
+    real_get_day_rows = scheduler.get_day_rows
+
+    async def broken_for_first(user_id, *args):
+        if user_id == 1:
+            raise RuntimeError("corrupt rows")
+        return await real_get_day_rows(user_id, *args)
+
+    monkeypatch.setattr(scheduler, "get_day_rows", broken_for_first)
+    bot = FakeBot()
+    await scheduler.daily_reminder(bot)
+    assert [chat for chat, _ in bot.sent] == [2]

@@ -7,8 +7,8 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile
 
-from ..db import (add_xp, clear_rest_row, get_day_rows, get_db, get_lang,
-                  get_user, get_workout, mark_rest_day, upsert_workout)
+from ..db import (add_xp, clear_rest_row, delete_user_data, get_day_rows, get_db,
+                  get_lang, get_user, get_workout, mark_rest_day, upsert_workout)
 from ..i18n import t, text_filter
 from ..timeutils import today
 from ..keyboards import (LANG_BACK_BILINGUAL, LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
@@ -27,7 +27,7 @@ _INPUT_STATES = (
     SkipReason.pick_date, SkipReason.enter_reason,
 )
 # EditDay states are intentionally excluded — each step has its own back handler
-from ..services.xp import fmt_kg, level_info, user_base, user_weight
+from ..services.xp import fmt_kg, level_info, md_escape, user_base, user_weight
 from ..config import (BASE_COLS, EXERCISES, EXERCISE_EMOJI, is_weighted, xp_for)
 from .admin import _is_admin
 from .training import ex_label, sync_max_streak
@@ -36,6 +36,16 @@ router = Router()
 
 # A day can contain several sets (each set accepts up to 500 reps).
 MAX_EDIT_REPS = 10_000
+# Display names follow the Mini App rule: 3–64 visible characters.
+MIN_NAME_LEN, MAX_NAME_LEN = 3, 64
+# A skip reason is a short note, not an essay.
+MAX_REASON_LEN = 100
+
+
+def _clean_text(value: str) -> str:
+    """Collapse whitespace and drop control characters from free-text input."""
+    kept = "".join(ch for ch in (value or "") if ord(ch) >= 32 and ord(ch) != 127)
+    return " ".join(kept.split())
 
 
 def _edit_reps_prompt(lang: str) -> str:
@@ -139,17 +149,7 @@ async def delete_account_confirm(message: types.Message, state: FSMContext):
     user = await get_user(message.from_user.id)
     if user:
         conn = await get_db()
-        await conn.execute("DELETE FROM workouts WHERE user_id=?", (user["id"],))
-        await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?",
-                           (user["id"], user["id"]))
-        await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user["id"],))
-        await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user["id"],))
-        await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user["id"],))
-        await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
-                           (user["id"], user["id"]))
-        await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
-                           (message.from_user.id, message.from_user.id))
-        await conn.execute("DELETE FROM users WHERE id=?", (user["id"],))
+        await delete_user_data(conn, user["id"], message.from_user.id)
         await conn.commit()
     from aiogram.types import ReplyKeyboardRemove
     await state.clear()
@@ -238,15 +238,16 @@ async def set_name_start_msg(message: types.Message, state: FSMContext):
 async def set_name_save(message: types.Message, state: FSMContext):
     """Validate and persist the new display name."""
     lang = await get_lang(message.from_user.id)
-    new_name = (message.text or "").strip()
-    if not new_name:
+    new_name = _clean_text(message.text)
+    if not MIN_NAME_LEN <= len(new_name) <= MAX_NAME_LEN:
         await message.answer(t("set_name_bad", lang))
         return
     conn = await get_db()
     await conn.execute("UPDATE users SET first_name=? WHERE tg_id=?",
                        (new_name, message.from_user.id))
     await conn.commit()
-    await message.answer(t("set_name_ok", lang, name=new_name), parse_mode="Markdown")
+    # Names are user input: "Al_ex" must not turn into italics or a parse error.
+    await message.answer(t("set_name_ok", lang, name=md_escape(new_name)), parse_mode="Markdown")
     await state.clear()
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
 
@@ -660,16 +661,25 @@ async def skip_reason_date(message: types.Message, state: FSMContext):
 @router.message(SkipReason.enter_reason)
 async def skip_reason_save(message: types.Message, state: FSMContext):
     """Persist the skip reason and bump the streak by one to compensate for the missed day."""
-    reason = message.text or ""
+    reason = _clean_text(message.text)[:MAX_REASON_LEN]
     data = await state.get_data()
     user = await get_user(message.from_user.id)
-    lang = user["lang"] or "ru" if user else "ru"
+    lang = (user["lang"] or "ru") if user else "ru"
+    if not user:
+        await state.clear()
+        await message.answer(t("register_first", lang))
+        return
     d = data.get("skip_date")
     if not d:
         await message.answer(t("edit_no_date", lang))
         await state.clear()
         return
     conn = await get_db()
+    # A day that already holds a workout or an acknowledged rest was never missed,
+    # so it earns no extra streak day; the reason is still recorded as a note.
+    day_rows = await get_day_rows(user["id"], d)
+    trained = any((r["completed"] or 0) > 0 for r in day_rows)
+    already_counted = trained or any(r["exercise"] == "rest" for r in day_rows)
     async with conn.execute("SELECT id FROM streak_recoveries WHERE user_id=? AND date=?",
                             (user["id"], d)) as cur:
         existing = await cur.fetchone()
@@ -679,18 +689,19 @@ async def skip_reason_save(message: types.Message, state: FSMContext):
     else:
         await conn.execute("INSERT INTO streak_recoveries (user_id, date, reason) VALUES (?,?,?)",
                            (user["id"], d, reason))
-        await conn.execute("UPDATE users SET streak = streak + 1 WHERE id=?", (user["id"],))
+        if not already_counted:
+            await conn.execute("UPDATE users SET streak = streak + 1 WHERE id=?", (user["id"],))
     await conn.commit()
     await sync_max_streak(message.from_user.id)
 
     # Mark the skipped day as a rest row so stats shows 😴 instead of ❌.
     # Only add the marker if the user didn't actually log any reps that day.
-    day_rows = await get_day_rows(user["id"], d)
-    if not any((r["completed"] or 0) > 0 for r in day_rows):
+    if not trained:
         await mark_rest_day(user["id"], d)
 
     await message.answer(
-        t("skip_ok", lang, date=date.fromisoformat(d).strftime("%d.%m.%Y"), reason=reason),
+        t("skip_ok", lang, date=date.fromisoformat(d).strftime("%d.%m.%Y"),
+          reason=md_escape(reason)),
         parse_mode="Markdown")
     await state.clear()
     await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))

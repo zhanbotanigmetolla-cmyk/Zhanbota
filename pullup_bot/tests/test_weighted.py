@@ -195,3 +195,24 @@ async def test_load_never_drops_below_bodyweight(test_db):
         await add_session(test_db, 1, "pullups_weighted", offset, 30, 10,
                           rpe=9, weight=0)
     assert await _check_weighted_progression(1, 1, "pullups_weighted", 30, 0) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("base,expected", [(5, 6), (10, 11), (19, 20), (20, 21), (100, 105)])
+async def test_weekly_progression_always_moves_small_bases(test_db, base, expected):
+    """int(base * 1.05) left every base below 20 unchanged yet reported a raise."""
+    await insert_test_user(test_db, tg_id=1, base=base)
+    for offset in [1, 2, 3, 4, 5]:
+        await add_session(test_db, 1, "pullups", offset, base, base, rpe=6)
+    assert await _check_weekly_progression(1, 1, "pullups", base) == expected
+    async with test_db.execute("SELECT base_pullups FROM users WHERE tg_id=1") as cursor:
+        assert (await cursor.fetchone())[0] == expected
+
+
+@pytest.mark.asyncio
+async def test_easy_training_raises_a_small_base_by_at_least_one(test_db):
+    await insert_test_user(test_db, tg_id=1, base=10)
+    for offset in [1, 2, 3]:
+        await add_session(test_db, 1, "pullups", offset, 10, 10, rpe=5, day_type="Тяжёлый")
+    new_base, _, _ = await _apply_rpe_adjustment(1, 1, "pullups", 10)
+    assert new_base == 11

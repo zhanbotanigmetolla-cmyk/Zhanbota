@@ -18,6 +18,11 @@ from ..states import AIChat
 router = Router()
 
 MAX_HISTORY_TURNS = 10
+# Gemini occasionally never answers; without a deadline the "thinking" message
+# would spin forever and the user's next messages would queue behind it.
+AI_TIMEOUT_SECONDS = 90
+# Telegram caps a message at 4096 characters; leave room for the support line.
+MAX_REPLY_CHARS = 3800
 
 # ---------------------------------------------------------------------------
 # Funny waiting phrases — shown randomly while Gemini thinks
@@ -136,11 +141,11 @@ _SYSTEM_TEMPLATE = """You are Turnikmen AI — the built-in intelligent assistan
 ## BOT KNOWLEDGE BASE
 
 ### What Turnikmen does
-Turnikmen helps users progress in four bodyweight exercises — pull-ups (подтягивания), push-ups (отжимания), dips (брусья), and squats (приседания) — through smart progressive overload and wave periodization. Users log workouts daily and the bot auto-adjusts each exercise's daily target based on performance and RPE ratings.
+Turnikmen helps users progress in six exercises — pull-ups (подтягивания), push-ups (отжимания), dips (брусья), squats (приседания), plus weighted pull-ups and weighted dips performed with added load on a belt — through progressive overload and wave periodization. Users log workouts daily, in the bot or in the Telegram Mini App (/app), and the bot auto-adjusts each exercise's daily target based on performance and RPE ratings.
 
-### One shared calendar, three exercises
-There is ONE 7-day wave cycle per user. The day type (Medium/Light/Heavy/Rest/Density) sets how hard TODAY is — for whichever exercise(s) the user picks. The user chooses the exercise when starting a workout (🏋️ Training → exercise picker). Training at least one exercise counts the day: the streak continues and the cycle advances by one step (training all three still advances it only once).
-Each exercise has its own daily base (target). Pull-ups are set up at registration; push-ups, dips and squats are set up the first time the user picks them (the bot asks for their one-set max and derives the base as max × 3).
+### One shared calendar, six exercises
+There is ONE 7-day wave cycle per user. The day type (Medium/Light/Heavy/Rest/Density) sets how hard TODAY is — for whichever exercise(s) the user picks. The user chooses the exercise when starting a workout (🏋️ Training → exercise picker). Training at least one exercise counts the day: the streak continues and the cycle advances by one step (training several exercises still advances it only once). A rest day acknowledged in the bot keeps the streak alive but does not add a streak day or XP.
+Each exercise has its own daily base (target). Pull-ups are set up at registration; every other exercise is set up the first time the user picks it (the bot asks for their one-set max and derives the base as max × 3; weighted exercises also ask for the load on the belt).
 
 ### 7-day wave training cycle
 - Day 1 Medium: 100% of base — standard effort day
@@ -153,11 +158,15 @@ Each exercise has its own daily base (target). Pull-ups are set up at registrati
 (The Beginner program is 3 training days/week, Advanced is 6 — selectable in Settings → Program.)
 
 ### Automatic progression rules (per exercise, independent)
-- Cycle progression (+5% base): fires every 7-day cycle when avg completion ≥80% across that exercise's last 5 sessions (and avg RPE < 7)
-- RPE too high (−5% base): triggers when the exercise's 3-session rolling avg RPE ≥8.5
-- RPE high (−2% base): triggers when the rolling avg RPE is between 7.0 and 8.5
-- RPE trending easy (+3% base): triggers when rolling avg RPE ≤5.5 AND all sessions fully completed
+- Cycle progression (+5% base, at least +1 rep): fires every 7-day cycle when average completion is ≥80% across that exercise's last 5 sessions and training did not feel harder than the day type prescribed
+- RPE is judged against the day type, not against one fixed number: a Light day is expected to feel like RPE ~5, Medium ~6.5, Density ~7, Heavy ~8. The bot averages (reported RPE − expected RPE) over the exercise's last 3 sessions:
+  - 1.5 or more harder than expected → base −5%
+  - between 0.5 and 1.5 harder → base −2%
+  - 1.0 or more easier AND all three sessions hit their target → base +3% (at least +1 rep)
+  - anything in between → no change (an RPE 8 on a Heavy day is the plan working)
+- Weighted exercises use double progression at cycle end: ≥95% completion → +2.5 kg and the rep target drops 10%; <70% → −2.5 kg; otherwise +5% reps at the same load
 - After a 3–6 day break the first session's plan is reduced 25%; after 7+ days, 40%
+- Targets change at most once per exercise per day
 
 ### RPE — Rate of Perceived Exertion
 After each workout the user rates effort 1–10.
@@ -165,7 +174,7 @@ After each workout the user rates effort 1–10.
 The bot uses a rolling 3-session average per exercise to adjust load smoothly.
 
 ### XP and CS:GO-style ranks
-XP earned: +1 XP per pull-up, +0.75 XP per dip, +0.5 XP per push-up, +0.25 XP per squat, +50 XP per consecutive streak day.
+XP earned: +1 XP per pull-up, +0.75 XP per dip, +0.5 XP per push-up, +0.25 XP per squat, +3% per kilogram of added load for weighted exercises (counted up to 50 kg), +50 XP per consecutive streak day. XP decays slowly after 7 days without training (never below the previous rank's threshold) and comes back through training.
 18 ranks:
 Silver I (0 XP) → Silver II (500) → Silver III (1,000) → Silver IV (1,800) → Silver Elite (2,800) → Silver Elite Master (4,000) → Gold Nova I (5,500) → Gold Nova II (7,500) → Gold Nova III (10,000) → Gold Nova Master (13,500) → Master Guardian I (18,000) → Master Guardian II (23,000) → Master Guardian Elite (29,000) → Distinguished Master Guardian / DMG (36,000) → Legendary Eagle (44,000) → Legendary Eagle Master / LEM (53,000) → Supreme Master First Class / SMFC (63,000) → The Global Elite (70,000 XP)
 
@@ -176,23 +185,23 @@ Silver I (0 XP) → Silver II (500) → Silver III (1,000) → Silver IV (1,800)
 - Earn: every 7-day streak milestone, on each rank-up, on a new personal record; max 5
 
 ### Кочка недели / Beast of the Week
-Every Monday 08:00 the user with the most XP earned in the past 7 days (all exercises, using the XP weights) is crowned champion. 👑 badge in stats and leaderboard until next Monday.
+Every Monday 08:00 the user with the most XP earned during the previous Monday–Sunday week (all exercises, using the XP weights) is crowned champion. 👑 badge in stats and leaderboard until next Monday.
 
 ### Friends vs Leaderboard
-- Friends (👥): everyone's today status — per-exercise progress, streak. Live daily view.
-- Leaderboard (🏆): weekly ranking by XP earned across all exercises.
+- Friends (👥): everyone's today status — per-exercise progress, streak — plus a 💪 poke button (one poke per friend per day).
+- Leaderboard (🏆): this week's ranking (Monday to Sunday) by XP earned across all exercises, with ▲/▼ movement against last week.
 
 ### Navigation & UI — Main menu buttons
 After logging in the user sees these buttons:
 - 🏋️ Тренировка / Training — starts or continues today's training session
 - 📊 Статистика / Statistics — shows rank, XP progress bar, streak, today's target, 7-day history, next 7-day schedule
-- 📋 История / History — full workout history browsable by week (← → navigation)
+- 📋 История / History — workout history by week (← → navigation) with a monthly view
 - 👥 Друзья / Friends — all participants with today's live progress
+- 🏆 Рейтинг / Leaderboard — this week's XP ranking
 - 🤖 Турникмен AI / Turnikmen AI — opens this AI chat
-- ⚙️ Настройки / Settings — user settings panel
-- 🐛 Сообщить о баге / Report a Bug — submit a bug report or feature suggestion
-- 🏆 Рейтинг / Leaderboard — weekly pullup ranking
-- ◀️ Назад / Back — returns to the landing screen
+- ⚙️ Настройки / Settings — user settings panel; bug reports and the guide live here too
+- ☕ Поддержать / Support — the owner's Kaspi number for voluntary support (shown when configured)
+The /app command (and the menu button next to the message field) opens the Telegram Mini App with the same plan, workouts, progress and settings.
 
 ### Navigation & UI — Settings menu
 Opened via ⚙️ Настройки / Settings:
@@ -203,16 +212,18 @@ Opened via ⚙️ Настройки / Settings:
 - 📅 Причина пропуска / Skip Reason — log a reason for a missed day (illness, travel, etc.) which can restore the streak
 - 🔧 Программа / Program — switch between Standard (5x/week), Beginner (3x/week), Advanced (6x/week)
 - 📤 Экспорт / Export — download the full workout history as CSV
+- 🔔 Уведомления от друзей / Friend Notifications — opt in to a message whenever another participant finishes a workout
+- 🐛 Сообщить о баге / Report a Bug — submit a bug report or feature suggestion to the owner
 - 🚪 Выйти из системы / Log Out — pauses the bot; data and streak are preserved
 - 🌐 Язык / Language — switch interface language between Russian and English
 - 🗑 Удалить аккаунт / Delete Account — permanently erases all data
 
 ### Guide and About
-- 📖 Как начать / Getting Started — multi-page beginner guide (accessible from the landing screen before login and from the main menu)
-- ℹ️ О боте / About — 3-page overview of the bot's features, XP system, and rank table
+- 📖 Как начать / Getting Started — multi-page beginner guide (accessible from the landing screen before login and from ⚙️ Settings after login)
+- ℹ️ О боте / About — 4-page overview of the bot's features, XP system, rank table and weighted training
 
 ### Bug reports and underdeveloped features
-If the user describes something that sounds like a bug, unexpected behavior, missing functionality, or an improvement they'd like to see, gently mention: «Если хочешь сообщить об этом — нажми 🐛 в главном меню, там можно описать баг или предложить улучшение» / "If you'd like to report this, tap 🐛 in the main menu — you can describe the bug or suggest an improvement there."
+If the user describes something that sounds like a bug, unexpected behavior, missing functionality, or an improvement they'd like to see, gently mention: «Если хочешь сообщить об этом — открой ⚙️ Настройки → 🐛 Сообщить о баге, там можно описать баг или предложить улучшение» / "If you'd like to report this, open ⚙️ Settings → 🐛 Report a Bug — you can describe the bug or suggest an improvement there."
 
 ---
 
@@ -308,6 +319,37 @@ def _user_data_block(user, workouts) -> str:
 
 
 
+async def _ask(manager, system_prompt: str, history: list, text: str, thinking_msg, lang: str):
+    """Run one Gemini request with a deadline; a failure degrades to 'unavailable'."""
+    task = asyncio.create_task(
+        asyncio.wait_for(manager.chat(system_prompt, history, text), AI_TIMEOUT_SECONDS))
+    try:
+        return await _wait_with_updates(task, thinking_msg, lang)
+    except asyncio.TimeoutError:
+        logger.warning(f"[ai] Gemini request timed out after {AI_TIMEOUT_SECONDS}s")
+    except Exception as e:
+        logger.warning(f"[ai] request failed: {e}")
+    return "", ""
+
+
+def _split_reply(text: str) -> list:
+    """Split a long answer at paragraph or line boundaries so Telegram accepts every part."""
+    parts = []
+    rest = text
+    while len(rest) > MAX_REPLY_CHARS:
+        cut = rest.rfind("\n\n", 0, MAX_REPLY_CHARS)
+        if cut < MAX_REPLY_CHARS // 2:
+            cut = rest.rfind("\n", 0, MAX_REPLY_CHARS)
+        if cut < MAX_REPLY_CHARS // 2:
+            cut = rest.rfind(" ", 0, MAX_REPLY_CHARS)
+        if cut < MAX_REPLY_CHARS // 2:
+            cut = MAX_REPLY_CHARS
+        parts.append(rest[:cut].rstrip())
+        rest = rest[cut:].lstrip()
+    parts.append(rest)
+    return parts
+
+
 def _resolve_reply(raw: str, lang: str) -> str:
     """Convert a raw Gemini response (or rate-limit sentinel) to a user-facing message string."""
     if raw == RATE_LIMIT_DAILY:
@@ -342,12 +384,17 @@ async def _send_reply(message, thinking_msg, reply: str, lang: str, history: lis
     except Exception:
         pass
 
-    try:
-        await message.answer(f"🤖 {reply}" + support_line(lang), parse_mode="Markdown",
-                             reply_markup=ai_chat_kb(lang))
-    except Exception:
-        await message.answer(f"🤖 {reply}" + support_line(lang, markdown=False),
-                             reply_markup=ai_chat_kb(lang))
+    parts = _split_reply(f"🤖 {reply}")
+    for index, part in enumerate(parts):
+        last = index == len(parts) - 1
+        kwargs = {"reply_markup": ai_chat_kb(lang)} if last else {}
+        try:
+            await message.answer(part + (support_line(lang) if last else ""),
+                                 parse_mode="Markdown", **kwargs)
+        except Exception:
+            # Gemini's Markdown is not always Telegram's Markdown — send plain text.
+            await message.answer(part + (support_line(lang, markdown=False) if last else ""),
+                                 **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -428,8 +475,7 @@ async def ai_chat_advice(message: aiogram_types.Message, state: FSMContext):
     user = await get_user(message.from_user.id)
     thinking = await message.answer(t("ai_thinking", lang))
     manager = get_manager()
-    task = asyncio.create_task(manager.chat(system_prompt, history, auto_prompt))
-    raw, model_used = await _wait_with_updates(task, thinking, lang)
+    raw, model_used = await _ask(manager, system_prompt, history, auto_prompt, thinking, lang)
     reply = _resolve_reply(raw, lang)
     user_id = user["id"] if user else 0
     await _send_reply(message, thinking, reply, lang, history, auto_prompt, state,
@@ -449,8 +495,7 @@ async def ai_chat_message(message: aiogram_types.Message, state: FSMContext):
     user = await get_user(message.from_user.id)
     thinking = await message.answer(t("ai_thinking_chat", lang))
     manager = get_manager()
-    task = asyncio.create_task(manager.chat(system_prompt, history, message.text))
-    raw, model_used = await _wait_with_updates(task, thinking, lang)
+    raw, model_used = await _ask(manager, system_prompt, history, message.text, thinking, lang)
     reply = _resolve_reply(raw, lang)
     user_id = user["id"] if user else 0
     await _send_reply(message, thinking, reply, lang, history, message.text, state,

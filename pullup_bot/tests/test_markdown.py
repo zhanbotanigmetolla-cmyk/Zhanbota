@@ -15,15 +15,18 @@ def test_md_escape_star():
 
 
 def test_md_escape_brackets():
-    assert md_escape("[link](url)") == "\\[link\\]\\(url\\)"
+    # Only the opening bracket starts a link entity in legacy Markdown.
+    assert md_escape("[link](url)") == "\\[link](url)"
 
 
 def test_md_escape_backtick():
     assert md_escape("`code`") == "\\`code\\`"
 
 
-def test_md_escape_tilde():
-    assert md_escape("~strike~") == "\\~strike\\~"
+def test_md_escape_leaves_legacy_safe_characters_alone():
+    """Legacy Markdown shows a backslash before '.', '-', '!' and so on literally."""
+    assert md_escape("~strike~") == "~strike~"
+    assert md_escape("Jean-Luc O.Neil (jr.) #1 + 2 = 3!") == "Jean-Luc O.Neil (jr.) #1 + 2 = 3!"
 
 
 def test_md_escape_plain():
@@ -63,4 +66,4 @@ def test_display_link_injection():
     user = {"first_name": "[click](http://evil.com)", "username": "x"}
     escaped = md_escape(display(user))
     assert "\\[" in escaped
-    assert "\\]" in escaped
+    assert not escaped.startswith("[")

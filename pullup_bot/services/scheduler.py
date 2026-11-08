@@ -6,7 +6,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from ..config import (ADMIN_TG_ID, EFFECT_CONFETTI, EXERCISES, EXERCISE_EMOJI,
                       XP_CASE_SQL, is_admin_id, logger, xp_for)
 from .. import timeutils
-from ..db import get_db, get_day_rows, mark_rest_day
+from ..db import delete_user_data, get_db, get_day_rows, mark_rest_day
 from ..i18n import t, day_name
 from ..keyboards import reminder_train_kb
 from ..services.xp import (day_type_for, display, md_escape, send_with_effect,
@@ -17,17 +17,7 @@ from .support import support_line
 
 async def _delete_user(conn, user_id: int, tg_id: int = 0):
     """Delete all data for a user by their DB id (tg_id cleans up greeting links)."""
-    await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
-    await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?", (user_id, user_id))
-    await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
-    await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
-    await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
-    await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
-                       (user_id, user_id))
-    if tg_id:
-        await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
-                           (tg_id, tg_id))
-    await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    await delete_user_data(conn, user_id, tg_id)
     await conn.commit()
 
 
@@ -50,76 +40,80 @@ async def daily_reminder(bot):
     ) as cur:
         users = await cur.fetchall()
     for user in users:
-        lang = user["lang"] or "ru"
-        day_rows = await get_day_rows(user["id"])
-        training_rows = [r for r in day_rows if r["exercise"] != "rest"]
-        any_done = any((r["completed"] or 0) > 0 for r in training_rows)
-        if any_done:
-            continue  # the day is already saved — no nagging needed
-        if training_rows:
-            day_type = training_rows[0]["day_type"] or day_type_for(user)[0]
-        elif day_rows:
-            day_type = "Отдых"
-        else:
-            day_type = day_type_for(user)[0]
-            # Same auto-advance as training handler: if the cycle says rest but
-            # the user has already been off for 2+ days, today is actually a
-            # training day — advance the cycle and recalculate.
-            if day_type == "Отдых" and user["last_workout"]:
-                try:
-                    days_off = (timeutils.today() - date.fromisoformat(user["last_workout"])).days
-                except Exception:
-                    days_off = 0
-                if days_off >= 2:
-                    new_pd = (user["program_day"] or 0) + 1
-                    await conn.execute(
-                        "UPDATE users SET program_day=? WHERE id=?", (new_pd, user["id"])
-                    )
-                    await conn.commit()
-                    if new_pd % 7 == 0:
-                        from ..handlers.training import _run_cycle_progressions
-                        await _run_cycle_progressions(user["tg_id"], user["id"])
-                    async with conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)) as cur:
-                        user = await cur.fetchone()
-                    day_type = day_type_for(user)[0]
-        kb = None
-        if day_type == "Отдых":
-            msg = t("reminder_rest", lang)
-        else:
-            from ..handlers.training import _coeff_for_day_type, ex_label
-            coeff = _coeff_for_day_type(user, day_type)
-            plan_lines = [
-                f"• {ex_label(ex, lang)}: {int(user_base(user, ex) * coeff)}"
-                for ex in EXERCISES if user_base(user, ex) > 0
-            ]
-            msg = t("reminder_train", lang,
-                    day_type=day_name(day_type, lang),
-                    plans="\n".join(plan_lines),
-                    status=t("reminder_not_started", lang))
-            kb = reminder_train_kb(lang)
-        msg += support_line(lang, markdown=False)
-        notify_time = user["notify_time"] or "09:00"
-        silent = notify_time >= "22:00" or notify_time < "08:00"
         try:
-            await bot.send_message(user["tg_id"], msg, disable_notification=silent,
-                                   reply_markup=kb)
-        except TelegramForbiddenError:
-            # Blocking the bot does not invalidate recent recorded activity.
-            # The streak cursor can be empty after an administrative reset.
-            async with conn.execute(
-                "SELECT MAX(date) FROM workouts WHERE user_id=? "
-                "AND (completed>0 OR exercise='rest')", (user["id"],)
-            ) as cur:
-                recorded = (await cur.fetchone())[0]
-            dates = [d for d in (user["last_workout"], user["joined"], recorded) if d]
-            last = max(dates) if dates else None
-            inactive = bool(last and (timeutils.today() - date.fromisoformat(last)).days >= 7)
-            if inactive and not _exempt_from_inactivity_penalties(user["tg_id"]):
-                logger.info(f"[reminder] blocked+inactive 7d, removing user {user['tg_id']}")
-                await _delete_user(conn, user["id"], user["tg_id"])
+            lang = user["lang"] or "ru"
+            day_rows = await get_day_rows(user["id"])
+            training_rows = [r for r in day_rows if r["exercise"] != "rest"]
+            any_done = any((r["completed"] or 0) > 0 for r in training_rows)
+            if any_done:
+                continue  # the day is already saved — no nagging needed
+            if training_rows:
+                day_type = training_rows[0]["day_type"] or day_type_for(user)[0]
+            elif day_rows:
+                day_type = "Отдых"
             else:
-                logger.info(f"[reminder] user {user['tg_id']} blocked the bot; keeping the account")
+                day_type = day_type_for(user)[0]
+                # Same auto-advance as training handler: if the cycle says rest but
+                # the user has already been off for 2+ days, today is actually a
+                # training day — advance the cycle and recalculate.
+                if day_type == "Отдых" and user["last_workout"]:
+                    try:
+                        days_off = (timeutils.today() - date.fromisoformat(user["last_workout"])).days
+                    except Exception:
+                        days_off = 0
+                    if days_off >= 2:
+                        new_pd = (user["program_day"] or 0) + 1
+                        await conn.execute(
+                            "UPDATE users SET program_day=? WHERE id=?", (new_pd, user["id"])
+                        )
+                        await conn.commit()
+                        if new_pd % 7 == 0:
+                            from ..handlers.training import _run_cycle_progressions
+                            await _run_cycle_progressions(user["tg_id"], user["id"])
+                        async with conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)) as cur:
+                            user = await cur.fetchone()
+                        day_type = day_type_for(user)[0]
+            kb = None
+            if day_type == "Отдых":
+                msg = t("reminder_rest", lang)
+            else:
+                from ..handlers.training import _coeff_for_day_type, ex_label
+                coeff = _coeff_for_day_type(user, day_type)
+                plan_lines = [
+                    f"• {ex_label(ex, lang)}: {int(user_base(user, ex) * coeff)}"
+                    for ex in EXERCISES if user_base(user, ex) > 0
+                ]
+                msg = t("reminder_train", lang,
+                        day_type=day_name(day_type, lang),
+                        plans="\n".join(plan_lines),
+                        status=t("reminder_not_started", lang))
+                kb = reminder_train_kb(lang)
+            msg += support_line(lang, markdown=False)
+            notify_time = user["notify_time"] or "09:00"
+            silent = notify_time >= "22:00" or notify_time < "08:00"
+            try:
+                await bot.send_message(user["tg_id"], msg, disable_notification=silent,
+                                       reply_markup=kb)
+            except TelegramForbiddenError:
+                # Blocking the bot does not invalidate recent recorded activity.
+                # The streak cursor can be empty after an administrative reset.
+                async with conn.execute(
+                    "SELECT MAX(date) FROM workouts WHERE user_id=? "
+                    "AND (completed>0 OR exercise='rest')", (user["id"],)
+                ) as cur:
+                    recorded = (await cur.fetchone())[0]
+                dates = [d for d in (user["last_workout"], user["joined"], recorded) if d]
+                last = max(dates) if dates else None
+                inactive = bool(last and (timeutils.today() - date.fromisoformat(last)).days >= 7)
+                if inactive and not _exempt_from_inactivity_penalties(user["tg_id"]):
+                    logger.info(f"[reminder] blocked+inactive 7d, removing user {user['tg_id']}")
+                    await _delete_user(conn, user["id"], user["tg_id"])
+                else:
+                    logger.info(f"[reminder] user {user['tg_id']} blocked the bot; keeping the account")
+            except Exception as e:
+                logger.warning(f"[reminder] {user['tg_id']}: {e}")
         except Exception as e:
+            # One broken profile must not silence everyone else's reminder.
             logger.warning(f"[reminder] {user['tg_id']}: {e}")
 
 
@@ -340,7 +334,13 @@ async def daily_xp_decay(bot):
             days_inactive = (today - date.fromisoformat(user["last_workout"])).days
         except Exception:
             continue
-        if days_inactive < 7 or _exempt_from_inactivity_penalties(user["tg_id"]):
+        if _exempt_from_inactivity_penalties(user["tg_id"]):
+            continue
+        if days_inactive < 7:
+            if user["decay_notified"]:
+                # Active again: the next long break deserves a fresh notice.
+                await conn.execute("UPDATE users SET decay_notified=0 WHERE id=?", (user["id"],))
+                await conn.commit()
             continue
         result = await apply_xp_decay(user["tg_id"], days_inactive)
         if result is None:
@@ -349,10 +349,13 @@ async def daily_xp_decay(bot):
         decayed += 1
         lang = user["lang"] or "ru"
         rank_lost = new_level < old_level
-        first_decay = days_inactive == 7
-        # Notify only on first decay day or rank loss — avoid daily spam
+        # Tell the user once when decay starts (whatever day the job first sees
+        # them) and whenever a rank is lost — never every day.
+        first_decay = not user["decay_notified"]
         if not first_decay and not rank_lost:
             continue
+        await conn.execute("UPDATE users SET decay_notified=1 WHERE id=?", (user["id"],))
+        await conn.commit()
         if rank_lost:
             msg = (
                 f"📉 Ты не тренировался {days_inactive} дней — ранг упал!\n"

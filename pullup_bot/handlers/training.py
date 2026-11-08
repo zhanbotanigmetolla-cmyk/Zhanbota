@@ -47,6 +47,16 @@ def _coeff_for_day_type(user, day_type: str) -> float:
     return 1.0
 
 
+def _raise_base(base: int, pct: float) -> int:
+    """Raise a daily target by ``pct``, but always by at least one repetition.
+
+    ``int(base * 1.05)`` leaves every base below 20 unchanged (and ``1.03``
+    every base below 34), so beginners never progressed while the summary
+    still announced a raised target quoting the old number.
+    """
+    return base + max(1, int(base * pct))
+
+
 async def sync_max_streak(tg_id: int) -> None:
     """Update max_streak if the user's current streak exceeds their recorded best."""
     user = await get_user(tg_id)
@@ -914,7 +924,7 @@ async def _check_weekly_progression(tg_id: int, user_id: int, exercise: str,
     avg = sum(r["completed"] / r["planned"] for r in rows) / len(rows)
     delta = _rpe_delta(rows)
     if avg >= 0.8 and (delta is None or delta < RPE_HARD_DELTA):
-        new_base = int(current_base * 1.05)
+        new_base = _raise_base(current_base, 0.05)
         await conn.execute(
             f"UPDATE users SET {BASE_COLS[exercise]}=? WHERE tg_id=?",
             (new_base, tg_id)
@@ -980,7 +990,7 @@ async def _check_weighted_progression(tg_id: int, user_id: int, exercise: str,
         return ("weight_down", current_base, new_weight)
 
     if avg >= 0.8 and (delta is None or delta < RPE_HARD_DELTA):
-        new_base = int(current_base * 1.05)
+        new_base = _raise_base(current_base, 0.05)
         await conn.execute(
             f"UPDATE users SET {base_col}=? WHERE tg_id=?", (new_base, tg_id)
         )
@@ -1068,7 +1078,7 @@ async def _apply_rpe_adjustment(tg_id: int, user_id: int, exercise: str,
     elif delta >= RPE_HARD_DELTA:
         new_base = max(min(5, current_base), int(current_base * 0.98))
     elif delta <= RPE_EASY_DELTA and all_hit:
-        new_base = int(current_base * 1.03)
+        new_base = _raise_base(current_base, 0.03)
     else:
         # Inside the neutral band: nothing changes, but report what was measured
         # so the caller can tell "no change needed" from "not enough data".

@@ -1,4 +1,5 @@
 import inspect
+import re
 
 from ..config import (BASE_COLS, LEVEL_NAMES, LEVEL_THRESHOLDS, PROGRAMS,
                       WEIGHT_COLS, is_weighted)
@@ -56,10 +57,16 @@ def display(user) -> str:
 
 
 def md_escape(text: str) -> str:
-    """Escape all Telegram MarkdownV2 special characters in a string."""
-    for ch in r"\_*`[]()~>#+-=|{}.!":
-        text = text.replace(ch, f"\\{ch}")
-    return text
+    """Escape the characters that start an entity in Telegram's legacy Markdown.
+
+    Every message in the bot is sent with parse_mode="Markdown" (the legacy
+    style), where only underscore, asterisk, backtick and the opening square
+    bracket open formatting, and a backslash before any other character is
+    displayed literally. Escaping the MarkdownV2 set here used to show names
+    such as "Jean-Luc O.Neil" with stray backslashes in the leaderboard, stats
+    and weekly posts.
+    """
+    return re.sub(r"([_*`\[])", r"\\\1", text or "")
 
 
 def level_info(xp: int):
