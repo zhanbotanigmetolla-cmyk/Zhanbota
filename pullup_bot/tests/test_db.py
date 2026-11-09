@@ -1,8 +1,16 @@
-import pytest
+import asyncio
+from datetime import timedelta
 
-from pullup_bot.db import add_xp, get_lang, get_today_workout, get_user, update_streak, upsert_workout
+import aiosqlite
+import pytest
+import pytest_asyncio
+
+import pullup_bot.db as db_mod
+from pullup_bot.db import (add_welcome_greeting, add_xp, clear_rest_row,
+                           get_day_rows, get_lang, get_user, get_workout,
+                           mark_rest_day, update_streak, upsert_workout)
 from pullup_bot.tests.conftest import insert_test_user
-from pullup_bot.db import add_welcome_greeting
+from pullup_bot.timeutils import today
 
 
 # --- init_db / schema ---
@@ -15,6 +23,102 @@ async def test_tables_exist(test_db):
         tables = [r[0] for r in await cur.fetchall()]
     assert "users" in tables
     assert "workouts" in tables
+
+
+@pytest.mark.asyncio
+async def test_workouts_has_exercise_column(test_db):
+    async with test_db.execute("PRAGMA table_info(workouts)") as cur:
+        cols = [r[1] for r in await cur.fetchall()]
+    assert "exercise" in cols
+    assert "extra_activity" not in cols
+    assert "extra_minutes" not in cols
+
+
+@pytest.mark.asyncio
+async def test_users_have_multi_exercise_columns(test_db):
+    async with test_db.execute("PRAGMA table_info(users)") as cur:
+        cols = [r[1] for r in await cur.fetchall()]
+    for col in ["base_pushups", "base_dips", "base_squats",
+                "personal_record_pushups", "set_record_pushups",
+                "personal_record_dips", "set_record_dips",
+                "personal_record_squats", "set_record_squats"]:
+        assert col in cols, col
+
+
+# --- legacy migration ---
+
+@pytest.mark.asyncio
+async def test_legacy_workouts_migration():
+    """A pre-multi-exercise DB gets rebuilt: rest rows → 'rest', workouts → 'pullups'."""
+    conn = await aiosqlite.connect(":memory:")
+    conn.row_factory = aiosqlite.Row
+    await conn.executescript("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id INTEGER UNIQUE NOT NULL, username TEXT, first_name TEXT,
+            joined TEXT DEFAULT (date('now')),
+            base_pullups INTEGER DEFAULT 130, start_day INTEGER DEFAULT 22,
+            level INTEGER DEFAULT 0, xp INTEGER DEFAULT 0,
+            streak INTEGER DEFAULT 0, freeze_tokens INTEGER DEFAULT 3,
+            last_workout TEXT, notify_time TEXT DEFAULT '09:00',
+            lang TEXT DEFAULT 'ru', program_day INTEGER DEFAULT 0
+        );
+        CREATE TABLE workouts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL, date TEXT NOT NULL,
+            planned INTEGER DEFAULT 0, completed INTEGER DEFAULT 0,
+            sets_json TEXT DEFAULT '[]', rpe INTEGER DEFAULT 0,
+            day_type TEXT DEFAULT '', extra_activity TEXT DEFAULT '',
+            extra_minutes INTEGER DEFAULT 0, notes TEXT DEFAULT '',
+            UNIQUE(user_id, date)
+        );
+        CREATE TABLE streak_recoveries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL, date TEXT NOT NULL, reason TEXT
+        );
+        CREATE TABLE friends (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL, friend_id INTEGER NOT NULL,
+            UNIQUE(user_id, friend_id)
+        );
+        CREATE TABLE bug_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER, username TEXT, text TEXT,
+            created TEXT DEFAULT (datetime('now')), status TEXT DEFAULT 'new'
+        );
+        INSERT INTO users (tg_id, username, first_name) VALUES (1, 'u', 'U');
+        INSERT INTO workouts (user_id, date, planned, completed, sets_json, day_type, notes)
+            VALUES (1, '2026-06-01', 50, 48, '[12,12,12,12]', 'Средний', 'good day');
+        INSERT INTO workouts (user_id, date, planned, completed, day_type)
+            VALUES (1, '2026-06-02', 0, 0, 'Отдых');
+    """)
+    await conn.commit()
+    old_conn = db_mod._conn
+    db_mod._conn = conn
+    try:
+        await db_mod.init_db()
+        async with conn.execute(
+            "SELECT exercise, completed, notes FROM workouts WHERE date='2026-06-01'"
+        ) as cur:
+            row = await cur.fetchone()
+        assert row["exercise"] == "pullups"
+        assert row["completed"] == 48
+        assert row["notes"] == "good day"
+        async with conn.execute(
+            "SELECT exercise FROM workouts WHERE date='2026-06-02'"
+        ) as cur:
+            rest = await cur.fetchone()
+        assert rest["exercise"] == "rest"
+        async with conn.execute("PRAGMA table_info(workouts)") as cur:
+            cols = [r[1] for r in await cur.fetchall()]
+        assert "extra_activity" not in cols
+        # New uniqueness: same user+date, different exercise is allowed
+        await upsert_workout(1, "2026-06-01", "pushups", planned=80, completed=60)
+        rows = await get_day_rows(1, "2026-06-01")
+        assert len(rows) == 2
+    finally:
+        db_mod._conn = old_conn
+        await conn.close()
 
 
 # --- get_user / get_lang ---
@@ -44,14 +148,15 @@ async def test_get_lang_default(test_db):
     assert await get_lang(99999) == "ru"
 
 
-# --- upsert_workout / get_today_workout ---
+# --- upsert_workout / get_workout / get_day_rows ---
 
 @pytest.mark.asyncio
 async def test_upsert_and_get_workout(test_db):
     await insert_test_user(test_db)
     user = await get_user(12345)
-    await upsert_workout(user["id"], "2026-03-26", planned=100, completed=80, day_type="Средний")
-    w = await get_today_workout(user["id"], "2026-03-26")
+    await upsert_workout(user["id"], "2026-03-26", "pullups",
+                         planned=100, completed=80, day_type="Средний")
+    w = await get_workout(user["id"], "2026-03-26", "pullups")
     assert w is not None
     assert w["completed"] == 80
     assert w["planned"] == 100
@@ -61,17 +166,48 @@ async def test_upsert_and_get_workout(test_db):
 async def test_upsert_updates_existing(test_db):
     await insert_test_user(test_db)
     user = await get_user(12345)
-    await upsert_workout(user["id"], "2026-03-26", planned=100, completed=50, day_type="Средний")
-    await upsert_workout(user["id"], "2026-03-26", completed=90)
-    w = await get_today_workout(user["id"], "2026-03-26")
+    await upsert_workout(user["id"], "2026-03-26", "pullups",
+                         planned=100, completed=50, day_type="Средний")
+    await upsert_workout(user["id"], "2026-03-26", "pullups", completed=90)
+    w = await get_workout(user["id"], "2026-03-26", "pullups")
     assert w["completed"] == 90
 
 
 @pytest.mark.asyncio
-async def test_get_today_workout_none(test_db):
+async def test_two_exercises_same_day(test_db):
     await insert_test_user(test_db)
     user = await get_user(12345)
-    assert await get_today_workout(user["id"], "2026-01-01") is None
+    await upsert_workout(user["id"], "2026-03-26", "pullups", planned=50, completed=48)
+    await upsert_workout(user["id"], "2026-03-26", "pushups", planned=80, completed=80)
+    rows = await get_day_rows(user["id"], "2026-03-26")
+    assert {r["exercise"] for r in rows} == {"pullups", "pushups"}
+    pu = await get_workout(user["id"], "2026-03-26", "pushups")
+    assert pu["completed"] == 80
+
+
+@pytest.mark.asyncio
+async def test_get_workout_none(test_db):
+    await insert_test_user(test_db)
+    user = await get_user(12345)
+    assert await get_workout(user["id"], "2026-01-01", "pullups") is None
+
+
+# --- rest day helpers ---
+
+@pytest.mark.asyncio
+async def test_mark_and_clear_rest_day(test_db):
+    await insert_test_user(test_db)
+    user = await get_user(12345)
+    await mark_rest_day(user["id"], "2026-03-27")
+    rows = await get_day_rows(user["id"], "2026-03-27")
+    assert len(rows) == 1
+    assert rows[0]["exercise"] == "rest"
+    assert rows[0]["planned"] == 0
+    # idempotent
+    await mark_rest_day(user["id"], "2026-03-27")
+    assert len(await get_day_rows(user["id"], "2026-03-27")) == 1
+    await clear_rest_row(user["id"], "2026-03-27")
+    assert await get_day_rows(user["id"], "2026-03-27") == []
 
 
 # --- add_xp ---
@@ -111,6 +247,19 @@ async def test_update_streak_first_workout(test_db):
     assert user["streak"] >= 1
 
 
+@pytest.mark.asyncio
+async def test_streak_gap_bridged_by_rest_row(test_db):
+    """A rest marker row on the gap day keeps the streak without spending tokens."""
+    await insert_test_user(test_db)
+    user = await get_user(12345)
+    await update_streak(12345, "2026-03-25")
+    await mark_rest_day(user["id"], "2026-03-26")
+    await update_streak(12345, "2026-03-27")
+    user = await get_user(12345)
+    assert user["streak"] == 2
+    assert user["freeze_tokens"] == 3  # untouched
+
+
 # --- welcome greetings ---
 
 @pytest.mark.asyncio
@@ -125,3 +274,163 @@ async def test_add_welcome_greeting_once(test_db):
 async def test_add_welcome_greeting_no_self(test_db):
     await insert_test_user(test_db, tg_id=11111, username="u1", first_name="User1")
     assert await add_welcome_greeting(11111, 11111) is False
+
+
+@pytest.mark.asyncio
+async def test_reset_streak_preserves_activity_and_account(test_db):
+    from pullup_bot.services.scheduler import auto_cleanup_inactive
+
+    class FakeBot:
+        async def send_message(self, *args, **kwargs):
+            pass
+
+    yesterday = (today() - timedelta(days=1)).isoformat()
+    joined = (today() - timedelta(days=100)).isoformat()
+    await insert_test_user(test_db, joined=joined, last_workout=yesterday,
+                           streak=20, xp=2500)
+    user = await get_user(12345)
+    await upsert_workout(user["id"], yesterday, "pullups", planned=100, completed=100)
+    await db_mod.reset_streak(12345)
+    user = await get_user(12345)
+    assert user["streak"] == 0
+    assert user["last_workout"] == yesterday
+    await auto_cleanup_inactive(FakeBot())
+    assert await get_user(12345) is not None
+    assert (await get_workout(user["id"], yesterday, "pullups"))["completed"] == 100
+
+
+@pytest.mark.asyncio
+async def test_unban_clears_both_ban_sources(test_db):
+    await insert_test_user(test_db)
+    await db_mod.ban_user(12345)
+    assert await db_mod.is_permanently_banned(12345)
+    await db_mod.unban_user(12345)
+    assert (await get_user(12345))["is_banned"] == 0
+    assert not await db_mod.is_permanently_banned(12345)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("old,expected", [("8:00", "08:00"), ("0:05", "00:05"),
+                                        ("8:0", "08:00"), ("8: 0", "08:00"),
+                                        ("+8:00", "08:00"),
+                                        ("23:59", "23:59"), ("25:00", "25:00")])
+async def test_startup_normalizes_existing_notification_times(test_db, old, expected):
+    await insert_test_user(test_db, notify_time=old)
+    await db_mod.init_db()
+    assert (await get_user(12345))["notify_time"] == expected
+
+
+@pytest.mark.asyncio
+async def test_concurrent_xp_awards_preserve_total_and_rank(test_db):
+    await insert_test_user(test_db, xp=450)
+    await asyncio.gather(*(add_xp(12345, 13) for _ in range(50)))
+    user = await get_user(12345)
+    assert user["xp"] == 1100
+    assert user["level"] == 2
+
+
+@pytest.mark.asyncio
+async def test_finishing_an_old_session_cannot_rewind_activity(test_db):
+    d = today().isoformat()
+    await insert_test_user(test_db, last_workout=d, streak=10, xp=100)
+    await update_streak(12345, (today() - timedelta(days=1)).isoformat())
+    user = await get_user(12345)
+    assert (user["last_workout"], user["streak"], user["xp"]) == (d, 10, 100)
+
+
+@pytest.mark.asyncio
+async def test_decay_does_not_overwrite_a_concurrent_xp_award(test_db, monkeypatch):
+    await insert_test_user(test_db, xp=1000, level=2)
+    original_execute = test_db.execute
+
+    def race_before_decay_update(sql, parameters=()):
+        if sql.startswith("UPDATE users SET xp=?, level=?"):
+            async def award_then_update():
+                await original_execute("UPDATE users SET xp=xp+100 WHERE tg_id=12345")
+                await test_db.commit()
+                return await original_execute(sql, parameters)
+            return award_then_update()
+        return original_execute(sql, parameters)
+
+    monkeypatch.setattr(test_db, "execute", race_before_decay_update)
+    assert await db_mod.apply_xp_decay(12345, 7) is None
+    user = await get_user(12345)
+    assert (user["xp"], user["level"]) == (1100, 2)
+
+
+async def test_delete_user_data_clears_every_table_including_receipts(test_db):
+    await insert_test_user(test_db, tg_id=777)
+    await insert_test_user(test_db, tg_id=778)
+    async with test_db.execute("SELECT id FROM users WHERE tg_id=777") as cur:
+        uid = (await cur.fetchone())[0]
+    async with test_db.execute("SELECT id FROM users WHERE tg_id=778") as cur:
+        other = (await cur.fetchone())[0]
+    await test_db.execute("PRAGMA foreign_keys=OFF")  # prove the explicit delete, not the cascade
+    await test_db.execute("INSERT INTO workouts (user_id,date,exercise,completed) VALUES (?,?,?,?)",
+                          (uid, "2026-01-01", "pullups", 10))
+    await test_db.execute("INSERT INTO workout_completions (session_id,user_id,result_json) VALUES (?,?,?)",
+                          ("s1", uid, "{}"))
+    await test_db.execute("INSERT INTO streak_recoveries (user_id,date,reason) VALUES (?,?,?)",
+                          (uid, "2026-01-02", "sick"))
+    await test_db.execute("INSERT INTO pokes (from_user_id,to_user_id,date) VALUES (?,?,?)",
+                          (other, uid, "2026-01-03"))
+    await test_db.execute("INSERT INTO welcome_greetings (from_tg_id,to_tg_id) VALUES (?,?)", (778, 777))
+    await test_db.execute("INSERT INTO ai_usage_log (date,user_id,model) VALUES (?,?,?)",
+                          ("2026-01-01", uid, "m"))
+    await test_db.execute("INSERT INTO bug_reports (user_id,username,text) VALUES (?,?,?)",
+                          (uid, "u", "bug"))
+    await test_db.commit()
+
+    await db_mod.delete_user_by_tg_id(777, permanent_ban=False)
+
+    for table, column in [("workouts", "user_id"), ("workout_completions", "user_id"),
+                          ("streak_recoveries", "user_id"), ("ai_usage_log", "user_id"),
+                          ("bug_reports", "user_id"), ("users", "id")]:
+        async with test_db.execute(f"SELECT COUNT(*) FROM {table} WHERE {column}=?", (uid,)) as cur:
+            assert (await cur.fetchone())[0] == 0, table
+    async with test_db.execute("SELECT COUNT(*) FROM pokes WHERE to_user_id=?", (uid,)) as cur:
+        assert (await cur.fetchone())[0] == 0
+    async with test_db.execute("SELECT COUNT(*) FROM welcome_greetings WHERE to_tg_id=777") as cur:
+        assert (await cur.fetchone())[0] == 0
+    async with test_db.execute("SELECT COUNT(*) FROM banned_ids WHERE tg_id=777") as cur:
+        assert (await cur.fetchone())[0] == 0
+    assert await db_mod.get_user(778) is not None
+
+
+async def test_active_today_counts_only_completed_training(test_db):
+    """Rest markers and abandoned plans made the admin panel show activity on days
+    when nobody trained."""
+    await insert_test_user(test_db, tg_id=1)
+    await insert_test_user(test_db, tg_id=2)
+    today = db_mod.local_today().isoformat()
+    first, second = (await get_user(1))["id"], (await get_user(2))["id"]
+    await db_mod.mark_rest_day(first, today)
+    await db_mod.upsert_workout(second, today, "pullups", completed=0, planned=30)
+    assert (await db_mod.get_bot_stats())["active_today"] == 0
+    await db_mod.upsert_workout(second, today, "pullups", completed=12, planned=30)
+    assert (await db_mod.get_bot_stats())["active_today"] == 1
+
+
+async def test_deleting_a_user_also_forgets_the_fsm_row(test_db, monkeypatch):
+    cleaned = []
+
+    async def hook(tg_id):
+        cleaned.append(tg_id)
+
+    monkeypatch.setattr(db_mod, "fsm_cleanup_hook", hook)
+    await insert_test_user(test_db, tg_id=777)
+    await db_mod.delete_user_by_tg_id(777, permanent_ban=False)
+    assert cleaned == [777]
+    assert await get_user(777) is None
+
+
+async def test_mute_in_bot_time_is_enforced_and_legacy_values_still_work(test_db):
+    from datetime import datetime, timedelta
+    from pullup_bot import timeutils
+    await insert_test_user(test_db, tg_id=5)
+    await db_mod.mute_user(5, (timeutils.now() + timedelta(hours=1)).isoformat())
+    assert await db_mod.is_muted(5) is True
+    await db_mod.mute_user(5, (timeutils.now() - timedelta(hours=1)).isoformat())
+    assert await db_mod.is_muted(5) is False
+    await db_mod.mute_user(5, (datetime.now() + timedelta(hours=1)).isoformat())  # legacy naive value
+    assert await db_mod.is_muted(5) is True

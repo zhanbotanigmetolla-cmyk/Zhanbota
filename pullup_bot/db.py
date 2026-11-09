@@ -1,12 +1,80 @@
+import asyncio
 import json
-from datetime import date, timedelta
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import aiosqlite
 
 from .config import DB_PATH, LEVEL_THRESHOLDS, XP_PER_STREAK_DAY, logger
+from .timeutils import today as local_today
 
 _conn: Optional[aiosqlite.Connection] = None
+_transaction_conn: ContextVar = ContextVar("workout_transaction_conn", default=None)
+# Set by main.py: removes the user's row from the separate FSM database (unfinished
+# dialogs, AI chat history) whenever an account is deleted by any path.
+fsm_cleanup_hook = None
+
+
+class _TransactionConnection:
+    """Keep helper-level commits inside the enclosing workout transaction."""
+
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+    async def commit(self):
+        pass
+
+
+@asynccontextmanager
+async def workout_transaction():
+    """Atomically finish a workout without sharing its transaction with other tasks.
+
+    A task-local facade lets existing DB helpers participate without committing
+    early. Disk databases use a dedicated connection; isolated in-memory tests
+    reuse their connection under a lock because a second connection is empty.
+    """
+    current = _transaction_conn.get()
+    if current is not None:
+        yield current
+        return
+    shared = await get_db()
+    async with shared.execute("PRAGMA database_list") as cursor:
+        databases = await cursor.fetchall()
+    path = next(row[2] for row in databases if row[1] == "main")
+    if path:
+        connection = await aiosqlite.connect(path, timeout=30)
+        connection.row_factory = aiosqlite.Row
+        await connection.execute("PRAGMA foreign_keys=ON")
+        lock = None
+    else:
+        connection = shared
+        lock = getattr(shared, "_workout_lock", None)
+        if lock is None:
+            lock = shared._workout_lock = asyncio.Lock()
+        await lock.acquire()
+    token = None
+    try:
+        await connection.execute("BEGIN IMMEDIATE")
+        facade = _TransactionConnection(connection)
+        token = _transaction_conn.set(facade)
+        yield facade
+        await connection.commit()
+    except BaseException:
+        await connection.rollback()
+        raise
+    finally:
+        if token is not None:
+            _transaction_conn.reset(token)
+        if lock is not None:
+            lock.release()
+        else:
+            await connection.close()
+
 
 MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN lang TEXT DEFAULT 'ru'",
@@ -69,11 +137,110 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN program_type TEXT DEFAULT 'standard'",
     # index 23 — all-time maximum streak reached
     "ALTER TABLE users ADD COLUMN max_streak INTEGER DEFAULT 0",
+    # index 24 — drop legacy weight_kg column (never collected, always defaulted to 80)
+    "ALTER TABLE users DROP COLUMN weight_kg",
+    # index 25–30 — multi-exercise support: per-exercise bases and records
+    "ALTER TABLE users ADD COLUMN base_pushups INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN base_dips INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN personal_record_pushups INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN set_record_pushups INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN personal_record_dips INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN set_record_dips INTEGER DEFAULT 0",
+    # index 31–33 — squats
+    "ALTER TABLE users ADD COLUMN base_squats INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN personal_record_squats INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN set_record_squats INTEGER DEFAULT 0",
+    # index 34–43 — weighted pull-ups and weighted dips.
+    # base_*        : daily rep target, same meaning as the bodyweight variants
+    # weight_*      : the load currently being worked with, in kg
+    # best_weight_* : heaviest load ever completed, kept as a record
+    "ALTER TABLE users ADD COLUMN base_pullups_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN base_dips_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN weight_pullups_weighted REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN weight_dips_weighted REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN best_weight_pullups_weighted REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN best_weight_dips_weighted REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN personal_record_pullups_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN personal_record_dips_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN set_record_pullups_weighted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN set_record_dips_weighted INTEGER DEFAULT 0",
+    # index 44 — added load for a weighted session, in kg (0 for bodyweight rows)
+    "ALTER TABLE workouts ADD COLUMN weight_kg REAL DEFAULT 0",
+    # index 45 — set once the "XP started to decay" notice went out; cleared when
+    # the user is active again, so the next long break is announced afresh
+    "ALTER TABLE users ADD COLUMN decay_notified INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN decay_floor_level INTEGER DEFAULT NULL",
 ]
+
+
+async def _migrate_workouts_exercise(conn):
+    """
+    One-time rebuild of the workouts table adding the exercise dimension.
+
+    - New column `exercise` ('pullups'/'pushups'/'dips' or 'rest' for rest-day rows)
+    - UNIQUE(user_id, date) becomes UNIQUE(user_id, date, exercise)
+    - Legacy rest rows (day_type='Отдых', no reps) become exercise='rest';
+      everything else becomes 'pullups'
+    - Drops the removed extra_activity/extra_minutes columns
+
+    Runs inside an explicit transaction; raises on failure so the bot stops
+    loudly instead of running on a half-migrated schema.
+    """
+    async with conn.execute("PRAGMA table_info(workouts)") as cur:
+        cols = [r[1] for r in await cur.fetchall()]
+    if "exercise" in cols:
+        return  # already migrated
+
+    logger.info("[migration] rebuilding workouts table with exercise column...")
+    try:
+        await conn.execute("""
+            CREATE TABLE workouts_new (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id   INTEGER NOT NULL,
+                date      TEXT NOT NULL,
+                exercise  TEXT NOT NULL DEFAULT 'pullups',
+                planned   INTEGER DEFAULT 0,
+                completed INTEGER DEFAULT 0,
+                sets_json TEXT DEFAULT '[]',
+                rpe       INTEGER DEFAULT 0,
+                day_type  TEXT DEFAULT '',
+                notes     TEXT DEFAULT '',
+                UNIQUE(user_id, date, exercise)
+            )
+        """)
+        await conn.execute("""
+            INSERT INTO workouts_new
+                (id, user_id, date, exercise, planned, completed, sets_json, rpe, day_type, notes)
+            SELECT id, user_id, date,
+                   CASE WHEN day_type='Отдых' AND COALESCE(completed,0)=0
+                        THEN 'rest' ELSE 'pullups' END,
+                   planned, completed, sets_json, rpe, day_type, notes
+            FROM workouts
+        """)
+        async with conn.execute("SELECT COUNT(*) FROM workouts") as cur:
+            old_count = (await cur.fetchone())[0]
+        async with conn.execute("SELECT COUNT(*) FROM workouts_new") as cur:
+            new_count = (await cur.fetchone())[0]
+        if old_count != new_count:
+            raise RuntimeError(
+                f"workouts migration row mismatch: {old_count} -> {new_count}")
+        await conn.execute("DROP TABLE workouts")
+        await conn.execute("ALTER TABLE workouts_new RENAME TO workouts")
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_workouts_user_date ON workouts(user_id, date)")
+        await conn.commit()
+        logger.info(f"[migration] workouts table rebuilt OK ({new_count} rows)")
+    except Exception:
+        await conn.rollback()
+        logger.error("[migration] workouts rebuild FAILED — rolled back")
+        raise
 
 
 async def get_db() -> aiosqlite.Connection:
     """Return the shared singleton DB connection, opening it on first call."""
+    transaction_connection = _transaction_conn.get()
+    if transaction_connection is not None:
+        return transaction_connection
     global _conn
     if _conn is None:
         _conn = await aiosqlite.connect(DB_PATH)
@@ -109,7 +276,6 @@ async def init_db():
             freeze_tokens INTEGER DEFAULT 3,
             last_workout  TEXT,
             notify_time   TEXT DEFAULT '09:00',
-            weight_kg     REAL DEFAULT 80,
             lang          TEXT DEFAULT 'ru',
             program_day   INTEGER DEFAULT 0
         );
@@ -117,15 +283,15 @@ async def init_db():
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id        INTEGER NOT NULL,
             date           TEXT NOT NULL,
+            exercise       TEXT NOT NULL DEFAULT 'pullups',
             planned        INTEGER DEFAULT 0,
             completed      INTEGER DEFAULT 0,
             sets_json      TEXT DEFAULT '[]',
             rpe            INTEGER DEFAULT 0,
             day_type       TEXT DEFAULT '',
-            extra_activity TEXT DEFAULT '',
-            extra_minutes  INTEGER DEFAULT 0,
             notes          TEXT DEFAULT '',
-            UNIQUE(user_id, date)
+            weight_kg      REAL DEFAULT 0,
+            UNIQUE(user_id, date, exercise)
         );
         CREATE TABLE IF NOT EXISTS streak_recoveries (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,6 +313,11 @@ async def init_db():
             created  TEXT DEFAULT (datetime('now')),
             status   TEXT DEFAULT 'new'
         );
+        CREATE TABLE IF NOT EXISTS workout_completions (
+            session_id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            result_json TEXT NOT NULL
+        );
     """)
     # Run migrations
     await conn.execute(
@@ -163,14 +334,23 @@ async def init_db():
         try:
             await conn.executescript(MIGRATIONS[i])
         except Exception as e:
-            # Column/index may already exist — log for visibility
-            logger.debug(f"[migration {i}] skipped: {e}")
+            # Re-adding an existing column is expected on every start; anything else
+            # deserves attention because the version counter advances regardless.
+            text = str(e).lower()
+            benign = any(part in text for part in ("duplicate column", "no such column", "already exists"))
+            (logger.debug if benign else logger.warning)(f"[migration {i}] skipped: {e}")
     if current < len(MIGRATIONS):
         await conn.execute("UPDATE migrations SET version=?", (len(MIGRATIONS),))
-    # Legacy migrations (idempotent — safe to run even if column already exists)
+    # Structural rebuild — must run after column migrations, raises on failure
+    await _migrate_workouts_exercise(conn)
+    # Legacy migrations (idempotent — safe to run even if column already exists).
+    # workouts.weight_kg is re-asserted here because _migrate_workouts_exercise
+    # rebuilds the table from a fixed column list and would otherwise drop a
+    # column added by an earlier numbered migration.
     for col_sql in [
         "ALTER TABLE users ADD COLUMN first_name TEXT",
         "ALTER TABLE users ADD COLUMN is_logged_out INTEGER DEFAULT 0",
+        "ALTER TABLE workouts ADD COLUMN weight_kg REAL DEFAULT 0",
     ]:
         try:
             await conn.execute(col_sql)
@@ -186,7 +366,8 @@ async def init_db():
     )
     # Backfill set_record: scan all sets_json and find each user's best single set
     async with conn.execute(
-        "SELECT user_id, sets_json FROM workouts WHERE sets_json IS NOT NULL AND sets_json != '[]'"
+        "SELECT user_id, sets_json FROM workouts "
+        "WHERE exercise='pullups' AND sets_json IS NOT NULL AND sets_json != '[]'"
     ) as cur:
         best: dict[int, int] = {}
         async for row in cur:
@@ -203,6 +384,19 @@ async def init_db():
             "UPDATE users SET set_record = ? WHERE id = ? AND set_record < ?",
             (top_set, uid, top_set)
         )
+    # Older settings accepted H:MM, while the reminder compares against HH:MM.
+    async with conn.execute("SELECT id, notify_time FROM users") as cur:
+        notification_times = await cur.fetchall()
+    for uid, notify_time in notification_times:
+        try:
+            hour, minute = map(int, (notify_time or "").split(":"))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            normalized = f"{hour:02d}:{minute:02d}"
+            if normalized != notify_time:
+                await conn.execute("UPDATE users SET notify_time=? WHERE id=?",
+                                   (normalized, uid))
     await conn.commit()
 
 
@@ -219,44 +413,67 @@ async def get_lang(tg_id: int) -> str:
     return user["lang"] if user and user["lang"] else "ru"
 
 
-async def get_today_workout(user_id: int, d: str = None) -> Optional[aiosqlite.Row]:
-    """Return the workout row for the given user and date (defaults to today), or None."""
-    if d is None:
-        d = date.today().isoformat()
+async def get_workout(user_id: int, d: str, exercise: str) -> Optional[aiosqlite.Row]:
+    """Return the workout row for the given user, date and exercise, or None."""
     conn = await get_db()
     async with conn.execute(
-        "SELECT * FROM workouts WHERE user_id=? AND date=?", (user_id, d)
+        "SELECT * FROM workouts WHERE user_id=? AND date=? AND exercise=?",
+        (user_id, d, exercise)
     ) as cur:
         return await cur.fetchone()
 
 
-_WORKOUT_COLS = {"planned", "completed", "sets_json", "rpe", "day_type",
-                 "extra_activity", "extra_minutes", "notes"}
+async def get_day_rows(user_id: int, d: str = None) -> list:
+    """Return all workout rows (any exercise, incl. rest markers) for the given date."""
+    if d is None:
+        d = local_today().isoformat()
+    conn = await get_db()
+    async with conn.execute(
+        "SELECT * FROM workouts WHERE user_id=? AND date=?", (user_id, d)
+    ) as cur:
+        return await cur.fetchall()
 
 
-async def upsert_workout(user_id: int, d: str, **kwargs):
-    """Insert or update a workout row for the given user and date with the supplied column values."""
+_WORKOUT_COLS = {"planned", "completed", "sets_json", "rpe", "day_type", "notes",
+                 "weight_kg"}
+
+
+async def upsert_workout(user_id: int, d: str, exercise: str, **kwargs):
+    """Insert or update the workout row for (user, date, exercise) with the supplied values."""
     for k in kwargs:
         if k not in _WORKOUT_COLS:
             raise ValueError(f"Invalid workout column: {k}")
     conn = await get_db()
-    async with conn.execute(
-        "SELECT id FROM workouts WHERE user_id=? AND date=?", (user_id, d)
-    ) as cur:
-        existing = await cur.fetchone()
-    if existing:
-        s = ", ".join(f"{k}=?" for k in kwargs)
+    if kwargs:
+        cols = "user_id, date, exercise, " + ", ".join(kwargs.keys())
+        vals = "?, ?, ?, " + ", ".join("?" * len(kwargs))
+        updates = ", ".join(f"{k}=excluded.{k}" for k in kwargs)
         await conn.execute(
-            f"UPDATE workouts SET {s} WHERE user_id=? AND date=?",
-            list(kwargs.values()) + [user_id, d],
+            f"INSERT INTO workouts ({cols}) VALUES ({vals})"
+            f" ON CONFLICT(user_id, date, exercise) DO UPDATE SET {updates}",
+            [user_id, d, exercise] + list(kwargs.values()),
         )
     else:
-        cols = "user_id, date, " + ", ".join(kwargs.keys())
-        vals = "?, ?, " + ", ".join("?" * len(kwargs))
         await conn.execute(
-            f"INSERT INTO workouts ({cols}) VALUES ({vals})",
-            [user_id, d] + list(kwargs.values()),
+            "INSERT OR IGNORE INTO workouts (user_id, date, exercise) VALUES (?, ?, ?)",
+            (user_id, d, exercise),
         )
+    await conn.commit()
+
+
+async def mark_rest_day(user_id: int, d: str):
+    """Write the day-level rest marker row (idempotent)."""
+    await upsert_workout(user_id, d, "rest", planned=0, completed=0,
+                         day_type="Отдых", sets_json=json.dumps([]))
+
+
+async def clear_rest_row(user_id: int, d: str):
+    """Remove the rest marker row for a date (used when a rest day is overridden)."""
+    conn = await get_db()
+    await conn.execute(
+        "DELETE FROM workouts WHERE user_id=? AND date=? AND exercise='rest'",
+        (user_id, d)
+    )
     await conn.commit()
 
 
@@ -272,38 +489,78 @@ def _level_from_xp(xp: int) -> int:
 async def add_xp(tg_id: int, amount: int):
     """Add (or subtract) XP for a user and recalculate their level."""
     conn = await get_db()
-    await conn.execute("UPDATE users SET xp = xp + ? WHERE tg_id = ?", (amount, tg_id))
-    async with conn.execute("SELECT xp FROM users WHERE tg_id = ?", (tg_id,)) as cur:
-        row = await cur.fetchone()
-    if row:
-        xp = max(0, row[0])
-        lvl = _level_from_xp(xp)
-        await conn.execute("UPDATE users SET level=?, xp=? WHERE tg_id=?", (lvl, xp, tg_id))
+    # One statement prevents a stale SELECT from overwriting a concurrent award.
+    xp_expr = "MAX(0, COALESCE(xp, 0) + :amount)"
+    cases = " ".join(
+        f"WHEN {xp_expr} >= {threshold} THEN {level}"
+        for level, threshold in reversed(list(enumerate(LEVEL_THRESHOLDS[:-1])))
+    )
+    await conn.execute(
+        f"UPDATE users SET xp={xp_expr}, level=CASE {cases} ELSE 0 END "
+        "WHERE tg_id=:tg_id", {"amount": amount, "tg_id": tg_id})
     await conn.commit()
 
 
 async def update_streak(tg_id: int, today: str = None):
-    """Extend or reset the streak based on whether the user trained yesterday, and award streak XP."""
+    """Extend or reset the streak. Auto-spends freeze tokens for missed training days."""
     user = await get_user(tg_id)
     if not user:
         return
     if today is None:
-        today = date.today().isoformat()
+        today = local_today().isoformat()
     last = user["last_workout"]
-    yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+    today_d = date.fromisoformat(today)
+    yesterday = (today_d - timedelta(days=1)).isoformat()
     conn = await get_db()
-    if last == today:
+    if last is not None and last >= today:
+        # A session kept open across midnight can finish after a newer one.
+        # Recording it must not rewind the cursor used by streaks and cleanup.
         return
-    if last is None or last != yesterday:
-        new_streak = 1
+
+    old_streak = user["streak"] or 0
+
+    if last is None or last == yesterday:
+        # No gap — simple start or extend
+        new_streak = 1 if last is None else old_streak + 1
     else:
-        new_streak = (user["streak"] or 0) + 1
+        # Gap detected — find which gap days have rest-day records (free) vs missed (cost a token each)
+        last_d = date.fromisoformat(last)
+        gap_days = [
+            (last_d + timedelta(days=i)).isoformat()
+            for i in range(1, (today_d - last_d).days)
+        ]
+        if gap_days:
+            placeholders = ",".join("?" * len(gap_days))
+            async with conn.execute(
+                f"SELECT date FROM workouts WHERE user_id=? AND date IN ({placeholders}) "
+                "AND (planned=0 OR completed>0)",
+                [user["id"]] + gap_days,
+            ) as cur:
+                rest_rows = await cur.fetchall()
+            rest_dates = {r["date"] for r in rest_rows}
+            missed = [d for d in gap_days if d not in rest_dates]
+        else:
+            missed = []
+
+        tokens = user["freeze_tokens"] or 0
+        if len(missed) <= tokens:
+            # Auto-spend tokens silently to bridge missed days
+            if missed:
+                await conn.execute(
+                    "UPDATE users SET freeze_tokens=? WHERE tg_id=?",
+                    (tokens - len(missed), tg_id),
+                )
+            new_streak = old_streak + 1
+        else:
+            # Not enough tokens — streak resets
+            new_streak = 1
+
     await conn.execute(
         "UPDATE users SET streak=?, last_workout=?, inactivity_warned=NULL WHERE tg_id=?",
         (new_streak, today, tg_id),
     )
-    # Only award streak XP if continuing a streak (not first day)
-    if last == yesterday:
+    # Award streak XP whenever the streak genuinely continued (not a reset to 1 from nothing)
+    if last is not None and new_streak == old_streak + 1:
         await conn.execute(
             "UPDATE users SET xp = xp + ? WHERE tg_id=?", (XP_PER_STREAK_DAY, tg_id)
         )
@@ -362,6 +619,7 @@ async def unban_user(tg_id: int) -> None:
     """Clear the is_banned flag for the given user."""
     conn = await get_db()
     await conn.execute("UPDATE users SET is_banned=0 WHERE tg_id=?", (tg_id,))
+    await conn.execute("DELETE FROM banned_ids WHERE tg_id=?", (tg_id,))
     await conn.commit()
 
 
@@ -388,15 +646,17 @@ async def is_muted(tg_id: int) -> bool:
     if not row or not row[0]:
         return False
     try:
-        return datetime.fromisoformat(row[0]) > datetime.now()
-    except Exception:
+        until = datetime.fromisoformat(row[0])
+    except (TypeError, ValueError):
         return False
+    # New mutes carry the bot's timezone; legacy values were naive server time.
+    return until > (datetime.now(until.tzinfo) if until.tzinfo else datetime.now())
 
 
 async def reset_streak(tg_id: int) -> None:
-    """Zero out the streak and clear last_workout for the given user."""
+    """Zero the streak while preserving the date used to measure inactivity."""
     conn = await get_db()
-    await conn.execute("UPDATE users SET streak=0, last_workout=NULL WHERE tg_id=?", (tg_id,))
+    await conn.execute("UPDATE users SET streak=0 WHERE tg_id=?", (tg_id,))
     await conn.commit()
 
 
@@ -405,6 +665,60 @@ async def reset_xp(tg_id: int) -> None:
     conn = await get_db()
     await conn.execute("UPDATE users SET xp=0, level=0 WHERE tg_id=?", (tg_id,))
     await conn.commit()
+
+
+async def apply_xp_decay(tg_id: int, days_inactive: int):
+    """
+    Decay XP for an inactive user (grace period: 7 days).
+
+    Decay rate:
+      days 7–13: 0.5% of XP/day (min 20 XP)
+      days 14–20: 1.0% of XP/day (min 30 XP)
+      days 21+:   1.5% of XP/day (min 50 XP)
+
+    Floor: XP cannot drop below the threshold of one rank below the rank held when
+    the break began, so a single absence costs at most one rank.
+    Returns (old_xp, new_xp, old_level, new_level) or None if no decay applied.
+    """
+    if days_inactive < 7:
+        return None
+    conn = await get_db()
+    async with conn.execute("SELECT xp, level, decay_floor_level FROM users WHERE tg_id=?",
+                            (tg_id,)) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return None
+    current_xp = row[0] or 0
+    current_level = row[1] or 0
+    # Remember the rank held when the break began. Deriving the floor from the current
+    # level would lower it by a rank every time a rank is lost, and a long absence
+    # would walk the user all the way down to zero.
+    floor_level = row[2] if row[2] is not None else current_level
+    floor_xp = LEVEL_THRESHOLDS[max(0, floor_level - 1)] if floor_level > 0 else 0
+    if current_xp <= floor_xp:
+        return None
+    if days_inactive < 14:
+        rate, min_decay = 0.005, 20
+    elif days_inactive < 21:
+        rate, min_decay = 0.010, 30
+    else:
+        rate, min_decay = 0.015, 50
+    decay = max(min_decay, int(current_xp * rate))
+    new_xp = max(floor_xp, current_xp - decay)
+    if new_xp == current_xp:
+        return None
+    new_level = _level_from_xp(new_xp)
+    cursor = await conn.execute(
+        "UPDATE users SET xp=?, level=?, decay_floor_level=? WHERE tg_id=? "
+        "AND COALESCE(xp, 0)=? AND COALESCE(level, 0)=?",
+        (new_xp, new_level, floor_level, tg_id, current_xp, current_level)
+    )
+    await conn.commit()
+    if cursor.rowcount == 0:
+        # A workout/admin update won the race. Leave its new XP untouched and
+        # reconsider decay on the next scheduled run.
+        return None
+    return current_xp, new_xp, current_level, new_level
 
 
 async def give_freeze_tokens(tg_id: int, delta: int, max_tokens: int = 5) -> None:
@@ -419,18 +733,19 @@ async def give_freeze_tokens(tg_id: int, delta: int, max_tokens: int = 5) -> Non
 
 async def get_bot_stats() -> dict:
     """Return aggregate bot statistics: total users, banned count, active today, and total workouts."""
-    from datetime import date as _date
     conn = await get_db()
     async with conn.execute("SELECT COUNT(*) FROM users") as cur:
         total_users = (await cur.fetchone())[0]
     async with conn.execute("SELECT COUNT(*) FROM users WHERE is_banned=1") as cur:
         banned_count = (await cur.fetchone())[0]
-    today = _date.today().isoformat()
+    today = local_today().isoformat()
     async with conn.execute(
-        "SELECT COUNT(DISTINCT user_id) FROM workouts WHERE date=?", (today,)
+        "SELECT COUNT(DISTINCT user_id) FROM workouts WHERE date=? AND completed > 0", (today,)
     ) as cur:
         active_today = (await cur.fetchone())[0]
-    async with conn.execute("SELECT COUNT(*) FROM workouts") as cur:
+    async with conn.execute(
+        "SELECT COUNT(*) FROM (SELECT DISTINCT user_id, date FROM workouts WHERE completed > 0)"
+    ) as cur:
         total_workouts = (await cur.fetchone())[0]
     return {
         "total_users": total_users,
@@ -448,6 +763,31 @@ async def is_permanently_banned(tg_id: int) -> bool:
     return row is not None
 
 
+async def delete_user_data(conn, user_id: int, tg_id: int) -> None:
+    """Remove every row that belongs to a user; the caller commits.
+
+    Self-service deletion, the admin panel and the inactivity cleanup used to
+    carry three copies of this list, and the receipts table was missing from
+    all of them (only the foreign key kept it clean).
+    """
+    await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM workout_completions WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?", (user_id, user_id))
+    await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
+    await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
+                       (user_id, user_id))
+    await conn.execute("DELETE FROM welcome_greetings WHERE from_tg_id=? OR to_tg_id=?",
+                       (tg_id, tg_id))
+    await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    if fsm_cleanup_hook is not None:
+        try:
+            await fsm_cleanup_hook(tg_id)
+        except Exception as e:  # the account deletion must not fail because of the FSM file
+            logger.warning(f"[delete_user] FSM cleanup for {tg_id}: {e}")
+
+
 async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
     """Delete all data for a user and optionally add them to the permanent ban list."""
     conn = await get_db()
@@ -456,16 +796,7 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
     # Wrap all deletes in a single transaction to avoid orphaned data on crash
     try:
         if row:
-            user_id = row[0]
-            await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
-            await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?",
-                               (user_id, user_id))
-            await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
-            await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
-            await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
-            await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
-                               (user_id, user_id))
-            await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+            await delete_user_data(conn, row[0], tg_id)
         if permanent_ban:
             await conn.execute(
                 "INSERT OR REPLACE INTO banned_ids (tg_id, reason) VALUES (?, ?)",
@@ -480,20 +811,18 @@ async def delete_user_by_tg_id(tg_id: int, permanent_ban: bool = True) -> None:
 
 async def log_ai_usage(user_id: int, model: str, question: str = "", answer: str = "") -> None:
     """Insert an AI usage record with the question and answer for analytics."""
-    from datetime import date as _date
     conn = await get_db()
     await conn.execute(
         "INSERT INTO ai_usage_log (date, user_id, model, question, answer) VALUES (?, ?, ?, ?, ?)",
-        (str(_date.today()), user_id, model, question, answer),
+        (str(local_today()), user_id, model, question, answer),
     )
     await conn.commit()
 
 
 async def get_ai_usage_stats() -> dict:
     """Return today's and all-time AI request counts, plus per-user and per-model breakdowns."""
-    from datetime import date as _date
     conn = await get_db()
-    today = str(_date.today())
+    today = str(local_today())
     async with conn.execute(
         "SELECT COUNT(*) as cnt FROM ai_usage_log WHERE date=?", (today,)
     ) as cur:

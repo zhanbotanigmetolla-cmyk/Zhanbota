@@ -1,124 +1,143 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
+import time
 
 from aiogram.exceptions import TelegramForbiddenError
 
-from ..config import ADMIN_TG_ID, TZ_OFFSET_HOURS, logger
-from ..db import get_db, get_today_workout, upsert_workout
+from ..config import (ADMIN_TG_ID, EFFECT_CONFETTI, EXERCISES, EXERCISE_EMOJI,
+                      XP_CASE_SQL, is_admin_id, logger, xp_for)
+from .. import timeutils
+from ..db import delete_user_data, get_db, get_day_rows, mark_rest_day
 from ..i18n import t, day_name
-from ..services.xp import display, md_escape, planned_for_day
+from ..keyboards import reminder_train_kb
+from ..services.xp import (day_type_for, display, md_escape, send_with_effect,
+                           user_base)
 from . import monitoring
+from .support import support_line
 
 
-async def _delete_user(conn, user_id: int):
-    """Delete all data for a user by their DB id."""
-    await conn.execute("DELETE FROM workouts WHERE user_id=?", (user_id,))
-    await conn.execute("DELETE FROM friends WHERE user_id=? OR friend_id=?", (user_id, user_id))
-    await conn.execute("DELETE FROM streak_recoveries WHERE user_id=?", (user_id,))
-    await conn.execute("DELETE FROM bug_reports WHERE user_id=?", (user_id,))
-    await conn.execute("DELETE FROM ai_usage_log WHERE user_id=?", (user_id,))
-    await conn.execute("DELETE FROM pokes WHERE from_user_id=? OR to_user_id=?",
-                       (user_id, user_id))
-    await conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+async def _delete_user(conn, user_id: int, tg_id: int = 0):
+    """Delete all data for a user by their DB id (tg_id cleans up greeting links)."""
+    await delete_user_data(conn, user_id, tg_id)
     await conn.commit()
+
+
+def _exempt_from_inactivity_penalties(tg_id: int) -> bool:
+    """The owner's account keeps its XP, rank and data however long the break is.
+
+    Inactivity nudges exist to keep participants engaged. The project owner asked
+    not to receive them, so XP decay, rank loss, deletion warnings and automatic
+    removal all skip ADMIN_TG_ID; every other account is treated as before.
+    """
+    return is_admin_id(tg_id)
 
 
 async def daily_reminder(bot):
     """Send personalized morning reminders to all users whose notify_time matches the current minute."""
-    tz = timezone(timedelta(hours=TZ_OFFSET_HOURS))
-    now = datetime.now(tz).strftime("%H:%M")
+    now = timeutils.now().strftime("%H:%M")
     conn = await get_db()
     async with conn.execute(
         "SELECT * FROM users WHERE notify_time=? AND is_logged_out=0 AND is_banned=0", (now,)
     ) as cur:
         users = await cur.fetchall()
     for user in users:
-        lang = user["lang"] or "ru"
-        existing = await get_today_workout(user["id"])
-        if existing:
-            planned = existing["planned"] if existing["planned"] is not None else 0
-            day_type = existing["day_type"] or planned_for_day(user)[1]
-        else:
-            planned, day_type = planned_for_day(user)
-            # Same auto-advance as training handler: if the cycle says rest but
-            # the user has already been off for 2+ days, today is actually a
-            # training day — advance the cycle and recalculate.
-            if day_type == "Отдых" and user["last_workout"]:
-                try:
-                    days_off = (date.today() - date.fromisoformat(user["last_workout"])).days
-                except Exception:
-                    days_off = 0
-                if days_off >= 2:
-                    new_pd = (user["program_day"] or 0) + 1
-                    await conn.execute(
-                        "UPDATE users SET program_day=? WHERE id=?", (new_pd, user["id"])
-                    )
-                    await conn.commit()
-                    if new_pd % 7 == 0:
-                        from ..handlers.training import _check_weekly_progression
-                        await _check_weekly_progression(user["tg_id"], user["id"], user["base_pullups"])
-                        async with conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)) as cur:
-                            fresh = await cur.fetchone()
-                        user = dict(fresh)
-                    else:
-                        user = dict(user)
-                    user["program_day"] = new_pd
-                    planned, day_type = planned_for_day(user)
-        done = existing["completed"] if existing else 0
-        if day_type == "Отдых":
-            if done > 0:
-                continue
-            msg = t("reminder_rest", lang)
-        else:
-            if done >= planned:
-                continue
-            status = (t("reminder_done", lang, done=done)
-                      if done > 0 else t("reminder_not_started", lang))
-            msg = t("reminder_train", lang,
-                    day_type=day_name(day_type, lang),
-                    planned=planned, status=status)
-        base_increased_to = user["base_increased_to"] if "base_increased_to" in user.keys() else None
-        if base_increased_to:
-            msg = t("reminder_base_increased", lang, base=base_increased_to) + msg
-        notify_time = user["notify_time"] or "09:00"
-        silent = notify_time >= "22:00" or notify_time < "08:00"
         try:
-            await bot.send_message(user["tg_id"], msg, disable_notification=silent)
-            if base_increased_to:
-                await conn.execute(
-                    "UPDATE users SET base_increased_to=NULL WHERE tg_id=?", (user["tg_id"],)
-                )
-                await conn.commit()
-        except TelegramForbiddenError:
-            last = user["last_workout"]
-            inactive = (not last or
-                        (date.today() - date.fromisoformat(last)).days >= 7)
-            if inactive:
-                logger.info(f"[reminder] blocked+inactive 7d, removing user {user['tg_id']}")
-                await _delete_user(conn, user["id"])
+            lang = user["lang"] or "ru"
+            day_rows = await get_day_rows(user["id"])
+            training_rows = [r for r in day_rows if r["exercise"] != "rest"]
+            any_done = any((r["completed"] or 0) > 0 for r in training_rows)
+            if any_done:
+                continue  # the day is already saved — no nagging needed
+            if training_rows:
+                day_type = training_rows[0]["day_type"] or day_type_for(user)[0]
+            elif day_rows:
+                day_type = "Отдых"
             else:
-                logger.info(f"[reminder] user {user['tg_id']} blocked the bot but still active")
+                day_type = day_type_for(user)[0]
+                # Same auto-advance as training handler: if the cycle says rest but
+                # the user has already been off for 2+ days, today is actually a
+                # training day — advance the cycle and recalculate.
+                if day_type == "Отдых" and user["last_workout"]:
+                    try:
+                        days_off = (timeutils.today() - date.fromisoformat(user["last_workout"])).days
+                    except Exception:
+                        days_off = 0
+                    if days_off >= 2:
+                        new_pd = (user["program_day"] or 0) + 1
+                        await conn.execute(
+                            "UPDATE users SET program_day=? WHERE id=?", (new_pd, user["id"])
+                        )
+                        await conn.commit()
+                        if new_pd % 7 == 0:
+                            from ..handlers.training import _run_cycle_progressions
+                            await _run_cycle_progressions(user["tg_id"], user["id"])
+                        async with conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)) as cur:
+                            user = await cur.fetchone()
+                        day_type = day_type_for(user)[0]
+            kb = None
+            if day_type == "Отдых":
+                msg = t("reminder_rest", lang)
+            else:
+                from ..handlers.training import _coeff_for_day_type, ex_label
+                coeff = _coeff_for_day_type(user, day_type)
+                plan_lines = [
+                    f"• {ex_label(ex, lang)}: {int(user_base(user, ex) * coeff)}"
+                    for ex in EXERCISES if user_base(user, ex) > 0
+                ]
+                msg = t("reminder_train", lang,
+                        day_type=day_name(day_type, lang),
+                        plans="\n".join(plan_lines),
+                        status=t("reminder_not_started", lang))
+                kb = reminder_train_kb(lang)
+            msg += support_line(lang, markdown=False)
+            notify_time = user["notify_time"] or "09:00"
+            silent = notify_time >= "22:00" or notify_time < "08:00"
+            try:
+                await bot.send_message(user["tg_id"], msg, disable_notification=silent,
+                                       reply_markup=kb)
+            except TelegramForbiddenError:
+                # Blocking the bot does not invalidate recent recorded activity.
+                # The streak cursor can be empty after an administrative reset.
+                async with conn.execute(
+                    "SELECT MAX(date) FROM workouts WHERE user_id=? "
+                    "AND (completed>0 OR exercise='rest')", (user["id"],)
+                ) as cur:
+                    recorded = (await cur.fetchone())[0]
+                dates = [d for d in (user["last_workout"], user["joined"], recorded) if d]
+                last = max(dates) if dates else None
+                inactive = bool(last and (timeutils.today() - date.fromisoformat(last)).days >= 7)
+                if inactive and not _exempt_from_inactivity_penalties(user["tg_id"]):
+                    logger.info(f"[reminder] blocked+inactive 7d, removing user {user['tg_id']}")
+                    await _delete_user(conn, user["id"], user["tg_id"])
+                else:
+                    logger.info(f"[reminder] user {user['tg_id']} blocked the bot; keeping the account")
+            except Exception as e:
+                logger.warning(f"[reminder] {user['tg_id']}: {e}")
         except Exception as e:
+            # One broken profile must not silence everyone else's reminder.
             logger.warning(f"[reminder] {user['tg_id']}: {e}")
 
 
 async def _announce_weekly_champ(bot, conn, users):
     """Crown the user with the most pullups last week and broadcast the result."""
-    week_ago = (date.today() - timedelta(days=7)).isoformat()
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    week_ago = (timeutils.today() - timedelta(days=7)).isoformat()
+    yesterday = (timeutils.today() - timedelta(days=1)).isoformat()
 
-    # Single query instead of N+1 per-user loop
+    # Single query instead of N+1 per-user loop — weekly XP across all exercises
     async with conn.execute(
-        "SELECT user_id, COALESCE(SUM(completed),0) as total FROM workouts "
+        f"SELECT user_id, COALESCE(SUM({XP_CASE_SQL}),0) as total FROM workouts "
         "WHERE date>=? AND date<=? GROUP BY user_id",
         (week_ago, yesterday)
     ) as cur:
         totals_rows = await cur.fetchall()
-    totals_map = {r["user_id"]: r["total"] for r in totals_rows}
+    totals_map = {r["user_id"]: int(round(r["total"])) for r in totals_rows}
 
     entries = [(user, totals_map.get(user["id"], 0)) for user in users]
     entries.sort(key=lambda x: x[1], reverse=True)
     if not entries or entries[0][1] == 0:
-        return  # nobody trained — skip the ceremony
+        # Nobody trained: no ceremony, and last week's crown expires as promised.
+        await conn.execute("UPDATE users SET is_weekly_champ=0 WHERE is_weekly_champ=1")
+        await conn.commit()
+        return
 
     champ, champ_total = entries[0]
 
@@ -146,7 +165,7 @@ async def _announce_weekly_champ(bot, conn, users):
                 f"👑 *Кочка недели*\n\n"
                 f"Неделя позади — подводим итоги!\n\n"
                 f"🏆 Лучший атлет: *{champ_name}*\n"
-                f"🔢 Подтягиваний за неделю: *{champ_total}*\n\n"
+                f"⭐ XP за неделю: *{champ_total}*\n\n"
                 f"Топ недели:\n{top3_text}\n\n"
                 f"{suffix}"
             )
@@ -156,12 +175,17 @@ async def _announce_weekly_champ(bot, conn, users):
                 f"👑 *Beast of the Week*\n\n"
                 f"The week is over — here are the results!\n\n"
                 f"🏆 Top athlete: *{champ_name}*\n"
-                f"🔢 Weekly pullups: *{champ_total}*\n\n"
+                f"⭐ Weekly XP: *{champ_total}*\n\n"
                 f"Top of the week:\n{top3_text}\n\n"
                 f"{suffix}"
             )
+        msg += support_line(lang)
         try:
-            await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
+            if is_winner:
+                await send_with_effect(bot, user["tg_id"], msg, EFFECT_CONFETTI,
+                                       parse_mode="Markdown")
+            else:
+                await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
         except Exception as e:
             logger.warning(f"[weekly_champ] {user['tg_id']}: {e}")
 
@@ -171,37 +195,49 @@ async def weekly_summary(bot):
     conn = await get_db()
     async with conn.execute("SELECT * FROM users WHERE is_logged_out=0 AND is_banned=0") as cur:
         users = await cur.fetchall()
-    week_ago = (date.today() - timedelta(days=7)).isoformat()
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    week_ago = (timeutils.today() - timedelta(days=7)).isoformat()
+    yesterday = (timeutils.today() - timedelta(days=1)).isoformat()
     for user in users:
         lang = user["lang"] or "ru"
         async with conn.execute(
-            "SELECT * FROM workouts WHERE user_id=? AND date>=? AND date<=? ORDER BY date ASC",
+            "SELECT * FROM workouts WHERE user_id=? AND date>=? AND date<=? "
+            "AND exercise != 'rest' ORDER BY date ASC",
             (user["id"], week_ago, yesterday)
         ) as cur:
             rows = await cur.fetchall()
-        if not rows:
+        if not rows or not any((r["completed"] or 0) > 0 for r in rows):
             try:
-                await bot.send_message(user["tg_id"], t("weekly_summary_no_workouts", lang))
+                await bot.send_message(user["tg_id"], t("weekly_summary_no_workouts", lang)
+                                       + support_line(lang, markdown=False))
             except Exception as e:
                 logger.warning(f"[weekly_summary] send failed for {user['tg_id']}: {e}")
             continue
-        total_done = sum(r["completed"] for r in rows)
-        total_planned = sum(r["planned"] for r in rows if r["planned"] > 0)
-        pct = int(total_done / total_planned * 100) if total_planned else 0
-        best = max(rows, key=lambda r: r["completed"])
-        best_day = day_name(best["day_type"] or "—", lang)
+        totals: dict = {}
+        for r in rows:
+            done_p, planned_p = totals.get(r["exercise"], (0, 0))
+            totals[r["exercise"]] = (done_p + (r["completed"] or 0),
+                                     planned_p + (r["planned"] or 0))
+        volume_lines = []
+        for ex in EXERCISES:
+            if ex not in totals:
+                continue
+            done_e, planned_e = totals[ex]
+            pct_e = int(done_e / planned_e * 100) if planned_e else 0
+            volume_lines.append(
+                f"  {EXERCISE_EMOJI[ex]} {t('ex_' + ex, lang)}: {done_e}/{planned_e} ({pct_e}%)")
+        week_xp = sum(xp_for(r["exercise"], r["completed"] or 0, r["weight_kg"] or 0)
+                      for r in rows)
         rpe_rows = [r["rpe"] for r in rows if r["rpe"] and r["rpe"] > 0]
         avg_rpe = f"{sum(rpe_rows)/len(rpe_rows):.1f}" if rpe_rows else "—"
         msg = (
             t("weekly_summary_title", lang) + "\n"
             f"👤 *{md_escape(display(user))}*\n\n" +
             t("weekly_summary_body", lang,
-              done=total_done, planned=total_planned, pct=pct,
-              best_day=best_day, best_done=best["completed"],
+              volume="\n".join(volume_lines), week_xp=week_xp,
               avg_rpe=avg_rpe, streak=user["streak"],
               freeze=user["freeze_tokens"])
         )
+        msg += support_line(lang)
         try:
             await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
         except Exception as e:
@@ -218,23 +254,29 @@ async def daily_health_summary(bot):
     async with conn.execute("SELECT COUNT(*) FROM users") as cur:
         row = await cur.fetchone()
         total_users = row[0] if row else 0
-    today = date.today().isoformat()
+    # The report goes out at 08:00 and, like the counters below, sums up yesterday.
+    yesterday = (timeutils.today() - timedelta(days=1)).isoformat()
     async with conn.execute(
-        "SELECT COUNT(*) FROM workouts WHERE date=?", (today,)
+        "SELECT COUNT(DISTINCT user_id) FROM workouts WHERE date=? AND completed > 0",
+        (yesterday,)
     ) as cur:
         row = await cur.fetchone()
-        workouts_today = row[0] if row else 0
+        workouts_yesterday = row[0] if row else 0
     errors = snap.get("errors", 0)
     unhandled = snap.get("unhandled", 0)
     actions = snap.get("actions", 0)
+    retries = snap.get("api_retries", 0)
+    net_errors = snap.get("network_errors", 0)
     msg = (
         f"📊 Ежедневный отчёт бота\n"
         f"👤 Пользователей: {total_users}\n"
-        f"🏋️ Тренировок сегодня: {workouts_today}\n"
+        f"🏋️ Тренировались вчера: {workouts_yesterday}\n"
         f"⚡ Действий за сутки: {actions}\n"
         f"❌ Ошибок: {errors}\n"
         f"❓ Необработанных сообщений: {unhandled}"
     )
+    if retries or net_errors:
+        msg += f"\n📡 Сеть: {retries} повторов, {net_errors} сбоев"
     try:
         await bot.send_message(ADMIN_TG_ID, msg)
     except Exception as e:
@@ -275,46 +317,159 @@ async def db_integrity_check(bot):
         logger.info("[db_integrity] OK")
 
 
+async def daily_xp_decay(bot):
+    """
+    Decay XP daily for users inactive 7+ days.
+    Grace period: 7 days — no decay before that.
+    Notifies the user only on the first decay day and whenever they lose a rank.
+    """
+    from ..db import apply_xp_decay
+    from ..config import LEVEL_NAMES
+    today = timeutils.today()
+    conn = await get_db()
+    async with conn.execute(
+        "SELECT * FROM users WHERE last_workout IS NOT NULL AND is_logged_out=0 AND is_banned=0"
+    ) as cur:
+        users = await cur.fetchall()
+
+    decayed = 0
+    for user in users:
+        try:
+            days_inactive = (today - date.fromisoformat(user["last_workout"])).days
+        except Exception:
+            continue
+        if _exempt_from_inactivity_penalties(user["tg_id"]):
+            continue
+        if days_inactive < 7:
+            if user["decay_notified"]:
+                # Active again: the next long break deserves a fresh notice and a
+                # floor measured from the rank held at that time.
+                await conn.execute(
+                    "UPDATE users SET decay_notified=0, decay_floor_level=NULL WHERE id=?",
+                    (user["id"],))
+                await conn.commit()
+            continue
+        result = await apply_xp_decay(user["tg_id"], days_inactive)
+        if result is None:
+            continue
+        old_xp, new_xp, old_level, new_level = result
+        decayed += 1
+        lang = user["lang"] or "ru"
+        rank_lost = new_level < old_level
+        # Tell the user once when decay starts (whatever day the job first sees
+        # them) and whenever a rank is lost — never every day.
+        first_decay = not user["decay_notified"]
+        if not first_decay and not rank_lost:
+            continue
+        await conn.execute("UPDATE users SET decay_notified=1 WHERE id=?", (user["id"],))
+        await conn.commit()
+        if rank_lost:
+            msg = (
+                f"📉 Ты не тренировался {days_inactive} дней — ранг упал!\n"
+                f"*{LEVEL_NAMES[old_level]}* → *{LEVEL_NAMES[new_level]}*\n"
+                f"XP: {old_xp} → {new_xp}\n\n"
+                f"Вернись и тренируйся, чтобы восстановить ранг 💪"
+                if lang == "ru" else
+                f"📉 You haven't trained for {days_inactive} days — rank dropped!\n"
+                f"*{LEVEL_NAMES[old_level]}* → *{LEVEL_NAMES[new_level]}*\n"
+                f"XP: {old_xp} → {new_xp}\n\n"
+                f"Come back and train to recover your rank 💪"
+            )
+        else:
+            msg = (
+                f"⏳ Ты не тренировался {days_inactive} дней — XP начал убывать.\n"
+                f"XP: {old_xp} → {new_xp}\n\n"
+                f"Тренируйся, чтобы остановить потерю 💪"
+                if lang == "ru" else
+                f"⏳ You haven't trained for {days_inactive} days — XP is decaying.\n"
+                f"XP: {old_xp} → {new_xp}\n\n"
+                f"Train to stop the loss 💪"
+            )
+        try:
+            await bot.send_message(user["tg_id"], msg, parse_mode="Markdown")
+        except Exception as e:
+            logger.warning(f"[xp_decay] {user['tg_id']}: {e}")
+
+    logger.info(f"[xp_decay] applied decay to {decayed} user(s)")
+
+
 async def auto_cleanup_inactive(bot):
-    """Warn at 27 days of inactivity, delete at 30 days."""
-    today = date.today()
+    """Warn at 27 days of inactivity, delete at 30 days.
+
+    Use the latest account or recorded workout activity. Administrative changes
+    to the streak cursor must not erase the evidence of a recent workout.
+    """
+    today = timeutils.today()
     cutoff_delete = (today - timedelta(days=30)).isoformat()
     cutoff_warn = (today - timedelta(days=27)).isoformat()
     conn = await get_db()
+    # last_workout is also a streak cursor and may have been cleared by an older
+    # admin action. Completed workouts and acknowledged rest days are independent
+    # evidence of activity; an abandoned empty training plan is not.
+    activity_query = (
+        "SELECT users.*, activity.last_recorded_activity, "
+        "NULLIF(MAX(COALESCE(last_workout, ''), COALESCE(joined, ''), "
+        "COALESCE(activity.last_recorded_activity, '')), '') AS idle_since "
+        "FROM users LEFT JOIN ("
+        "SELECT user_id, MAX(date) AS last_recorded_activity FROM workouts "
+        "WHERE completed>0 OR exercise='rest' GROUP BY user_id"
+        ") AS activity ON activity.user_id=users.id"
+    )
 
     # Step 1: delete accounts inactive 30+ days (skip logged-out users — they're paused)
     async with conn.execute(
-        "SELECT * FROM users WHERE last_workout IS NOT NULL AND last_workout < ? AND is_logged_out=0 AND is_banned=0",
+        f"SELECT * FROM ({activity_query}) WHERE idle_since <= ? "
+        "AND is_logged_out=0 AND is_banned=0",
         (cutoff_delete,)
     ) as cur:
         stale = await cur.fetchall()
     deleted = 0
     for user in stale:
+        if _exempt_from_inactivity_penalties(user["tg_id"]):
+            continue
         logger.info(f"[cleanup] deleting inactive 30d user {user['tg_id']}")
-        await _delete_user(conn, user["id"])
+        await _delete_user(conn, user["id"], user["tg_id"])
         deleted += 1
 
-    # Step 2: warn accounts inactive 27–29 days (warning not yet sent, skip logged-out)
+    # Step 2: warn accounts inactive 27–29 days (skip logged-out). A warning dated
+    # before the latest activity belongs to an earlier break, so the user is warned
+    # again instead of being deleted silently the second time.
     async with conn.execute(
-        "SELECT * FROM users WHERE last_workout IS NOT NULL AND last_workout < ? "
-        "AND last_workout >= ? AND inactivity_warned IS NULL AND is_logged_out=0 AND is_banned=0",
+        f"SELECT * FROM ({activity_query}) WHERE idle_since <= ? "
+        "AND idle_since > ? AND (inactivity_warned IS NULL OR inactivity_warned < idle_since) "
+        "AND is_logged_out=0 AND is_banned=0",
         (cutoff_warn, cutoff_delete)
     ) as cur:
         to_warn = await cur.fetchall()
     warned = 0
     for user in to_warn:
+        if _exempt_from_inactivity_penalties(user["tg_id"]):
+            continue
         lang = user["lang"] or "ru"
-        days_inactive = (today - date.fromisoformat(user["last_workout"])).days
+        never_trained = not user["last_workout"] and not user["last_recorded_activity"]
+        idle_since = user["idle_since"]
+        days_inactive = (today - date.fromisoformat(idle_since)).days
         days_left = 30 - days_inactive
-        msg = (
-            f"⚠️ Ты не тренировался {days_inactive} дней.\n\n"
-            f"Через {days_left} дн. аккаунт будет удалён автоматически.\n"
-            f"Зайди и сделай хоть одну тренировку, чтобы сохранить данные 💪"
-            if lang == "ru" else
-            f"⚠️ You haven't trained for {days_inactive} days.\n\n"
-            f"Your account will be deleted in {days_left} day(s) if you stay inactive.\n"
-            f"Log a workout to keep your data 💪"
-        )
+        if never_trained:
+            msg = (
+                f"⚠️ Ты зарегистрировался {days_inactive} дн. назад, но так и не начал.\n\n"
+                f"Через {days_left} дн. аккаунт будет удалён автоматически.\n"
+                f"Сделай хоть одну тренировку, чтобы этого не случилось 💪"
+                if lang == "ru" else
+                f"⚠️ You signed up {days_inactive} day(s) ago and haven't started yet.\n\n"
+                f"Your account will be deleted in {days_left} day(s).\n"
+                f"Log a single workout to keep it 💪"
+            )
+        else:
+            msg = (
+                f"⚠️ Ты не тренировался {days_inactive} дней.\n\n"
+                f"Через {days_left} дн. аккаунт будет удалён автоматически.\n"
+                f"Зайди и сделай хоть одну тренировку, чтобы сохранить данные 💪"
+                if lang == "ru" else
+                f"⚠️ You haven't trained for {days_inactive} days.\n\n"
+                f"Your account will be deleted in {days_left} day(s) if you stay inactive.\n"
+                f"Log a workout to keep your data 💪"
+            )
         try:
             await bot.send_message(user["tg_id"], msg)
             await conn.execute(
@@ -340,10 +495,9 @@ async def auto_cleanup_inactive(bot):
 
 async def auto_acknowledge_rest_days(bot):
     """Silently acknowledge rest days for users who trained yesterday but didn't open the bot today."""
-    import json
-    tz = timezone(timedelta(hours=TZ_OFFSET_HOURS))
-    today_str = datetime.now(tz).date().isoformat()
-    yesterday_str = (datetime.now(tz).date() - timedelta(days=1)).isoformat()
+    today = timeutils.today()
+    today_str = today.isoformat()
+    yesterday_str = (today - timedelta(days=1)).isoformat()
 
     conn = await get_db()
     async with conn.execute(
@@ -354,22 +508,30 @@ async def auto_acknowledge_rest_days(bot):
 
     acknowledged = 0
     for user in users:
-        _, name = planned_for_day(user)
-        if name != "Отдых":
-            continue
-        program_day = user["program_day"] or 0
-        # Advance program_day and mark last_workout=today so the streak stays intact
-        new_pd = program_day + 1
-        await conn.execute(
-            "UPDATE users SET program_day=?, last_workout=? WHERE id=?",
-            (new_pd, today_str, user["id"])
-        )
-        await upsert_workout(user["id"], today_str, planned=0, day_type="Отдых",
-                             sets_json=json.dumps([]), completed=0)
-        if new_pd % 7 == 0:
-            from ..handlers.training import _check_weekly_progression
-            await _check_weekly_progression(user["tg_id"], user["id"], user["base_pullups"])
-        acknowledged += 1
+        try:
+            name, _ = day_type_for(user)
+            if name != "Отдых":
+                continue
+            # Don't clobber a day the user actually interacted with (e.g. an
+            # in-progress rest-day-override training session)
+            day_rows = await get_day_rows(user["id"], today_str)
+            if any((r["planned"] or 0) > 0 or (r["completed"] or 0) > 0 for r in day_rows):
+                continue
+            program_day = user["program_day"] or 0
+            # Advance program_day and mark last_workout=today so the streak stays intact
+            new_pd = program_day + 1
+            await conn.execute(
+                "UPDATE users SET program_day=?, last_workout=? WHERE id=?",
+                (new_pd, today_str, user["id"])
+            )
+            await mark_rest_day(user["id"], today_str)
+            if new_pd % 7 == 0:
+                from ..handlers.training import _run_cycle_progressions
+                await _run_cycle_progressions(user["tg_id"], user["id"])
+            acknowledged += 1
+        except Exception as e:
+            # One broken profile must not leave everyone else's rest day unacknowledged.
+            logger.warning(f"[auto_rest] {user['tg_id']}: {e}")
 
     if acknowledged:
         await conn.commit()
@@ -388,7 +550,7 @@ async def watchdog_health_check(bot):
     """
     Runs every 5 minutes. Detects:
     1. DB connection dead → reconnect
-    2. Stale FSM states (user stuck 2+ hours) → auto-clear and notify user
+    2. Inactive FSM states (2+ hours) → remind the user without losing their data
     3. Error rate spikes → alert admin immediately
     """
     global _watchdog_prev_errors, _watchdog_prev_actions, _watchdog_error_streak
@@ -409,68 +571,49 @@ async def watchdog_health_check(bot):
         except Exception:
             pass
 
-    # ── 2. Stale FSM state detection ────────────────────────────────────────
+    # ── 2. Inactive sessions: offer recovery, never discard unsaved work ─────
     try:
         from ..storage import SqliteStorage
         from ..config import FSM_DB_PATH
-        import aiosqlite
-        async with aiosqlite.connect(FSM_DB_PATH) as fsm_conn:
-            fsm_conn.row_factory = aiosqlite.Row
-            async with fsm_conn.execute(
-                "SELECT chat_id, user_id, state, data FROM fsm_states WHERE state IS NOT NULL"
-            ) as cur:
-                stuck_rows = await cur.fetchall()
-        import json
-        cleared = 0
-        for row in stuck_rows:
-            try:
-                data = json.loads(row["data"]) if row["data"] else {}
-            except (json.JSONDecodeError, TypeError):
-                data = {}
-            # Check if state has a timestamp we can use — otherwise use a heuristic
-            # States with active training data older than 2 hours are likely stale
-            state_name = row["state"] or ""
-            # Training and AI states are the ones most likely to get stuck
-            if not any(s in state_name for s in ["Training", "AIChat", "EditDay",
-                                                   "SetNotify", "SetBase", "SetWeight",
-                                                   "SetName", "SkipReason"]):
-                continue
-            # For training states: check if the stored date is today
-            stored_date = data.get("date")
-            if stored_date and stored_date != date.today().isoformat():
-                # Stale — from a previous day
-                async with aiosqlite.connect(FSM_DB_PATH) as fsm_w:
-                    await fsm_w.execute(
-                        "UPDATE fsm_states SET state=NULL, data='{}' WHERE chat_id=? AND user_id=?",
-                        (row["chat_id"], row["user_id"])
-                    )
-                    await fsm_w.commit()
-                cleared += 1
-                user_tg_id = row["user_id"]
+        fsm_storage = SqliteStorage(FSM_DB_PATH)
+        try:
+            inactive_rows = await fsm_storage.get_inactive_states(time.time() - 2 * 60 * 60)
+            for row in inactive_rows:
+                state_group = (row["state"] or "").split(":", 1)[0]
+                if state_group not in {"Training", "AIChat", "EditDay", "SetNotify",
+                                       "SetBase", "SetName", "SkipReason"}:
+                    continue
                 try:
-                    from ..db import get_lang, get_user
-                    from ..keyboards import main_kb
-                    lang = await get_lang(user_tg_id)
-                    user = await get_user(user_tg_id)
+                    from ..db import get_lang
+                    lang = await get_lang(row["user_id"])
                     if lang == "ru":
-                        msg = "🔄 Бот перезапустил твою сессию — предыдущее действие было прервано."
+                        msg = ("⏸ Твоё предыдущее действие ещё не завершено. "
+                               "Данные сессии сохранены: можешь продолжить с того же места "
+                               "или отменить действие командой /cancel.")
                     else:
-                        msg = "🔄 Bot reset your session — the previous action was interrupted."
-                    kb = main_kb(lang) if user else None
-                    await bot.send_message(user_tg_id, msg, reply_markup=kb)
+                        msg = ("⏸ Your previous action is still unfinished. "
+                               "Your session data is saved: you can continue where you left off "
+                               "or cancel it with /cancel.")
+                    # Keep the active keyboard, state and sets so a workout can
+                    # finish normally, even when it spans midnight or a restart.
+                    await bot.send_message(row["chat_id"], msg)
+                    await fsm_storage.mark_inactivity_notified(
+                        row["chat_id"], row["user_id"], row["updated_at"])
                 except Exception as e:
-                    logger.debug(f"[watchdog] notify stale user {user_tg_id}: {e}")
-        if cleared:
-            issues.append(f"Cleared {cleared} stale FSM state(s)")
-            logger.info(f"[watchdog] cleared {cleared} stale FSM states")
+                    logger.debug(f"[watchdog] notify inactive user {row['user_id']}: {e}")
+        finally:
+            await fsm_storage.close()
     except Exception as e:
         logger.warning(f"[watchdog] FSM check failed: {e}")
 
     # ── 3. Error rate spike detection ───────────────────────────────────────
     current_errors = monitoring.get("errors")
     current_actions = monitoring.get("actions")
-    new_errors = current_errors - _watchdog_prev_errors
-    new_actions = current_actions - _watchdog_prev_actions
+    # The daily report resets these counters; a reset is not negative activity.
+    new_errors = (current_errors - _watchdog_prev_errors
+                  if current_errors >= _watchdog_prev_errors else current_errors)
+    new_actions = (current_actions - _watchdog_prev_actions
+                   if current_actions >= _watchdog_prev_actions else current_actions)
     _watchdog_prev_errors = current_errors
     _watchdog_prev_actions = current_actions
 
@@ -485,9 +628,10 @@ async def watchdog_health_check(bot):
 
     # ── Alert admin if issues found ─────────────────────────────────────────
     if issues:
-        msg = "🩺 *Watchdog alert*\n\n" + "\n".join(f"• {i}" for i in issues)
+        # Plain text: an exception message with `_` or `*` must not break the alert itself.
+        msg = "🩺 Watchdog alert\n\n" + "\n".join(f"• {i}" for i in issues)
         try:
-            await bot.send_message(ADMIN_TG_ID, msg, parse_mode="Markdown")
+            await bot.send_message(ADMIN_TG_ID, msg)
         except Exception as e:
             logger.warning(f"[watchdog] alert failed: {e}")
 

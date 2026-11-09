@@ -1,8 +1,10 @@
+from ..timeutils import today as local_today
 import random
 from datetime import date, timedelta
 
 from aiogram import Router, types
 from aiogram.exceptions import TelegramForbiddenError
+from aiogram.filters import Command
 from aiogram.types import KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.fsm.context import FSMContext
@@ -10,8 +12,9 @@ from aiogram.fsm.context import FSMContext
 from ..db import get_db, get_user
 from ..i18n import t, text_filter
 from ..keyboards import main_kb
-from ..services.xp import display, level_info, md_escape, planned_for_day
-from ..config import logger
+from ..services.support import support_line
+from ..services.xp import day_type_for, display, level_info, md_escape, user_base
+from ..config import EXERCISES, EXERCISE_EMOJI, XP_CASE_SQL, logger
 from ..states import Friends
 
 router = Router()
@@ -23,24 +26,24 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
     """Render the friends-list page with today's progress, streak, and poke buttons."""
     lang = user["lang"] or "ru"
     conn = await get_db()
-    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    week_ago = (local_today() - timedelta(days=7)).isoformat()
     async with conn.execute(
-        "SELECT * FROM users WHERE id=? OR id IN ("
+        "SELECT * FROM users WHERE is_banned=0 AND (id=? OR id IN ("
         "  SELECT DISTINCT user_id FROM workouts WHERE date>=? AND completed > 0"
-        ") ORDER BY id ASC",
+        ")) ORDER BY id ASC",
         (user["id"], week_ago)
     ) as cur:
         all_users = await cur.fetchall()
 
     if not all_users:
-        await message.answer(t("friends_empty", lang), parse_mode="Markdown")
+        await message.answer(t("friends_empty", lang) + support_line(lang), parse_mode="Markdown")
         return
 
     total_pages = max(1, (len(all_users) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = max(0, min(page, total_pages - 1))
     page_users = all_users[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
 
-    today_str = date.today().isoformat()
+    today_str = local_today().isoformat()
     you_label = "Вы" if lang == "ru" else "You"
 
     # Batch-fetch today's workouts for all page users in one query
@@ -51,27 +54,38 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
         page_ids + [today_str]
     ) as cur:
         today_rows = await cur.fetchall()
-    today_map = {r["user_id"]: r for r in today_rows}
+    today_map: dict = {}
+    for r in today_rows:
+        today_map.setdefault(r["user_id"], []).append(r)
 
     header = t("friends_title", lang)
     if total_pages > 1:
         header += f"  _{t('friends_page', lang, page=page + 1, total=total_pages)}_"
     text = header + "\n\n"
 
+    rest_label = "😴"
     for f in page_users:
-        today_w = today_map.get(f["id"])
-        done = today_w["completed"] if today_w else 0
-        if today_w:
-            plan = today_w["planned"] if today_w["planned"] is not None else 0
-        elif f["last_workout"] == today_str:
-            plan = 0
+        day_rows = today_map.get(f["id"], [])
+        training = [r for r in day_rows if r["exercise"] != "rest"]
+        if training:
+            today_cell = " ".join(
+                f"{EXERCISE_EMOJI.get(r['exercise'], '')}{r['completed']}/{r['planned']}"
+                for r in training)
+        elif day_rows or f["last_workout"] == today_str:
+            today_cell = rest_label
         else:
-            plan, _ = planned_for_day(f)
+            name_dt, coeff = day_type_for(f)
+            if coeff == 0:
+                today_cell = rest_label
+            else:
+                today_cell = " ".join(
+                    f"{EXERCISE_EMOJI[ex]}0/{int(user_base(f, ex) * coeff)}"
+                    for ex in EXERCISES if user_base(f, ex) > 0) or "—"
         _, lname, _, _ = level_info(f["xp"])
         today_label = "Сегодня" if lang == "ru" else "Today"
         is_me = f["id"] == user["id"]
         me_marker = f" *({you_label})*" if is_me else ""
-        text += f"👤 *{md_escape(display(f))}*{me_marker} — {lname}\n   {today_label}: {done}/{plan} | 🔥{f['streak']}\n\n"
+        text += f"👤 *{md_escape(display(f))}*{me_marker} — {lname}\n   {today_label}: {today_cell} | 🔥{f['streak']}\n\n"
 
     poke_prefix = "💪 Пнуть " if lang == "ru" else "💪 Poke "
     b = ReplyKeyboardBuilder()
@@ -101,7 +115,7 @@ async def _show_friends_page(message: types.Message, state: FSMContext, user, pa
 
     await state.set_state(Friends.viewing)
     await state.update_data(friends_page=page, friends_lang=lang, poke_map=poke_map)
-    await message.answer(text, parse_mode="Markdown",
+    await message.answer(text + support_line(lang), parse_mode="Markdown",
                          reply_markup=b.as_markup(resize_keyboard=True))
 
 
@@ -146,55 +160,86 @@ async def friends_menu(message: types.Message, state: FSMContext):
     await _show_friends_page(message, state, user, 0)
 
 
+@router.message(Command("top"))
 @router.message(text_filter("btn_leaderboard"))
 async def leaderboard(message: types.Message):
-    """Show the weekly pullup leaderboard ranked by total reps over the last 7 days."""
+    """Show this week's leaderboard: XP earned since Monday, all exercises.
+
+    The Mini App and the Monday "Beast of the Week" post count calendar weeks,
+    so the bot does too; a rolling seven days used to rank people differently
+    in the two interfaces on the same evening.
+    """
     user = await get_user(message.from_user.id)
     if not user:
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
     conn = await get_db()
-    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    today = local_today()
+    monday = today - timedelta(days=today.weekday())
+    week_start = monday.isoformat()
     async with conn.execute(
-        "SELECT * FROM users WHERE id IN ("
+        "SELECT * FROM users WHERE is_banned=0 AND is_logged_out=0 AND id IN ("
         "  SELECT DISTINCT user_id FROM workouts WHERE date>=? AND completed > 0"
         ")",
-        (week_ago,)
+        (week_start,)
     ) as cur:
         all_users = await cur.fetchall()
 
     if not all_users:
-        await message.answer(t("leaderboard_empty", lang), parse_mode="Markdown",
+        await message.answer(t("leaderboard_empty", lang) + support_line(lang), parse_mode="Markdown",
                              reply_markup=main_kb(lang))
         return
 
-    # Batch query: get weekly totals for all users in one go
+    # Batch query: this week's XP totals for all users in one go
     async with conn.execute(
-        "SELECT user_id, COALESCE(SUM(completed), 0) as week_done "
+        f"SELECT user_id, COALESCE(SUM({XP_CASE_SQL}), 0) as week_xp "
         "FROM workouts WHERE date>=? GROUP BY user_id",
-        (week_ago,)
+        (week_start,)
     ) as cur:
         weekly_rows = await cur.fetchall()
-    weekly_map = {r["user_id"]: r["week_done"] for r in weekly_rows}
+    weekly_map = {r["user_id"]: int(round(r["week_xp"])) for r in weekly_rows}
+
+    # Previous calendar week's standings for the ▲/▼ movement markers
+    previous_start = (monday - timedelta(days=7)).isoformat()
+    async with conn.execute(
+        f"SELECT user_id, COALESCE(SUM({XP_CASE_SQL}), 0) as week_xp "
+        "FROM workouts WHERE date>=? AND date<? GROUP BY user_id",
+        (previous_start, week_start)
+    ) as cur:
+        prev_rows = await cur.fetchall()
+    prev_sorted = sorted(
+        ((r["user_id"], int(round(r["week_xp"]))) for r in prev_rows if r["week_xp"] > 0),
+        key=lambda x: x[1], reverse=True)
+    prev_pos = {uid: i + 1 for i, (uid, _) in enumerate(prev_sorted)}
 
     entries = []
     for u in all_users:
-        week_done = weekly_map.get(u["id"], 0)
+        week_xp = weekly_map.get(u["id"], 0)
         _, lname, _, _ = level_info(u["xp"])
-        entries.append((u, week_done, lname))
+        entries.append((u, week_xp, lname))
 
     entries.sort(key=lambda x: x[1], reverse=True)
 
     text = t("leaderboard_title", lang) + "\n\n"
     medals = ["🥇", "🥈", "🥉"]
-    for i, (u, week_done, lname) in enumerate(entries):
+    for i, (u, week_xp, lname) in enumerate(entries):
         medal = medals[i] if i < 3 else f"{i+1}."
         you = t("leaderboard_you_marker", lang) if u["tg_id"] == message.from_user.id else ""
         crown = " 👑" if u["is_weekly_champ"] else ""
-        text += f"{medal} *{md_escape(display(u))}*{crown} — {week_done} | 🔥{u['streak']}{you}\n"
+        prev = prev_pos.get(u["id"])
+        if prev is None:
+            delta = " 🆕"
+        elif prev > i + 1:
+            delta = f" ▲{prev - (i + 1)}"
+        elif prev < i + 1:
+            delta = f" ▼{(i + 1) - prev}"
+        else:
+            delta = ""
+        text += f"{medal} *{md_escape(display(u))}*{crown} — {week_xp} XP | 🔥{u['streak']}{delta}{you}\n"
 
-    await message.answer(text, parse_mode="Markdown", reply_markup=main_kb(lang))
+    await message.answer(text + support_line(lang), parse_mode="Markdown",
+                         reply_markup=main_kb(lang))
 
 
 @router.message(Friends.viewing, lambda m: m.text and (m.text.startswith("💪 Пнуть ") or m.text.startswith("💪 Poke ")))
@@ -221,7 +266,7 @@ async def poke_friend(message: types.Message, state: FSMContext):
         await message.answer(t("friends_not_found", lang))
         return
 
-    today = date.today().isoformat()
+    today = local_today().isoformat()
     async with conn.execute(
         "SELECT 1 FROM pokes WHERE from_user_id=? AND to_user_id=? AND date=?",
         (user["id"], friend["id"], today)

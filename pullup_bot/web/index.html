@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f6f0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Турникмен — твой ритм, твоя тренировка, твой прогресс.">
+  <title>Турникмен · Твой ежедневный прогресс</title>
+  <link rel="icon" href="/app/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app/app.css">
+  <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+  <script src="/app/app.js" defer></script>
+</head>
+<body>
+  <div id="demo-banner" hidden></div>
+  <div class="app-shell">
+    <header id="app-header" class="app-header"></header>
+    <main id="app" tabindex="-1" aria-busy="true">
+      <div class="loading-screen" role="status">
+        <div class="loading-mark"><span></span><span></span><span></span></div>
+        <h1>Каждый подход считается.</h1><p>Загружаем твой прогресс…</p>
+      </div>
+    </main>
+    <nav id="navigation" class="bottom-nav" aria-label="Главная навигация" hidden></nav>
+  </div>
+  <dialog id="modal" aria-labelledby="modal-title"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript><p class="noscript">Для тренировок включи JavaScript и открой приложение в Telegram.</p></noscript>
+</body>
+</html>

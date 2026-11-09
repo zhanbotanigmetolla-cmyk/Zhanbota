@@ -1,4 +1,49 @@
-from ..config import LEVEL_NAMES, LEVEL_THRESHOLDS, WAVE, PROGRAMS
+import inspect
+import re
+
+from ..config import (BASE_COLS, LEVEL_NAMES, LEVEL_THRESHOLDS, PROGRAMS,
+                      WEIGHT_COLS, is_weighted)
+
+
+def fmt_kg(kg) -> str:
+    """Format a load for display: 2.5 -> '2.5', 10.0 -> '10'."""
+    value = float(kg or 0)
+    return str(int(value)) if value == int(value) else f"{value:.1f}"
+
+
+def user_weight(user, exercise: str) -> float:
+    """Return the load the user is currently working with, 0 for bodyweight exercises."""
+    if not is_weighted(exercise):
+        return 0.0
+    return float(user[WEIGHT_COLS[exercise]] or 0)
+
+# message_effect_id needs aiogram >= 3.7 (Bot API 7.4); older versions get plain sends
+try:
+    from aiogram.types import Message as _AiogramMessage
+    _EFFECTS_SUPPORTED = (
+        "message_effect_id" in inspect.signature(_AiogramMessage.answer).parameters)
+except Exception:
+    _EFFECTS_SUPPORTED = False
+
+
+async def answer_with_effect(message, text: str, effect_id: str, **kwargs):
+    """message.answer with a message effect; falls back to a plain send on any failure."""
+    if _EFFECTS_SUPPORTED:
+        try:
+            return await message.answer(text, message_effect_id=effect_id, **kwargs)
+        except Exception:
+            pass  # effect rejected (group chat, stale ID) — deliver without it
+    return await message.answer(text, **kwargs)
+
+
+async def send_with_effect(bot, chat_id: int, text: str, effect_id: str, **kwargs):
+    """bot.send_message with a message effect; falls back to a plain send on any failure."""
+    if _EFFECTS_SUPPORTED:
+        try:
+            return await bot.send_message(chat_id, text, message_effect_id=effect_id, **kwargs)
+        except Exception:
+            pass
+    return await bot.send_message(chat_id, text, **kwargs)
 
 
 def display(user) -> str:
@@ -12,10 +57,16 @@ def display(user) -> str:
 
 
 def md_escape(text: str) -> str:
-    """Escape all Telegram MarkdownV2 special characters in a string."""
-    for ch in r"\_*`[]()~>#+-=|{}.!":
-        text = text.replace(ch, f"\\{ch}")
-    return text
+    """Escape the characters that start an entity in Telegram's legacy Markdown.
+
+    Every message in the bot is sent with parse_mode="Markdown" (the legacy
+    style), where only underscore, asterisk, backtick and the opening square
+    bracket open formatting, and a backslash before any other character is
+    displayed literally. Escaping the MarkdownV2 set here used to show names
+    such as "Jean-Luc O.Neil" with stray backslashes in the leaderboard, stats
+    and weekly posts.
+    """
+    return re.sub(r"([_*`\[])", r"\\\1", text or "")
 
 
 def level_info(xp: int):
@@ -38,46 +89,51 @@ def progress_bar(pct: int, length: int = 10) -> str:
     return "█" * filled + "░" * (length - filled)
 
 
-def planned_for_day(user):
-    """Return (planned_count, day_type_name) for the user's current position in their program cycle."""
-    base = user["base_pullups"]
+def user_base(user, exercise: str = "pullups") -> int:
+    """Return the user's daily base for the given exercise (0 = not set up yet)."""
+    return user[BASE_COLS[exercise]] or 0
+
+
+def day_type_for(user) -> tuple:
+    """Return (day_type_name, coeff) for the user's current position in their program cycle."""
     program_day = user["program_day"] or 0
     wave = PROGRAMS.get(user["program_type"] or "standard", PROGRAMS["standard"])
-    name, coeff = wave[program_day % 7]
-    return int(base * coeff), name
+    return wave[program_day % 7]
 
 
-def weekly_chart(workouts: list, lang: str = "ru") -> str:
-    """Build a 7-row ASCII bar chart from a list of workout rows (last 7 days, oldest first)."""
-    BAR_HEIGHT = 5
-    if not workouts:
-        return ""
-    max_done = max((r["completed"] for r in workouts), default=1) or 1
-    lines = []
-    for r in workouts:
-        done = r["completed"]
-        planned = r["planned"]
-        filled = round(done / max_done * BAR_HEIGHT)
-        bar = "█" * filled + "░" * (BAR_HEIGHT - filled)
-        date_label = r["date"][5:]  # MM-DD
-        status = "✅" if planned > 0 and done >= planned else ("😴" if planned == 0 else "❌")
-        lines.append(f"`{status} {date_label}  [{bar}]  {done}`")
-    return "\n".join(lines)
+def planned_for_day(user, exercise: str = "pullups"):
+    """Return (planned_count, day_type_name) for the user's cycle position and exercise."""
+    name, coeff = day_type_for(user)
+    return int(user_base(user, exercise) * coeff), name
 
 
-def activity_reduction(extra_activity: str, minutes: int) -> float:
-    """Return a load multiplier (0.5–1.0) based on yesterday's extra activity type and duration."""
-    if not extra_activity or minutes == 0:
-        return 1.0
-    a = extra_activity.lower()
-    has_run = "бег" in a or "run" in a
-    has_gym = "зал" in a or "gym" in a
-    if has_run and has_gym:
-        r = min(0.6, minutes / 60 * 0.38)
-    elif has_run:
-        r = min(0.38, minutes / 60 * 0.22)
-    elif has_gym:
-        r = min(0.5, minutes / 60 * 0.3)
-    else:
-        r = min(0.3, minutes / 60 * 0.15)
-    return max(0.5, 1.0 - r)
+def reconcile_sets(sets, done: int) -> list:
+    """Make the per-set breakdown add up to an edited daily total.
+
+    Editing a day rewrites ``completed`` but the Mini App shows the sets next to it
+    and later sessions append to the list, so the two must agree. Reps are trimmed
+    from the last set backwards, or added in chunks no larger than the biggest set
+    already logged, so a corrected total can never invent a new single-set record.
+    """
+    sets = [int(s) for s in (sets or []) if isinstance(s, int) and not isinstance(s, bool) and s > 0]
+    done = max(0, int(done))
+    total = sum(sets)
+    if total == done:
+        return sets
+    if total > done:
+        trimmed, remaining = [], done
+        for reps in sets:
+            if remaining <= 0:
+                break
+            take = min(reps, remaining)
+            trimmed.append(take)
+            remaining -= take
+        return trimmed
+    chunk = max(sets) if sets else done
+    extra = done - total
+    result = list(sets)
+    while extra > 0:
+        take = min(chunk, extra)
+        result.append(take)
+        extra -= take
+    return result

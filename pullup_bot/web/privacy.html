@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Turnikmen</title>
+<style>
+:root { --bg: #f5f1e8; --card: #fffdf8; --text: #1f2328; --muted: #5b6470; --accent: #b5542f; --border: #e4d8c7; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Georgia, "Times New Roman", serif; background: radial-gradient(circle at top left, #fff7e8 0, transparent 32%), radial-gradient(circle at top right, #f1e2c7 0, transparent 28%), linear-gradient(180deg, #f8f3ea 0%, var(--bg) 100%); color: var(--text); line-height: 1.6; }
+.wrap { max-width: 860px; margin: 48px auto; padding: 0 20px; }
+.card { background: color-mix(in srgb, var(--card) 92%, white 8%); border: 1px solid var(--border); border-radius: 20px; padding: 32px 28px; box-shadow: 0 18px 50px rgba(66, 44, 24, 0.08); }
+h1, h2 { line-height: 1.2; margin: 0 0 16px; }
+h1 { font-size: clamp(2rem, 4vw, 3rem); color: #24170f; }
+h2 { margin-top: 28px; font-size: 1.25rem; color: var(--accent); }
+p, li { font-size: 1rem; }
+.lead, .muted { color: var(--muted); }
+ul { padding-left: 22px; margin: 12px 0; }
+.contact { margin-top: 24px; padding: 14px 16px; border-left: 4px solid var(--accent); background: #fff6eb; }
+.consent { margin: 20px 0; padding: 14px 16px; border-left: 4px solid var(--accent); background: #fff6eb; font-size: 1rem; }
+code { font-family: Consolas, "Courier New", monospace; background: #f2eadf; padding: 0.1em 0.35em; border-radius: 6px; }
+@media (max-width: 600px) { .wrap { margin: 16px auto; } .card { padding: 22px 16px; border-radius: 14px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="card">
+<h1>Privacy Policy</h1>
+<p>turnikmen_challenge_bot / Turnikmen — the Telegram bot and its Telegram Mini App</p>
+<p class="muted">Effective date: November 8, 2026 (replaces the version of March 28, 2026)</p>
+<p>This Privacy Policy explains what data the Bot collects, how it is used, who can see it, and how long it is kept. "The Bot" means both the Telegram chat bot and the Telegram Mini App that opens from it; they share one database.</p>
+
+<div class="consent">
+  <strong>By starting or continuing to use the Bot, you acknowledge that you have read this Privacy Policy and agree to the collection and use of your data as described here.</strong> If you do not agree, please do not use the Bot or delete your account through Settings → Delete account.
+</div>
+
+<h2>1. Data We Collect</h2>
+<p>When you use the Bot, we may collect and store:</p>
+<ul>
+  <li>Your Telegram user ID, username and first name (or the display name you choose)</li>
+  <li>Your selected language, join date, training program and position in the 7-day cycle</li>
+  <li>Your reminder time and whether you opted in to notifications about other participants' workouts</li>
+  <li>Your daily targets, personal records and best single sets for each exercise, and the added load (kg) you use for weighted exercises</li>
+  <li>Your XP, rank, streak, best streak, freeze tokens, last workout date and whether you were told that XP started to decay</li>
+  <li>Your workout history: date, exercise, planned and completed repetitions, individual sets, RPE, day type and added load</li>
+  <li>Skip reasons you enter for missed days</li>
+  <li>Bug reports and suggestions you send through the Bot</li>
+  <li>Your questions to Turnikmen AI and its answers, kept so the owner can monitor the feature's usage and quality</li>
+  <li>Temporary conversation state needed to complete registration, training, settings and similar flows</li>
+  <li>For the Mini App: the signed launch data Telegram provides (your user ID, first name, username and language) and, on your own device only, an unfinished workout draft stored in the browser's local storage</li>
+  <li>Technical logs needed to operate, secure and debug the Bot, including message text, button data, user ID and error details</li>
+</ul>
+
+<h2>2. How We Use Your Data</h2>
+<ul>
+  <li>To register and identify your account inside the Bot and the Mini App</li>
+  <li>To generate and personalize your training plan and adjust targets from your results and RPE</li>
+  <li>To save your workout history and statistics</li>
+  <li>To calculate streaks, XP, ranks, personal records and XP decay after a long break</li>
+  <li>To send workout reminders, weekly summaries and the weekly champion announcement</li>
+  <li>To provide social features such as the participants list, leaderboards, welcome greetings and motivational pokes</li>
+  <li>To process bug reports and fix problems</li>
+  <li>To monitor performance, diagnose errors and maintain the Bot</li>
+</ul>
+
+<h2>3. Visibility to Other Users</h2>
+<p>The Bot includes social features. Because of that, limited data about your activity may be visible to other users of the Bot:</p>
+<ul>
+  <li>Your display name, rank, current streak and today's progress may be shown in the participants list, in the weekly leaderboard and in the Mini App</li>
+  <li>When a new account is created, the Bot announces the new participant's name to existing users</li>
+  <li>Participants who opted in receive a message when you finish a workout (exercise, repetitions, sets and a new set record)</li>
+  <li>The weekly champion post shows the top three names and their weekly XP</li>
+  <li>Other users may send you a motivational poke through the Bot (at most once a day each)</li>
+</ul>
+
+<h2>4. Third-Party Services</h2>
+<p>The Bot works through Telegram, so your use of the Bot is also subject to Telegram's own privacy practices. The Mini App is served over HTTPS through a Tailscale Funnel relay, which forwards encrypted traffic to the Bot's server.</p>
+<p><strong>Turnikmen AI</strong> — the built-in chat assistant — is powered by Google Gemini models through the Google AI API (several models are used in turn when a quota is exhausted). When you open the AI chat and send a message, the following data is transmitted to Google's servers to generate a response:</p>
+<ul>
+  <li>Your display name, rank, XP, streak and freeze token balance</li>
+  <li>Your daily targets and added loads for each exercise, and your personal records</li>
+  <li>Today's and tomorrow's plan</li>
+  <li>Your last 21 workout records (date, exercise, planned and completed repetitions, RPE, day type)</li>
+  <li>The text of your message and the conversation history of the current chat session (up to 10 exchanges)</li>
+</ul>
+<p>This data is sent to Google solely to produce the AI response and is subject to Google's Privacy Policy. The Turnikmen AI feature is optional — you can use the Bot fully without ever opening it.</p>
+<p>The Bot may display the owner's Kaspi number for voluntary support. The Bot does not process payments and does not receive any payment data; a transfer, if you choose to make one, happens entirely inside Kaspi.</p>
+
+<h2>5. Admin Access</h2>
+<p>The Bot's owner (administrator) can see the list of users with their names, usernames, Telegram IDs and activity, read bug reports, read the questions you asked Turnikmen AI together with its answers, and receives error alerts and operational summaries. Error diagnostics may include the text of the message or the button that caused the failure.</p>
+
+<h2>6. Data Retention</h2>
+<p>Your data is stored until you delete your account, or until it is removed automatically:</p>
+<ul>
+  <li>After 7 days without training your XP starts to decrease slowly (never below the previous rank's threshold) and you are notified once</li>
+  <li>Inactive accounts are warned after 27 days without training and deleted after 30 days, together with their history</li>
+  <li>If the Bot cannot deliver a reminder because it was blocked, and the account has been inactive for 7 or more days, the account is removed</li>
+  <li>A paused (logged-out) account is not deleted for inactivity</li>
+</ul>
+<p>Technical logs are kept by the server's journal for a limited period. Database snapshots are taken before each deployment and nightly and are stored on the Bot's server; a deleted account disappears from them as the snapshots are rotated.</p>
+
+<h2>7. Your Choices</h2>
+<ul>
+  <li>You can change your name, language, program, targets, added loads and reminder time in Settings or in the Mini App</li>
+  <li>You can turn notifications about other participants' workouts on or off</li>
+  <li>You can choose whether to use Turnikmen AI and whether to send a bug report</li>
+  <li>You can pause your account (Log out) or delete it and erase all stored Bot data through Settings → Delete account</li>
+</ul>
+
+<h2>8. Data Security</h2>
+<p>Reasonable technical measures are used to protect stored data: the Mini App only accepts requests signed by Telegram, the database is readable only by the Bot's own system account, and secrets are kept outside the source code. No method of storage or transmission is completely secure.</p>
+
+<h2>9. Children's Privacy</h2>
+<p>The Bot is not intended for children under the age required by applicable law to consent to data processing on their own.</p>
+
+<h2>10. Changes to This Policy</h2>
+<p>This Privacy Policy may be updated from time to time. The latest published version applies from its stated effective date. Your continued use of the Bot after a new version is published constitutes your acceptance of the updated Policy.</p>
+
+<h2>11. Contact</h2>
+<div class="contact">
+  <p>Questions about the Bot or your data: <strong>@zhanbota102</strong> on Telegram.</p>
+</div>
+</div>
+</div>
+</body>
+</html>

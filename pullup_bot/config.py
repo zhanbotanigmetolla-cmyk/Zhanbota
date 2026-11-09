@@ -1,5 +1,8 @@
 import os
 import logging
+import re
+from datetime import timedelta, timezone
+from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
 load_dotenv(os.path.expanduser("~/.env.pullup_bot"))
@@ -27,11 +30,18 @@ DB_PATH = os.environ.get("PULLUP_DB", os.path.expanduser("~/pullups.db"))
 FSM_DB_PATH = os.environ.get("PULLUP_FSM_DB", os.path.expanduser("~/pullups_fsm.db"))
 SECRET_CODE_NORM = SECRET_CODE.strip().upper()
 ADMIN_TG_ID = int(os.environ.get("ADMIN_TG_ID", "0"))
-ADMIN_USERNAMES = {"zhanbota102"}  # Always-admin usernames regardless of tg_id
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "").strip()
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
+MINI_APP_URL = os.environ.get("MINI_APP_URL", "").strip().rstrip("/")
+WEB_BIND = os.environ.get("WEB_BIND", "0.0.0.0" if WEBHOOK_URL else "127.0.0.1")
+WEB_PORT = int(os.environ.get("WEB_PORT", "8080"))
 # UTC offset for notification time matching (default: UTC+5 = Kazakhstan/Almaty)
 TZ_OFFSET_HOURS = int(os.environ.get("TZ_OFFSET_HOURS", "5"))
+BOT_TIMEZONE = timezone(timedelta(hours=TZ_OFFSET_HOURS))
+# Kaspi transfer details for the "support the project" note. The number lives in the
+# server .env, not in the repo; while it is unset the support button and note stay hidden.
+KASPI_PHONE = os.environ.get("KASPI_PHONE", "").strip()
+KASPI_NAME = os.environ.get("KASPI_NAME", "Жанбота Н.").strip()
 
 PROGRAMS = {
     "standard": {   # 5x/week — original wave cycle
@@ -65,7 +75,150 @@ PROGRAMS = {
 # Backward-compat alias — code that imports WAVE directly still works
 WAVE = PROGRAMS["standard"]
 
-XP_PER_PULLUP = 1
+# ── Exercises ────────────────────────────────────────────────────────────────
+# Every workout row is tagged with one of these (or 'rest' for rest-day rows).
+EXERCISES = ["pullups", "pushups", "dips", "squats",
+             "pullups_weighted", "dips_weighted"]
+
+# Exercises performed with extra load hung from a belt/vest. They carry a
+# weight in kg on the workout row and progress by adding weight, not only reps.
+WEIGHTED_EXERCISES = ["pullups_weighted", "dips_weighted"]
+
+# The bodyweight movement each weighted variant is built on, so the UI can
+# group them and the guide can point back to the basics.
+WEIGHTED_PARENT = {
+    "pullups_weighted": "pullups",
+    "dips_weighted": "dips",
+}
+
+EXERCISE_EMOJI = {
+    "pullups": "🆙",
+    "pushups": "💪",
+    "dips": "⏸️",
+    "squats": "🦵",
+    "pullups_weighted": "🏋️",
+    "dips_weighted": "⛓️",
+}
+
+# XP per rep — easier-per-rep exercises earn proportionally less
+# to keep ranks comparable across exercises. Weighted variants start from the
+# same per-rep value as the bodyweight movement; the load multiplier below is
+# what makes a weighted rep worth more.
+XP_PER_REP = {
+    "pullups": 1.0,
+    "dips": 0.75,
+    "pushups": 0.5,
+    "squats": 0.25,
+    "pullups_weighted": 1.0,
+    "dips_weighted": 0.75,
+}
+
+# Each kg of added load makes a rep worth 3% more XP, counted up to 50 kg
+# (a 50 kg rep is worth 2.5 bodyweight reps). Capped so that a mis-typed 500
+# cannot mint an unbounded amount of XP.
+XP_PER_KG = 0.03
+XP_KG_CAP = 50
+
+# users-table column that stores the daily base for each exercise
+BASE_COLS = {
+    "pullups": "base_pullups",
+    "pushups": "base_pushups",
+    "dips": "base_dips",
+    "squats": "base_squats",
+    "pullups_weighted": "base_pullups_weighted",
+    "dips_weighted": "base_dips_weighted",
+}
+
+# users-table columns for records (best day total / best single set)
+PR_COLS = {
+    "pullups": "personal_record",
+    "pushups": "personal_record_pushups",
+    "dips": "personal_record_dips",
+    "squats": "personal_record_squats",
+    "pullups_weighted": "personal_record_pullups_weighted",
+    "dips_weighted": "personal_record_dips_weighted",
+}
+SET_RECORD_COLS = {
+    "pullups": "set_record",
+    "pushups": "set_record_pushups",
+    "dips": "set_record_dips",
+    "squats": "set_record_squats",
+    "pullups_weighted": "set_record_pullups_weighted",
+    "dips_weighted": "set_record_dips_weighted",
+}
+
+# Weighted-only: the load currently being worked with, and the heaviest ever used
+WEIGHT_COLS = {
+    "pullups_weighted": "weight_pullups_weighted",
+    "dips_weighted": "weight_dips_weighted",
+}
+BEST_WEIGHT_COLS = {
+    "pullups_weighted": "best_weight_pullups_weighted",
+    "dips_weighted": "best_weight_dips_weighted",
+}
+
+# Load is added in 2.5 kg steps — the smallest plate most people own.
+WEIGHT_STEP = 2.5
+# Never suggest more than this in one jump, whatever the maths says.
+MAX_WEIGHT_KG = 100.0
+
+# SQL expression converting a workouts row to XP (for weekly leaderboards).
+# Mirrors xp_for(): weighted rows scale with the load stored on the row.
+XP_CASE_SQL = (
+    "CASE exercise "
+    "WHEN 'pullups' THEN completed "
+    "WHEN 'dips' THEN completed * 0.75 "
+    "WHEN 'pushups' THEN completed * 0.5 "
+    "WHEN 'squats' THEN completed * 0.25 "
+    f"WHEN 'pullups_weighted' THEN completed * (1 + MIN(COALESCE(weight_kg,0), {XP_KG_CAP}) * {XP_PER_KG}) "
+    f"WHEN 'dips_weighted' THEN completed * 0.75 * (1 + MIN(COALESCE(weight_kg,0), {XP_KG_CAP}) * {XP_PER_KG}) "
+    "ELSE 0 END"
+)
+
+# ── RPE expectations ─────────────────────────────────────────────────────────
+# What each day of the wave is *supposed* to feel like. A hard day at RPE 8 is
+# the plan working, not a signal to back off — comparing raw RPE against one
+# fixed threshold made the bot cut the base for training exactly as prescribed.
+DAY_TYPE_RPE = {
+    "Лёгкий":    5.0,
+    "Средний":   6.5,
+    "Плотность": 7.0,
+    "Тяжёлый":   8.0,
+}
+DEFAULT_EXPECTED_RPE = 6.5
+
+# How far above/below the day's expected RPE training has to land before the
+# base moves. The neutral band between EASY and HARD is deliberately wide:
+# small week-to-week swings in how a session feels are noise, not a trend.
+RPE_HARD_DELTA = 0.5      # felt half a point harder than prescribed → ease off
+RPE_TOO_HARD_DELTA = 1.5  # a point and a half harder → cut properly
+RPE_EASY_DELTA = -1.0     # a full point easier than prescribed → add load
+
+
+def expected_rpe(day_type: str) -> float:
+    """Return the RPE a given day type is expected to feel like."""
+    return DAY_TYPE_RPE.get(day_type or "", DEFAULT_EXPECTED_RPE)
+
+
+def is_weighted(exercise: str) -> bool:
+    """True if the exercise carries an added load."""
+    return exercise in WEIGHTED_EXERCISES
+
+
+def weight_multiplier(weight_kg: float) -> float:
+    """XP multiplier for a rep performed with the given added load."""
+    kg = max(0.0, min(float(weight_kg or 0), XP_KG_CAP))
+    return 1.0 + kg * XP_PER_KG
+
+
+def xp_for(exercise: str, reps: int, weight_kg: float = 0) -> int:
+    """XP earned for the given rep count, scaled by added load where it applies."""
+    per_rep = XP_PER_REP.get(exercise, 0)
+    if is_weighted(exercise):
+        per_rep *= weight_multiplier(weight_kg)
+    return int(round(reps * per_rep))
+
+
 XP_PER_STREAK_DAY = 50
 LEVEL_THRESHOLDS = [
     0, 500, 1000, 1800, 2800, 4000,        # Silver I – Silver Elite Master
@@ -90,13 +243,81 @@ LEVEL_NAMES = [
 
 START_MENU_LABEL = "/start"
 
+# Telegram message effect IDs (Bot API 7.4+, private chats only)
+EFFECT_FIRE = "5104841245755180586"      # 🔥
+EFFECT_CONFETTI = "5046509860389126442"  # 🎉
+
 
 def is_admin_id(tg_id: int) -> bool:
     """Return True if the given Telegram ID matches the configured admin."""
-    return tg_id == ADMIN_TG_ID
+    return ADMIN_TG_ID > 0 and tg_id == ADMIN_TG_ID
+
+
+def is_admin_user(tg_id: int, username: str | None = None) -> bool:
+    """Authorize only the immutable Telegram ID; usernames confer no privileges."""
+    return is_admin_id(tg_id)
+
+
+def validate_webhook_config() -> None:
+    """Reject an unauthenticated or invalid webhook before any startup effects."""
+    if not WEBHOOK_URL:
+        return
+    parsed = urlsplit(WEBHOOK_URL)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise RuntimeError("WEBHOOK_URL must be an absolute HTTPS URL")
+    if parsed.path != "/webhook" or parsed.query or parsed.fragment or parsed.username:
+        raise RuntimeError("WEBHOOK_URL must point to /webhook without credentials, query or fragment")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", WEBHOOK_SECRET):
+        raise RuntimeError("WEBHOOK_SECRET is required in webhook mode (1-256 letters, digits, _ or -)")
+
+
+def validate_miniapp_config() -> None:
+    """The Telegram launch URL must resolve to our HTTPS app entry point."""
+    if not 1 <= WEB_PORT <= 65535:
+        raise RuntimeError("WEB_PORT must be between 1 and 65535")
+    if not MINI_APP_URL:
+        return
+    parsed = urlsplit(MINI_APP_URL)
+    if (parsed.scheme != "https" or not parsed.hostname
+            or parsed.path != "/app" or parsed.query or parsed.fragment
+            or parsed.username or parsed.password):
+        raise RuntimeError("MINI_APP_URL must be an HTTPS URL ending in /app without credentials, query or fragment")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger("pullup_bot")
+
+
+class _PollingNoiseFilter(logging.Filter):
+    """aiogram logs every failed GetUpdates poll at ERROR and then retries by itself.
+
+    Telegram answers Bad Gateway or resets the connection a few times a day; nothing is
+    wrong on our side, so those records become WARNING. Real errors are left alone.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno == logging.ERROR and str(record.msg).startswith("Failed to fetch updates"):
+            record.levelno = logging.WARNING
+            record.levelname = logging.getLevelName(logging.WARNING)
+        return True
+
+
+class _FrequentJobFilter(logging.Filter):
+    """Hide the per-minute reminder tick and the five-minute watchdog from the executor log.
+
+    They would add thousands of "Running job" / "executed successfully" lines a day and bury
+    the daily jobs, whose records (and every failure) stay visible.
+    """
+
+    QUIET_JOBS = ("daily_reminder", "watchdog_health_check")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno > logging.INFO or not isinstance(record.args, tuple) or not record.args:
+            return True
+        return not str(record.args[0]).startswith(self.QUIET_JOBS)
+
+
+logging.getLogger("aiogram.dispatcher").addFilter(_PollingNoiseFilter())
+logging.getLogger("apscheduler.executors.default").addFilter(_FrequentJobFilter())

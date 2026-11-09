@@ -1,5 +1,7 @@
+from pullup_bot.config import xp_for
 from pullup_bot.services.xp import (
-    activity_reduction, display, level_info, md_escape, planned_for_day, progress_bar,
+    day_type_for, display, level_info, md_escape, planned_for_day, progress_bar,
+    user_base,
 )
 
 
@@ -8,7 +10,7 @@ from pullup_bot.services.xp import (
 def test_level_info_zero():
     lvl, name, to_nxt, pct = level_info(0)
     assert lvl == 0
-    assert name == "Новичок"
+    assert name == "Silver I"
     assert to_nxt == 500
     assert pct == 0
 
@@ -24,8 +26,10 @@ def test_level_info_exact_threshold():
 
 
 def test_level_info_high():
-    lvl, _, _, _ = level_info(25000)
-    assert lvl == 9
+    # 25000 XP: >= 23000 (Master Guardian II, index 11), < 29000
+    lvl, name, _, _ = level_info(25000)
+    assert lvl == 11
+    assert name == "Master Guardian II"
 
 
 # --- progress_bar ---
@@ -56,73 +60,105 @@ def test_progress_bar_over_100():
     assert bar == "█" * 10
 
 
-# --- planned_for_day ---
+# --- planned_for_day / user_base / day_type_for ---
+
+def _user(**kw):
+    base = {"base_pullups": 100, "base_pushups": 0, "base_dips": 0,
+            "base_squats": 0, "program_day": 0, "program_type": "standard"}
+    base.update(kw)
+    return base
+
 
 def test_planned_medium():
-    user = {"base_pullups": 100, "program_day": 0}
-    planned, day_type = planned_for_day(user)
+    planned, day_type = planned_for_day(_user())
     assert planned == 100
     assert day_type == "Средний"
 
 
 def test_planned_light():
-    user = {"base_pullups": 100, "program_day": 1}
-    planned, day_type = planned_for_day(user)
+    planned, day_type = planned_for_day(_user(program_day=1))
     assert planned == 50
     assert day_type == "Лёгкий"
 
 
 def test_planned_heavy():
-    user = {"base_pullups": 100, "program_day": 2}
-    planned, day_type = planned_for_day(user)
+    planned, day_type = planned_for_day(_user(program_day=2))
     assert planned == 114  # int(100 * 1.15)
     assert day_type == "Тяжёлый"
 
 
 def test_planned_rest():
-    user = {"base_pullups": 100, "program_day": 3}
-    planned, day_type = planned_for_day(user)
+    planned, day_type = planned_for_day(_user(program_day=3))
     assert planned == 0
     assert day_type == "Отдых"
 
 
 def test_planned_wraps_around():
-    user = {"base_pullups": 100, "program_day": 7}
-    planned, day_type = planned_for_day(user)
+    planned, day_type = planned_for_day(_user(program_day=7))
     assert day_type == "Средний"
 
 
 def test_planned_none_program_day():
-    user = {"base_pullups": 100, "program_day": None}
-    planned, day_type = planned_for_day(user)
+    planned, day_type = planned_for_day(_user(program_day=None, program_type=None))
     assert day_type == "Средний"
 
 
-# --- activity_reduction ---
-
-def test_reduction_no_activity():
-    assert activity_reduction("", 60) == 1.0
-    assert activity_reduction("бег", 0) == 1.0
-
-
-def test_reduction_running():
-    r = activity_reduction("бег", 60)
-    assert 0.5 <= r < 1.0
+def test_planned_beginner_program():
+    planned, day_type = planned_for_day(_user(program_type="beginner"))
+    assert planned == 60
+    assert day_type == "Лёгкий"
 
 
-def test_reduction_gym():
-    r = activity_reduction("зал спина", 60)
-    assert 0.5 <= r < 1.0
+def test_planned_unknown_program_falls_back_to_standard():
+    planned, day_type = planned_for_day(_user(program_type="bogus"))
+    assert planned == 100
+    assert day_type == "Средний"
 
 
-def test_reduction_cardio():
-    r = activity_reduction("кардио", 60)
-    assert 0.5 <= r < 1.0
+def test_planned_per_exercise():
+    u = _user(base_pushups=200, base_dips=40)
+    assert planned_for_day(u, "pushups")[0] == 200
+    assert planned_for_day(u, "dips")[0] == 40
+    assert planned_for_day(u, "pullups")[0] == 100
 
 
-def test_reduction_floor():
-    r = activity_reduction("бег", 600)
-    assert r >= 0.5
+def test_user_base_unset_is_zero():
+    assert user_base(_user(), "pushups") == 0
+    assert user_base(_user(base_dips=None), "dips") == 0
+
+
+def test_day_type_for_rest():
+    name, coeff = day_type_for(_user(program_day=3))
+    assert name == "Отдых"
+    assert coeff == 0.0
+
+
+# --- xp_for weights ---
+
+def test_xp_for_pullups():
+    assert xp_for("pullups", 100) == 100
+
+
+def test_xp_for_dips():
+    assert xp_for("dips", 100) == 75
+
+
+def test_xp_for_pushups():
+    assert xp_for("pushups", 100) == 50
+
+
+def test_xp_for_squats():
+    assert xp_for("squats", 100) == 25
+
+
+def test_xp_for_rounding():
+    assert xp_for("dips", 1) == 1      # 0.75 → 1
+    assert xp_for("pushups", 1) == 0   # 0.5 → 0 (banker's rounding)
+    assert xp_for("pushups", 3) == 2   # 1.5 → 2
+
+
+def test_xp_for_rest_is_zero():
+    assert xp_for("rest", 50) == 0
 
 
 # --- display ---

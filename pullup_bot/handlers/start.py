@@ -1,3 +1,4 @@
+from ..timeutils import today as local_today
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.filters import Command, StateFilter
@@ -6,16 +7,41 @@ from aiogram.types import ReplyKeyboardRemove
 
 from datetime import date, timedelta
 
-from ..config import LEVEL_NAMES, logger
+from ..config import LEVEL_NAMES, MINI_APP_URL, logger
 from ..db import add_welcome_greeting, get_db, get_lang, get_user, is_permanently_banned
 from ..i18n import t, text_filter
 from ..keyboards import (LANG_EN_BTN, LANG_RU_BTN, LANG_TOGGLE_BTN,
                          about_kb, guide_kb, landing_kb, lang_kb,
                          logout_confirm_kb, main_kb, welcome_new_user_kb)
 from ..states import About, Guide, Login, Logout, Reg
+from ..services.support import support_line
 from ..services.xp import display, md_escape
 
 router = Router()
+
+
+@router.message(Command("app"))
+async def cmd_app(message: types.Message):
+    """Inline/menu launches supply signed initData; reply-keyboard launches do not."""
+    lang = await get_lang(message.from_user.id)
+    if not MINI_APP_URL:
+        await message.answer("Приложение пока недоступно." if lang == "ru"
+                             else "The app is not available yet.")
+        return
+    if message.chat.type != "private":
+        await message.answer("Открой приложение в личном чате с ботом." if lang == "ru"
+                             else "Open the app in a private chat with the bot.")
+        return
+    await message.answer(
+        "Твой план, тренировки и прогресс — всё в одном месте." if lang == "ru"
+        else "Your plan, workouts and progress — all in one place.",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton(
+                text="Открыть Турникмен" if lang == "ru" else "Open Turnikmen",
+                web_app=types.WebAppInfo(url=MINI_APP_URL),
+            )
+        ]]),
+    )
 
 
 @router.message(Command("cancel"))
@@ -34,13 +60,12 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
     await message.answer(t("cancelled", lang), reply_markup=kb)
 
 
-@router.message(StateFilter(None), text_filter("btn_entrance"))
-async def entrance_handler(message: types.Message, state: FSMContext):
-    """Clear state and return to the landing/welcome screen."""
-    await state.clear()
-    user = await get_user(message.from_user.id)
-    lang = (user["lang"] or "ru") if user else "ru"
-    await message.answer(t("welcome", lang), parse_mode="Markdown", reply_markup=landing_kb(lang))
+async def _home_kb(tg_id: int, lang: str):
+    """Main menu keyboard for active users, landing keyboard for guests/logged-out."""
+    user = await get_user(tg_id)
+    if user and not user["is_logged_out"]:
+        return main_kb(lang)
+    return landing_kb(lang)
 
 
 @router.message(StateFilter(None), text_filter("btn_back"))
@@ -60,9 +85,14 @@ async def cmd_start(message: types.Message, state: FSMContext):
     """Handle /start: send the welcome screen for existing users or the language picker for new ones."""
     await state.clear()
     user = await get_user(message.from_user.id)
-    if user:
+    if user and not user["is_logged_out"]:
+        # Active user — straight to the main menu, no landing detour
         lang = user["lang"] or "ru"
-        await message.answer(t("welcome", lang), parse_mode="Markdown",
+        await message.answer(t("main_menu", lang) + support_line(lang, markdown=False),
+                             reply_markup=main_kb(lang))
+    elif user:
+        lang = user["lang"] or "ru"
+        await message.answer(t("welcome", lang) + support_line(lang), parse_mode="Markdown",
                              reply_markup=landing_kb(lang))
     else:
         await message.answer(
@@ -87,7 +117,8 @@ async def start_pick_lang_toggle(message: types.Message, state: FSMContext):
         current = data.get("lang", "")
         lang = "en" if current == "ru" else "ru"
     await state.update_data(lang=lang)
-    await message.answer(t("welcome", lang), parse_mode="Markdown", reply_markup=landing_kb(lang))
+    await message.answer(t("welcome", lang) + support_line(lang), parse_mode="Markdown",
+                         reply_markup=landing_kb(lang))
 
 
 @router.message(text_filter("btn_about"))
@@ -114,21 +145,32 @@ async def about_page2(message: types.Message, state: FSMContext):
 
 @router.message(About.page3, text_filter("btn_about_next"))
 async def about_page3(message: types.Message, state: FSMContext):
-    """Show About page 3 (last page) and return to the landing keyboard."""
+    """Advance to About page 3 (XP and ranks)."""
+    data = await state.get_data()
+    lang = data.get("about_lang", "ru")
+    await state.set_state(About.page4)
+    await message.answer(t("about_page3", lang), parse_mode="Markdown",
+                         reply_markup=about_kb("page3", lang))
+
+
+@router.message(About.page4, text_filter("btn_about_next"))
+async def about_page4(message: types.Message, state: FSMContext):
+    """Show About page 4 (weighted training, last page) and return to the landing keyboard."""
     data = await state.get_data()
     lang = data.get("about_lang", "ru")
     await state.clear()
-    await message.answer(t("about_page3", lang), parse_mode="Markdown",
-                         reply_markup=landing_kb(lang))
+    await message.answer(t("about_page4", lang) + support_line(lang), parse_mode="Markdown",
+                         reply_markup=await _home_kb(message.from_user.id, lang))
 
 
-@router.message(StateFilter(About.page2, About.page3), text_filter("btn_back"))
+@router.message(StateFilter(About.page2, About.page3, About.page4), text_filter("btn_back"))
 async def about_back(message: types.Message, state: FSMContext):
     """Exit the About flow and return to the landing screen."""
     data = await state.get_data()
     lang = data.get("about_lang", "ru")
     await state.clear()
-    await message.answer(t("main_menu", lang), reply_markup=landing_kb(lang))
+    await message.answer(t("main_menu", lang),
+                         reply_markup=await _home_kb(message.from_user.id, lang))
 
 
 @router.message(text_filter("btn_guide"))
@@ -185,36 +227,34 @@ async def guide_step4(message: types.Message, state: FSMContext):
 
 @router.message(Guide.extra, text_filter("btn_guide_extra"))
 async def guide_extra(message: types.Message, state: FSMContext):
-    """Show the extra tips page and finish the guide flow."""
+    """Show the extra tips page and offer the weighted-training page."""
+    data = await state.get_data()
+    lang = data.get("guide_lang", "ru")
+    await state.set_state(Guide.weighted)
+    await message.answer(t("guide_extra", lang), parse_mode="Markdown",
+                         reply_markup=guide_kb("extra", lang))
+
+
+@router.message(Guide.weighted, text_filter("btn_guide_weighted"))
+async def guide_weighted(message: types.Message, state: FSMContext):
+    """Show the weighted-training page and finish the guide flow."""
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.clear()
-    await message.answer(t("guide_extra", lang), parse_mode="Markdown",
-                         reply_markup=landing_kb(lang))
+    await message.answer(t("guide_weighted", lang) + support_line(lang), parse_mode="Markdown",
+                         reply_markup=await _home_kb(message.from_user.id, lang))
 
 
-@router.message(StateFilter(Guide.step1, Guide.step2, Guide.step3, Guide.step4, Guide.extra),
+@router.message(StateFilter(Guide.step1, Guide.step2, Guide.step3, Guide.step4,
+                            Guide.extra, Guide.weighted),
                 text_filter("btn_back"))
 async def guide_back(message: types.Message, state: FSMContext):
     """Exit the guide flow and return to the landing screen."""
     data = await state.get_data()
     lang = data.get("guide_lang", "ru")
     await state.clear()
-    await message.answer(t("main_menu", lang), reply_markup=landing_kb(lang))
-
-
-@router.message(text_filter("btn_exit"))
-async def exit_btn(message: types.Message, state: FSMContext):
-    """Handle the Exit button: prompt for logout confirmation if logged in, or farewell if not."""
-    user = await get_user(message.from_user.id)
-    data = await state.get_data()
-    lang = (user["lang"] or "ru") if user else data.get("lang", "ru")
-    if user:
-        await message.answer(t("confirm_logout", lang), reply_markup=logout_confirm_kb(lang))
-        await state.set_state(Logout.confirm)
-    else:
-        await state.clear()
-        await message.answer(t("bye", lang), reply_markup=ReplyKeyboardRemove())
+    await message.answer(t("main_menu", lang),
+                         reply_markup=await _home_kb(message.from_user.id, lang))
 
 
 @router.message(text_filter("btn_login"))
@@ -224,10 +264,15 @@ async def login_start(message: types.Message, state: FSMContext):
     if user:
         if user["is_logged_out"]:
             conn = await get_db()
-            yesterday = (date.today() - timedelta(days=1)).isoformat()
+            # A deliberate pause grants a fresh inactivity window, but resuming on the
+            # day of a workout must not rewind the cursor: the next session would count
+            # the day's streak, bonus XP and cycle step a second time.
+            yesterday = (local_today() - timedelta(days=1)).isoformat()
+            last = max(user["last_workout"] or yesterday, yesterday)
             await conn.execute(
-                "UPDATE users SET is_logged_out=0, last_workout=? WHERE tg_id=?",
-                (yesterday, message.from_user.id)
+                "UPDATE users SET is_logged_out=0, last_workout=?, inactivity_warned=NULL "
+                "WHERE tg_id=?",
+                (last, message.from_user.id)
             )
             await conn.commit()
         await state.clear()
@@ -238,7 +283,7 @@ async def login_start(message: types.Message, state: FSMContext):
               name=md_escape(display(fresh)),
               level=LEVEL_NAMES[fresh["level"]],
               xp=fresh["xp"],
-              streak=fresh["streak"]),
+              streak=fresh["streak"]) + support_line(lang),
             parse_mode="Markdown", reply_markup=main_kb(lang))
     else:
         data = await state.get_data()
@@ -285,12 +330,12 @@ async def reg_max_pullups(message: types.Message, state: FSMContext):
         base = max(5, max_reps * 3)
         conn = await get_db()
         await conn.execute(
-            "INSERT INTO users (tg_id, username, first_name, base_pullups, start_day, lang, program_day) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO users (tg_id, username, first_name, base_pullups, start_day, lang, program_day, joined) "
+            "VALUES (?,?,?,?,?,?,?,?)",
             (message.from_user.id,
              message.from_user.username or data.get("first_name"),
              data.get("first_name", message.from_user.first_name),
-             base, 0, lang, 0))
+             base, 0, lang, 0, local_today().isoformat()))
         await conn.commit()
         await state.clear()
         new_name = data.get("first_name", "атлет")
@@ -299,7 +344,7 @@ async def reg_max_pullups(message: types.Message, state: FSMContext):
               name=md_escape(new_name),
               max_pullups=max_reps,
               base=base,
-              level=LEVEL_NAMES[0]),
+              level=LEVEL_NAMES[0]) + support_line(lang),
             parse_mode="Markdown", reply_markup=main_kb(lang))
         await _broadcast_new_user(message.from_user.id, new_name)
     except ValueError:

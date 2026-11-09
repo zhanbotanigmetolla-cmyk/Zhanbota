@@ -4,12 +4,295 @@ All notable changes to Турникмен / Pullup Bot are documented here.
 
 ---
 
-## [2026-08-04]
+## [2026-11-09]
 
 ### Changed
-- **CodeRabbit turned off** — added `.coderabbit.yaml` that disables automatic PR
-  reviews, summaries, status checks and chat auto-replies. The bot was reviewing
-  every PR unasked; reviews can still be requested manually with `@coderabbitai review`.
+- **Ветка аудита слита в `main`.** С мая `main` отставал от кода на сервере: цепочка из
+  12 PR (#4–#27) лежала открытой, потому что каждый следующий PR строился поверх
+  предыдущего. Теперь `main` совпадает с задеплоенным кодом бота и сохраняет историю
+  fitness-mcp; деплой по-прежнему идёт из рабочей ветки.
+- **На сервере удалены 174 устаревшие строки FSM** аккаунтов, которых уже нет в `users`
+  (бэкап `pullups_fsm.db.bak-2026-11-09`). Новые удаления аккаунта чистят FSM сами
+  (исправление от 08.11.2026).
+- **Решения владельца по аудиту** зафиксированы в `AUDIT.md`: ссылка на политику в
+  BotFather не нужна; открытая регистрация, текст сообщений в журнале и списанные ранее
+  XP остаются как есть.
+
+---
+
+## [2026-11-08]
+
+### Fixed
+- **Повторный вход не сбрасывает дату активности назад.** Кнопка «Войти» ставила
+  последнюю тренировку на вчера даже в день тренировки, и следующая сессия в тот же
+  день второй раз добавляла день стрика, 50 XP и шаг цикла. Дата больше не уходит
+  назад (так же, как при возобновлении через Mini App).
+- **Удаление сегодняшней записи через «Исправить день» возвращает и день стрика с
+  бонусом**, а не только XP за повторения; предыдущей датой активности считается
+  реальная тренировка или отдых, а не брошенный пустой план.
+- **Предупреждение об удалении приходит перед каждым долгим перерывом.** Флаг
+  «предупреждён» снимала только завершённая тренировка, поэтому участник, вернувшийся
+  после паузы, при следующем 30-дневном перерыве удалялся без предупреждения.
+- **Списание XP останавливается на пороге предыдущего ранга**, как обещано в правилах:
+  раньше после каждой потери ранга порог сдвигался ещё на ранг ниже, и долгий перерыв
+  мог обнулить XP.
+- **Удаление аккаунта очищает и его запись в базе диалогов** (история чата с ИИ,
+  незавершённые диалоги) — при самостоятельном удалении, через админку и автоочисткой.
+- **Задачи планировщика под присмотром:** упавшая или пропущенная задача попадает в
+  счётчик ошибок и приходит администратору, а не только в журнал; ежеминутное
+  напоминание не теряет следующие минуты, если одна отправка зависла.
+- **Утренний отчёт считает тренировки за вчера** (раньше — с полуночи до 08:00, то есть
+  почти всегда 0); «Активных сегодня» в админке не считает отметки отдыха и брошенные
+  планы.
+- **Время в админке** (мут, баг-репорты, диалоги ИИ, /version) показывается по календарю
+  бота, а не по UTC сервера.
+- **Mini App:** все тексты ошибок переведены; изменение веса не переписывает базу,
+  заработанную прогрессией; гайд и «О боте» не блокируют регистрацию через приложение;
+  информационные экраны бота не блокируют сохранение тренировки; тренировки из
+  приложения уведомляют участников так же, как из бота; регистрация в приложении
+  присылает приветствие с клавиатурой в чат и объявляет о новичке; рейтинг показывает
+  целые XP; на высшем ранге нет строки «до следующего».
+- **Исправленная вручную сумма повторений согласуется со списком подходов** (без
+  фиктивных рекордов подхода).
+- Корона «Кочки недели» снимается, если за неделю никто не тренировался; ошибка в профиле
+  одного участника не срывает отметку дня отдыха остальным; предупреждение watchdog
+  уходит обычным текстом и не ломается на спецсимволах.
+- **Норма снова растёт у новичков.** Прибавки +5% после цикла и +3% за лёгкие тренировки
+  считались через `int()`, поэтому база меньше 20 (а для +3% — меньше 34) не менялась
+  никогда, хотя бот сообщал «норма повышена до N» со старым числом. Теперь прибавка —
+  не меньше одного повторения.
+- **Имена без лишних обратных слэшей.** Экранирование было рассчитано на MarkdownV2,
+  а все сообщения уходят в обычном Markdown: имя с точкой или дефисом показывалось
+  с обратным слэшем в рейтинге, статистике, уведомлениях и посте «Кочка недели».
+  Экранируются только символы, которые реально открывают разметку.
+- **Смена имени и причина пропуска проверяются.** Имя — от 3 до 64 символов без
+  управляющих, в ответе экранируется (раньше имя вроде «Al_ex» ломало разметку и
+  отправляло трейс администратору). Причина пропуска обрезается до 100 символов и
+  экранируется; она больше не добавляет день стрика за дату, где уже была тренировка
+  или отдых, и не даёт двойной зачёт за одну и ту же дату.
+- **Уведомление о списании XP приходит один раз, когда списание действительно
+  началось.** Раньше оно отправлялось только при ровно семи днях простоя: того, кого
+  задача впервые увидела на восьмой день, не предупреждали вовсе. Флаг сбрасывается,
+  когда человек снова активен.
+- **Утреннее напоминание не обрывается из-за одного профиля.** Ошибка при расчёте
+  плана одного участника попадает в лог, остальные получают напоминание.
+- **Ежедневные и недельные задачи переживают задержку.** APScheduler по умолчанию
+  пропускает задачу, опоздавшую больше чем на секунду; теперь отчёт, очистка,
+  списание XP, отдых и недельный итог выполняются с опозданием до часа, watchdog —
+  до двух минут.
+- **ИИ не зависает и не теряет длинные ответы.** Запрос к Gemini ограничен
+  90 секундами, иначе пользователь получает «ИИ недоступен». Ответы длиннее лимита
+  Telegram делятся на несколько сообщений вместо тихой ошибки.
+- **Рейтинг недели считается одинаково в боте и в приложении:** с понедельника по
+  воскресенье, без заблокированных и приостановленных аккаунтов; маркеры ▲/▼
+  сравнивают с прошлой календарной неделей.
+- **Удаление аккаунта** — самостоятельное, администратором и автоочисткой — идёт через
+  одну функцию и явно чистит квитанции тренировок.
+- Повреждённые данные кнопок истории больше не вызывают ошибку; неудачный `GetUpdates`
+  пишется как предупреждение, а не ошибка — это шум сети Telegram, а не сбой бота.
+
+### Changed
+- **Зависимости обновлены ради безопасности:** aiohttp 3.11.11 → 3.14.5 закрывает около
+  сорока известных уязвимостей HTTP-сервера, которым Mini App открыт в интернет
+  (подделка запросов, отказ в обслуживании без лимита очереди, CRLF-инъекции, утечки
+  cookie); aiogram 3.26 → 3.31, certifi, pyasn1 и pytest — до версий без известных
+  уязвимостей.
+- **Журнал чище:** сбои опроса Telegram (Bad Gateway) пишутся как WARNING, а не ERROR;
+  ежеминутное напоминание и watchdog больше не пишут «Running job» в журнал.
+- **Главное меню стало проще:** «🐛 Сообщить о баге» переехала в Настройки. Порядок:
+  Тренировка · Статистика / История · Друзья / Рейтинг · AI / Настройки · Поддержать.
+- **/help полезен участнику:** перечислены /train, /stats, /history, /top, /app, /edit,
+  /cancel; административные команды видит только администратор.
+- **База знаний Турникмен AI обновлена:** шесть упражнений, правила RPE относительно
+  типа дня, двойная прогрессия с весом, актуальные меню и Mini App — ассистент больше
+  не советует несуществующие кнопки.
+- Тексты: «О боте» нумеруется 1/4–4/4, «одно, два или все сразу»; в руководстве и README
+  уточнено, что подтверждённый отдых не прерывает стрик, но день и XP не добавляет;
+  раздел README про Gemini приведён к реальным лимитам.
+- **Политика конфиденциальности** перенесена в `pullup_bot/web/privacy.html`,
+  актуализирована (шесть упражнений и веса, Mini App, списание XP, что уходит в Google и
+  что видит администратор, Kaspi) и публикуется ботом по адресу `/privacy`. Ссылку нужно
+  указать в BotFather.
+- Деплой удаляет старые релизы, оставляя три последних: каждый релиз занимает
+  около 100 МБ вместе с виртуальным окружением.
+
+### Added
+- Тесты изолированы от реальной базы диалогов: файл FSM для тестов создаётся во временной
+  папке, а хук очистки FSM не открывает хранилище бота (иначе pytest печатал итог и не
+  завершался — это и остановило деплой и CI).
+- Регрессионные тесты второй волны: повторный вход, удаление записи дня, повторное
+  предупреждение, пол списания XP, корона без тренировок, отчёт за вчера, устойчивость
+  отметки отдыха, слушатель ошибок планировщика, очистка FSM, время в админке, мут
+  по календарю бота, регистрация и уведомления из Mini App, пассивные состояния,
+  согласование подходов, фильтры журнала.
+- Регрессионные тесты: прогрессия малых баз, экранирование обычного Markdown, проверка
+  имени и причины пропуска, уведомление о списании, устойчивость напоминания, параметры
+  задач планировщика, тайм-аут и разбиение ответа ИИ, рейтинг по календарной неделе,
+  удаление данных пользователя, /help по ролям, состав меню, страница /privacy.
+- `AUDIT.md`: результаты аудита от 8 ноября 2026 с перечнем закрытых и открытых пунктов.
+
+## [2026-11-07]
+
+### Changed
+- **Аккаунт владельца больше не наказывается за перерывы.** Для `ADMIN_TG_ID` отключены
+  ежедневное списание XP, падение ранга, предупреждение об удалении и автоматическое
+  удаление за неактивность, а вместе с ними и все связанные уведомления. Остальные
+  участники получают их как прежде. Владелец попросил не присылать ему такие сообщения;
+  тихо списывать XP или удалить аккаунт без предупреждения было бы хуже, поэтому
+  отключены сами санкции, а не только тексты.
+
+## [2026-09-24]
+
+### Fixed
+- Деплой ждёт подтверждения запуска Telegram до 120 секунд: холодный запуск
+  Python на GCP e2-micro занимает около 45 секунд и ошибочно вызывал откат
+  после прежних 30 секунд. Проверки активности, отсутствия перезапусков,
+  HTTPS и автоматический откат при ошибке сохранены.
+
+## [2026-09-23]
+
+### Fixed
+- **Сброс стрика сохраняет последнюю активность.** Очистка дополнительно сверяет
+  реальные тренировки, поэтому активный старый аккаунт не удаляется после сброса
+  стрика или при устаревшем `last_workout`.
+- **Webhook требует секрет и корректный адрес `/webhook`.** Проверка выполняется
+  до открытия БД и обращения к Telegram. Административные права выдаются только
+  по `ADMIN_TG_ID`, без доверия к изменяемому username.
+- **Обычные сообщения больше не отправляются в Gemini.** Необработанный текст
+  получает локальную подсказку; внешняя AI-обработка доступна через явный AI-чат.
+- **Завершение тренировки сохраняется однократно и атомарно.** Подходы, XP,
+  стрик, прогрессия и квитанция сессии фиксируются вместе. Повтор RPE, перезапуск
+  или ошибка отправки результата не начисляют XP повторно; восстановление старого
+  состояния не позволяет отменить уже записанный результат.
+- **Повторное открытие тренировки не переписывает выполненный вес.** Для одного
+  упражнения вес закрепляется в пределах дня; интерфейс сообщает об этом при
+  выборе другого веса. Отмена оставляет записанную историю без изменений.
+- **Высокий RPE не повышает маленькую базу.** Нижняя граница снижения согласована
+  с допустимой базой 5 повторений.
+- **Разблокировка удаляет оба признака бана**, включая запись `banned_ids`.
+- **Время уведомлений нормализуется в `HH:MM`**, включая ранее сохранённые
+  допустимые варианты вроде `8:00` и `8:0`.
+- **Временные ошибки Gemini не блокируют AI на сутки.** Короткая пауза после
+  429/5xx отделена от подтверждённого исчерпания дневной квоты.
+- **Редактирование истории проверяет диапазон 0–10 000 повторений** и повторяет
+  проверку перед записью в БД; ноль сохраняет смысл удаления записи.
+- **Незавершённые сессии переживают полночь.** Watchdog сохраняет подходы,
+  учитывает реальную последнюю активность и однократно предлагает продолжить
+  или отменить действие. Завершение старой сессии не откатывает текущую дату активности.
+- **Обычный перезапуск сохраняет очередь Telegram updates.** Обработчики одного
+  пользователя выполняются последовательно, ресурсы закрываются при остановке.
+- **Единая временная зона для календаря и расписания.** Тренировки, история,
+  статистика, напоминания, регистрация и ежедневные задания используют
+  `TZ_OFFSET_HOURS`, независимо от системной зоны сервера.
+- **Деплой больше не подтягивает `main` в рабочую ветку и не сообщает ложный успех.**
+  Развёртывается точный SHA отдельной ветки; ошибки останавливают процесс.
+
+### Added
+- **Telegram Mini App рядом с ботом.** Три раздела «Сегодня», «Прогресс» и
+  «Профиль», персональный план, шесть упражнений, запись подходов, таймер отдыха,
+  оценка нагрузки, история и настройки. Единая база сохраняет прогресс между
+  приложением и обычным чатом; команды бота продолжают работать.
+- Кнопка приложения в меню Telegram и команда `/app`; светлая/тёмная тема,
+  мобильная компоновка, восстановление незавершённой сессии и явно обозначенное
+  демо для просмотра вне Telegram без записи данных.
+- Серверный API с проверкой подписи и срока Telegram `initData`, общими
+  ограничениями доступа, сериализацией действий с ботом и идемпотентным
+  завершением тренировок. Токен бота не передаётся браузеру.
+- Раздача только публичных файлов приложения, защитные HTTP-заголовки, отдельный
+  локальный preview и проверка Mini App по HTTPS при деплое. Скрипт подключения
+  к существующему Tailscale Funnel сохраняет маршруты других сервисов.
+- Регрессионные тесты для сценариев аудита, включая сбои сохранения, параллельные
+  завершения, восстановление FSM, полночь, миграции и ошибочные ответы Gemini.
+- Закреплённые зависимости, полный `requirements-dev.lock` и GitHub Actions
+  с проверкой Python 3.12/3.13 и `pip check`.
+- Развёртывание в отдельный релиз и окружение: тесты до остановки бота, снимки
+  SQLite через backup API, проверка успешного старта Telegram и откат конфигурации
+  сервиса при ошибке. Базы автоматически назад не откатываются.
+- Явный `--allow-local` для разработки с отдельным Telegram-ботом; обновлённые
+  инструкции установки, проверки и развёртывания.
+
+### Changed
+- Старый локальный автоисправитель формирует только план проверки: доступны
+  инструменты чтения, автоматические правки, push и деплой отключены.
+- Личные фитнес-экспорты, SQLite WAL/SHM, локальные кэши и планы проверок исключены
+  из Git. Аудит сохранён в `AUDIT.md` с перечнем закрытых пунктов.
+
+## [2026-09-14]
+
+### Added
+- **A way to support the project via Kaspi.** Until now there was no way for users who find
+  the bot useful to chip in. Now:
+  - a **☕ Support** button sits in the bottom row of the main menu, next to Leaderboard, and
+    shows the Kaspi number (tap to copy) with the recipient's name;
+  - every finished workout summary (which already shows done/target and the streak) ends with a
+    short bold note: *Want to support the project? You can transfer any amount to my Kaspi.*
+  The number is read from `KASPI_PHONE` in the server's `.env` so it stays out of the public
+  repo. Until it's set, both the button and the note stay hidden.
+- **The Kaspi ask now appears on almost every screen**, so more people see it: welcome and
+  `/start`, registration and welcome back, the last About and Guide pages, `/help`, the start
+  of a workout, rest-day prompts, Stats, History (weekly and monthly), Participants,
+  Leaderboard, the AI intro and every AI reply, the daily reminder, the weekly summary and the
+  weekly champion post. It's one short line appended by `services/support.py`, with a plain-text
+  version for messages sent without Markdown. Left out on purpose: the progress update after
+  every set (it would repeat several times a minute), error messages, and admin screens.
+
+## [2026-09-11]
+
+### Fixed
+- **Сетевой сбой больше не съедает нажатие кнопки.** Telegram иногда рвёт соединение
+  посреди запроса (`ClientOSError: [Errno 104] Connection reset by peer`): на «🏆 Рейтинг»
+  бот считал таблицу, не мог её отправить — и человек оставался перед пустым экраном,
+  а админ получал traceback. Теперь каждый вызов Telegram API проходит через
+  `pullup_bot/services/net.py`: до трёх попыток с паузами 0.5 с → 1 с на сетевых ошибках
+  и 5xx от Telegram, плюс короткое ожидание при flood control. Если всё равно не вышло,
+  чинить на нашей стороне нечего: это предупреждение в логе и счётчик, а не паника
+  в личку админу. В ежедневном отчёте появляется строка 📡 с числом повторов и
+  сбоев — только в дни, когда сеть действительно шалила.
+
+## [2026-08-04]
+
+### Added
+- **Подтягивания и брусья с утяжелением** — два новых упражнения рядом с четырьмя
+  прежними, которые не изменились. Вес сессии хранится в `workouts.weight_kg`,
+  подходы остаются обычными числами повторений, поэтому весь интерфейс тренировки
+  работает как был. Каждый килограмм добавляет 3% к XP за повторение, но считается
+  не больше 50 кг — иначе опечатка в весе напечатала бы неограниченный XP.
+  Самый тяжёлый вес за всё время хранится как отдельный рекорд.
+- **Двойная прогрессия для веса.** Сначала растут повторения на текущем весе; при
+  стабильном закрытии плана бот вешает 2.5 кг и снижает норму повторений на 10%.
+  Прогрессия только по повторениям для работы с весом — неправильная модель:
+  она заставляет добивать объём вместо того, чтобы становиться сильнее.
+- **Гайд по утяжелению** — чем вешать вес (пояс, жилет, рюкзак, гантель), как
+  надевать пояс по шагам, техника, безопасность, когда вообще начинать. Плюс
+  четвёртая страница в «О боте».
+
+### Changed
+- **RPE теперь сравнивается с типом дня, а не с одним порогом.** Старое правило
+  снижало базу на 2% при среднем RPE ≥7.0, а недельная прибавка +5% требовала
+  RPE строго <7.0 — то есть семёрка одновременно блокировала рост и запускала
+  урезание. Тяжёлый день должен ощущаться на 8, и честная оценка наказывалась.
+  На реальных данных это съедало примерно половину недельного прироста: один
+  +5% за цикл против пяти −2% за ту же неделю.
+
+### Fixed
+- **База меняется не чаще раза в день на упражнение.** Если завершить тренировку,
+  а потом вернуться и добить подходы, вторая запись читала те же три оценки RPE
+  и применяла штраф повторно.
+- **Брошенные тренировки больше не блокируют прогрессию.** Строка «0 из 139» —
+  это несостоявшаяся сессия, а не проваленная; считаясь за 0%, она тянула среднюю
+  вниз следующие пять проверок.
+- **Аккаунты, которые зарегистрировались и ни разу не тренировались, больше не живут вечно.**
+  Автоочистка отсчитывала неактивность только от `last_workout`, а условие
+  `last_workout IS NOT NULL` полностью исключало из неё тех, у кого тренировок никогда не
+  было — отсчитывать было не от чего. Таких накопилось 22 из 35 пользователей, самому
+  старому четыре месяца. Теперь срок считается от `COALESCE(last_workout, joined)`:
+  правило «предупреждение на 27-й день, удаление на 30-й» одинаково работает и для тех,
+  кто бросил, и для тех, кто так и не начал. Текст предупреждения для вторых свой —
+  «зарегистрировался N дней назад, но так и не начал» вместо «не тренировался N дней».
+
+### Changed
+- **CodeRabbit выключен** (`.coderabbit.yaml`, PR #19) — авто-ревью, саммари, статус-чеки
+  и авто-ответы в комментариях. Ручной `@coderabbitai review` по-прежнему работает.
 
 ---
 
@@ -179,6 +462,138 @@ All notable changes to Турникмен / Pullup Bot are documented here.
   the same rate as an ephemeral one.
 
 ---
+
+## [2026-07-21]
+
+### Fixed
+- **Weekly «неделя done/planned» stat no longer hides skipped days (#72).** The week total in `/stats` only summed `planned`/`completed` from workout rows that actually existed — a day the user never opened the bot for had no row at all, so it silently dropped out of *both* sides of the ratio instead of just the numerator. A user who skipped most of the week would see e.g. «271/271» (looks like 100%) instead of «271/500». Now reuses the same wave-cycle inference already used for the «Последние 7 дней» history (which infers whether a missing day was a scheduled rest day) to also credit skipped *training* days toward the week's planned total.
+
+## [2026-07-14]
+
+### Added
+- **Live countdown for the rest timer (#70).** Starting a 60/90/120-сек timer now posts a «⏳ Отдых: осталось N сек» message that updates every second, then is replaced by the «Отдых окончен» ping. Restarting the timer removes the stale countdown.
+
+### Changed
+- **Density day rep buttons start lower (#71).** The quick-rep keyboard on Плотность days now targets ~15–20 short sets (e.g. target 70 → buttons 1–10 instead of 5–14), matching the day's «many short sets» intent. Applies to all exercises.
+
+### Fixed
+- **Rest timer no longer spams «Отдых окончен» after rapid presses (#69).** When a running timer was replaced, the cancelled task's cleanup removed the *new* timer from the tracking dict, so the next press couldn't cancel it — mashing 90/120-сек left several live timers that each fired «time's up». Cleanup now removes its own entry only.
+
+## [2026-07-13]
+
+### Added
+- **Command menu.** The bot now registers /train, /stats, /history, /top, /help and /cancel (RU + EN descriptions), so typing `/` or tapping the Menu button shows real actions instead of nothing.
+- **«▶️ Начать тренировку» button on the morning reminder.** One tap goes straight from the notification to the exercise picker — no digging for the keyboard.
+- **Rest timer between sets.** The live training status now carries ⏱ 60/90/120-сек inline buttons; the bot pings «Отдых окончен — следующий подход!» when time is up. Starting a new timer replaces the old one; the ping is skipped if the session already ended.
+- **Live training status.** During a session the bot keeps a single up-to-date progress message (the previous one is deleted on each set) instead of posting a new status per set — a 6-set workout no longer leaves 6 near-identical messages. The status is removed once the summary arrives.
+- **Month heatmap in history.** «По месяцам» now opens with an emoji calendar of the current month (🟩 план · 🟨 частично · ⬜ нет данных · 😴 отдых), one row per Mon–Sun week.
+- **Leaderboard movement markers.** Weekly leaderboard shows ▲/▼ position changes vs the previous week and 🆕 for newcomers.
+- **Celebration effects.** Workout summaries fire Telegram message effects: 🎉 on a personal record or rank-up (and on the weekly champ announcement for the winner), 🔥 on hitting the daily target. Falls back to a plain message on older aiogram/Telegram.
+
+### Changed
+- **Stats is one message again.** The «📈» placeholder message is gone — the Analytics button is attached directly to the stats message, and «◀️ К статистике» swaps the analytics view back in place.
+- **Guide and About moved into Settings** so logged-in users can reach them without the landing screen.
+- **/start for an active user opens the main menu** instead of the landing screen with a «Войти» button.
+- **«О боте» page 1 now carries the welcome intro** (greeting, «бот полностью бесплатный», Турникмен AI teaser, contact @zhanbota102) — the welcome screen was the only place with the contact line, and logged-in users no longer pass through it. Also fixed a stale «все три» → «все четыре» after squats were added.
+
+### Fixed
+- **«◀️ Назад» no longer drops logged-in users onto the landing screen.** The main-menu «Назад» button (btn_entrance) shared its text with every other Back button and its handler shadowed the real one, so any stateless «Назад» tap showed the welcome/landing screen. The button and handler are removed; Back now returns to the main menu.
+
+## [2026-07-05]
+
+### Fixed
+- **Set record no longer sticks after undo/cancel.** Logging a set that beat your per-set record used to keep the record even if you undid the set or cancelled the whole workout. Now the record rolls back to its correct value in both cases.
+- **Freeze tokens are no longer charged for backfilled days.** Streak gap-bridging counted a day as "missed" even when a workout was later added for it via «Редактировать день»; days with logged reps now bridge for free, like rest days.
+- **Deleted accounts clean up greeting links.** All deletion paths (self-delete, admin delete, inactivity cleanup) now also remove `welcome_greetings` rows, so a re-registered user can be greeted again.
+- **Admin error alerts respect Telegram's 4096-char limit** — long user messages inside the alert used to make the alert itself fail to send.
+- **Bug-report approve/reject buttons work on reports containing `<`** — the status edit was silently failing on unescaped HTML.
+
+### Added
+- **Squats** 🦵 as the fourth exercise — same treatment as the others: own норма (set up on first pick, max × 3), own RPE adjustments and weekly progression, own records. XP weight: 0.25 per squat (ladder: pull-up 1 · dip 0.75 · push-up 0.5 · squat 0.25). Guide, About, AI knowledge base and README updated.
+
+## [2026-07-04]
+
+### Added
+- **Three exercises: pull-ups, push-ups, dips.** The Training button now opens a picker («Что тренируем сегодня?») with per-exercise targets shown right on the buttons. One shared 7-day calendar: the day type (Средний/Лёгкий/Тяжёлый/Отдых/Плотность) applies to whichever exercise you pick; training at least one exercise per day keeps the streak and advances the cycle once.
+- Each exercise has its own daily норма, its own RPE-based adjustments, weekly +5% progression, and its own records (best day / best set). Push-ups and dips are set up lazily — the bot asks for your one-set max the first time you pick them (base = max × 3).
+- XP weights per rep: pull-up 1 · dip 0.75 · push-up 0.5 (+50/streak day unchanged). Existing XP untouched.
+- Weekly leaderboard and 👑 Кочка недели now rank by **weekly XP across all exercises** instead of pull-up count.
+- Stats, History, Analytics, weekly summaries, morning reminders, friends list, AI coach context, and CSV export all show per-exercise data.
+
+### Changed
+- Database: `workouts` table rebuilt with an `exercise` column (`UNIQUE(user_id, date, exercise)`); legacy rows migrated as pull-ups, rest days as day-level rest markers. New per-exercise base/record columns on `users`.
+- Guide («Как начать») and «О боте» rewritten to match actual behavior: correct wave percentages (Лёгкий ~50–60%, Тяжёлый 115%), freeze tokens described as automatic, three programs mentioned, new XP rules documented.
+
+### Removed
+- Extra-activity feature (бег/зал plan reduction) and the notes-adding step in «Редактировать день» — removed entirely per owner decision; old saved notes still display in history. Break reduction after 3+/7+ days off stays.
+- A dozen dead i18n strings and orphaned flows (interactive freeze prompt, old registration questions, unused chart helper).
+
+## [2026-07-03]
+
+### Fixed
+- Second audit pass — remaining issues fixed:
+  - Editing a stored rest day to add reps kept the row as `planned=0 / Отдых`, so history showed "😴 50/0" and the session never counted toward progression (same class of bug as the rest-day-override fix) — now converted to a training day.
+  - Finishing a training session overwrote `extra_activity` / `extra_minutes` / `notes` with empty values (the flow no longer collects them), erasing data added via "Edit Day". Those columns are no longer touched by the training save.
+  - Admin exemption unified: ban/mute and maintenance middlewares checked only the admin Telegram ID while the admin panel also accepted the admin username — both now use one shared `is_admin_user()` check.
+  - Maintenance mode now also blocks inline-button (callback) presses, not just messages.
+  - Morning reminders moved from a 1-minute interval to a cron tick with a 30s grace period — a slow tick can no longer silently skip a minute (and its reminders).
+  - Per-user duplicate-message locks no longer evict a lock that is currently held.
+
+## [2026-07-02]
+
+### Fixed
+- Full project audit. Bugs found and fixed:
+  - Deleting today's workout via "Edit Day" corrupted the program cycle position: `program_day` was wrapped with `% 7` even though it's a monotonic counter (e.g. day 22 → 0 instead of 21), silently shifting the whole future schedule.
+  - "Next 7 days" schedule in Stats (and the AI's view of tomorrow) was off by one whenever a workout row existed but the day wasn't finished yet — the offset now keys off `last_workout == today` (the moment `program_day` actually advances) instead of the row's existence.
+  - Training on a rest day ("Train anyway") saved the workout against a `planned=0 / Отдых` row, so history showed things like "😴 50/0" and the session never counted toward RPE/weekly progression. The override is now persisted as a real training day (cancelling still restores the rest row).
+  - The 23:55 auto-rest job could overwrite today's workout row for a user mid rest-day-override session; it now skips users who already have real activity recorded today.
+  - Base-change validation message claimed "1 to 2000" while the code accepts 1–500.
+  - Guide and AI system prompt described outdated RPE progression rules (≤6.5 for +3%, no −2% zone) — aligned with the actual code (≤5.5 / 5.5–7.0 / 7.0–8.5 −2% / ≥8.5 −5%).
+  - Admin panel: user names and search queries are now HTML-escaped — a user named e.g. `<b>` made the profile view silently fail to render.
+  - Gemini fallback per-user cooldown dict grew without bound — expired entries are now pruned.
+  - `.gitignore` contained corrupted UTF-16 garbage lines, so `bot.log` and DB backups weren't actually ignored — rewritten clean.
+  - Test suite repaired: 8 tests were stale (old rank names, old XP thresholds, missing `program_type` field) — updated to match current config; added coverage for beginner/unknown program types. 80/80 passing.
+
+## [2026-07-01]
+
+### Fixed
+- Skip reason (overtraining/illness/etc.) now writes a rest-day row to the workouts table, so stats shows 😴 instead of ❌ and the training screen no longer says "didn't complete plan" after a skip.
+
+## [2026-06-25]
+
+### Changed
+- Post-training flow simplified: removed the extra-activity (cardio/gym) question and notes step. Only RPE rating remains — tap a number and you're done.
+- Streaks are now protected silently: if you miss a training day, a freeze token is auto-spent without any prompt. No more streak resets that happen without the user knowing.
+- Rest days on the "Keep resting" screen no longer ask about freeze tokens — the system handles it automatically on the next training day.
+
+### Fixed
+- Streak bug: if a training day was skipped and the next day was a scheduled rest day, the streak would silently reset the day after. Now `update_streak` checks rest-day records in the workout history and only spends tokens for genuinely missed training days.
+- Restored streaks for 3 users whose streaks were incorrectly reset by the rest-day bug.
+
+### Added
+- Stats screen now shows longest streak ever: "🔥 Streak: X days (best: Y)" alongside current streak.
+
+## [2026-05-08]
+
+### Changed
+- Training session rep buttons now show 10 consecutive numbers (e.g. 8–17) instead of spaced-out values. Range is still anchored to the user's per-set target so relevant counts are always visible.
+
+## [2026-05-07]
+
+### Added
+- XP decay system: after 7 days of inactivity, XP decreases daily (0.5%→1%→1.5% per day as absence grows). Floor: can lose at most one rank per absence. Notifies user on first decay day and on rank loss.
+
+### Changed
+- Slowed down base progression: weekly +5% bump now blocked if avg RPE of last 5 workouts is ≥ 7.0 (high effort = no auto-advance)
+- Lowered RPE threshold for base growth from ≤ 6.5 to ≤ 5.5 — base now only grows via RPE path when training feels easy
+- Filled the RPE dead zone: added −2% base zone for avg RPE 7.0–8.4 (previously no change at all in that wide range)
+
+## [2026-05-04]
+
+### Fixed
+- Fixed `IntegrityError: UNIQUE constraint failed: workouts.user_id, workouts.date` crash when tapping Training — replaced the SELECT-then-INSERT pattern with an atomic `INSERT … ON CONFLICT DO UPDATE` to eliminate the race condition.
+- Removed dead `weight_kg` field: it was never collected during registration, always defaulted to 80, and was only feeding a wrong value into the AI context. Cleaned up the DB schema, states, i18n strings, AI prompt, scheduler, and tests. Added DB migration (index 24) to drop the column from existing databases.
+- Removed stale body-weight instruction from `ai_system_prompt` in both locales — the prompt no longer supplies weight data, so telling the model to "consider body weight" was misleading.
 
 ## [2026-05-02]
 

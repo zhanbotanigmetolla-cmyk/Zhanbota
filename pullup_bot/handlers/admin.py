@@ -11,7 +11,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
-from ..config import ADMIN_TG_ID, ADMIN_USERNAMES, logger
+from ..config import ADMIN_TG_ID, is_admin_user, logger
 from ..db import (ban_user, delete_user_by_tg_id, get_db, get_lang, get_user,
                   give_freeze_tokens, is_muted, mute_user, reset_streak,
                   reset_xp, search_users, unban_user, unmute_user,
@@ -24,22 +24,17 @@ from ..keyboards import (admin_bugs_kb, admin_confirm_kb, admin_confirm_restart_
 from ..states import AdminPanel, BugReport, Settings
 from ..services.xp import md_escape
 from .. import globals as g
+from .. import timeutils
 
 
 def _is_admin(message) -> bool:
-    """Return True if the message sender is the configured admin (by ID or username)."""
-    if message.from_user.id == ADMIN_TG_ID:
-        return True
-    uname = (message.from_user.username or "").lower()
-    return uname in {u.lower() for u in ADMIN_USERNAMES}
+    """Return True if the message sender has the configured admin Telegram ID."""
+    return is_admin_user(message.from_user.id, message.from_user.username)
 
 
 def _is_admin_cb(callback: types.CallbackQuery) -> bool:
-    """Return True if the callback sender is the configured admin (by ID or username)."""
-    if callback.from_user.id == ADMIN_TG_ID:
-        return True
-    uname = (callback.from_user.username or "").lower()
-    return uname in {u.lower() for u in ADMIN_USERNAMES}
+    """Return True if the callback sender has the configured admin Telegram ID."""
+    return is_admin_user(callback.from_user.id, callback.from_user.username)
 
 router = Router()
 
@@ -52,7 +47,7 @@ async def show_version(message: types.Message):
         return
     await message.answer(
         f"🧾 *Версия бота*\nPID: `{os.getpid()}`\nPython: `{sys.version.split()[0]}`\n"
-        f"Время: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`",
+        f"Время: `{timeutils.now().strftime('%Y-%m-%d %H:%M:%S %Z')}`",
         parse_mode="Markdown")
 
 
@@ -139,7 +134,7 @@ async def bug_report_decision(callback: types.CallbackQuery):
         try:
             await callback.message.edit_reply_markup(reply_markup=None)
             await callback.message.edit_text(
-                callback.message.text + "\n\n✅ <b>Принято</b>",
+                html.escape(callback.message.text or "") + "\n\n✅ <b>Принято</b>",
                 parse_mode="HTML"
             )
         except TelegramBadRequest:
@@ -153,7 +148,7 @@ async def bug_report_decision(callback: types.CallbackQuery):
         try:
             await callback.message.edit_reply_markup(reply_markup=None)
             await callback.message.edit_text(
-                callback.message.text + "\n\n❌ <b>Отклонено</b>",
+                html.escape(callback.message.text or "") + "\n\n❌ <b>Отклонено</b>",
                 parse_mode="HTML"
             )
         except TelegramBadRequest:
@@ -183,7 +178,7 @@ async def show_bugs(message: types.Message):
         e = "🔴" if r["status"] == "new" else "✅"
         safe_user = md_escape(r['username'] or 'unknown')
         safe_text = md_escape((r['text'] or '')[:100])
-        text += f"{e} #{r['id']} — *{safe_user}*\n{safe_text}\n_{r['created']}_\n\n"
+        text += f"{e} #{r['id']} — *{safe_user}*\n{safe_text}\n_{timeutils.display(r['created'])}_\n\n"
     await message.answer(text, parse_mode="Markdown")
 
 
@@ -274,12 +269,12 @@ async def _show_user_profile(callback: types.CallbackQuery, state: FSMContext, t
         await callback.answer()
         return
     muted = await is_muted(tg_id)
-    muted_until = user["muted_until"] or "—"
+    muted_until = timeutils.display(user["muted_until"])
     text = (
         f"<b>👤 Профиль пользователя</b>\n\n"
         f"ID: <code>{user['tg_id']}</code>\n"
-        f"Username: @{user['username'] or '—'}\n"
-        f"Имя: {user['first_name'] or '—'}\n"
+        f"Username: @{html.escape(user['username'] or '—')}\n"
+        f"Имя: {html.escape(user['first_name'] or '—')}\n"
         f"Зарегистрирован: {user['joined'] or '—'}\n"
         f"Уровень: {user['level']} | XP: {user['xp']}\n"
         f"Стрик: {user['streak']} дней\n"
@@ -334,7 +329,7 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         await state.set_state(AdminPanel.user_list)
         await state.update_data(ap_page=page)
         per_page = 10
-        header = f"🔍 Поиск: <i>{search_query}</i>\n" if search_query else ""
+        header = f"🔍 Поиск: <i>{html.escape(search_query)}</i>\n" if search_query else ""
         text = f"<b>👥 Пользователи</b>\n{header}Всего: {total}\n\nНажми на пользователя для управления:"
         kb = admin_users_kb(users, page, total, per_page)
         try:
@@ -490,7 +485,7 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         await state.set_state(AdminPanel.change_name)
         await state.update_data(ap_target_tg_id=tg_id)
         target = await get_user(tg_id)
-        current = (target["first_name"] or target["username"] or "—") if target else "—"
+        current = html.escape((target["first_name"] or target["username"] or "—") if target else "—")
         try:
             await callback.message.edit_text(
                 f"✏️ Изменить имя пользователя <code>{tg_id}</code>\nТекущее имя: <b>{current}</b>\n\nВведи новое имя:",
@@ -622,7 +617,7 @@ async def admin_panel_callback(callback: types.CallbackQuery, state: FSMContext)
         else:
             lines = []
             for r in rows:
-                ts = (r["created"] or "")[:16]
+                ts = timeutils.display(r["created"])
                 name = html.escape(r["name"] or "unknown")
                 model_short = (r["model"] or "?").replace("gemini-", "").replace("-preview", "★")
                 q = html.escape((r["question"] or "")[:200])
@@ -799,7 +794,7 @@ async def admin_search_input(message: types.Message, state: FSMContext):
     total = len(results)
     per_page = 10
     page_results = results[:per_page]
-    text = f"<b>🔍 Результаты поиска: {query}</b>\nНайдено: {total}"
+    text = f"<b>🔍 Результаты поиска: {html.escape(query)}</b>\nНайдено: {total}"
     kb = admin_users_kb(page_results, 0, total, per_page)
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
@@ -855,12 +850,14 @@ async def admin_mute_duration_input(message: types.Message, state: FSMContext):
     if delta.total_seconds() > 30 * 24 * 3600:
         await message.answer("Максимальный срок мута — 30 дней.")
         return
-    until = (datetime.now() + delta).isoformat()
+    # Bot time, with the offset stored, so the shown end matches the bot's calendar.
+    until = (timeutils.now() + delta).isoformat()
     fsm_data = await state.get_data()
     tg_id = fsm_data.get("ap_target_tg_id")
     if tg_id:
         await mute_user(tg_id, until)
-        await message.answer(f"🔇 Пользователь <code>{tg_id}</code> замучен до {until[:16]}", parse_mode="HTML")
+        await message.answer(f"🔇 Пользователь <code>{tg_id}</code> замучен до {timeutils.display(until)}",
+                             parse_mode="HTML")
     await state.set_state(AdminPanel.main)
     text_panel, kb = await _build_main_panel_view()
     await message.answer(text_panel, reply_markup=kb, parse_mode="HTML")
@@ -899,7 +896,7 @@ async def admin_change_name_input(message: types.Message, state: FSMContext):
         conn = await get_db()
         await conn.execute("UPDATE users SET first_name=? WHERE tg_id=?", (new_name, tg_id))
         await conn.commit()
-        await message.answer(f"✅ Имя пользователя <code>{tg_id}</code> изменено на <b>{new_name}</b>", parse_mode="HTML")
+        await message.answer(f"✅ Имя пользователя <code>{tg_id}</code> изменено на <b>{html.escape(new_name)}</b>", parse_mode="HTML")
     await state.set_state(AdminPanel.main)
     text_panel, kb = await _build_main_panel_view()
     await message.answer(text_panel, reply_markup=kb, parse_mode="HTML")

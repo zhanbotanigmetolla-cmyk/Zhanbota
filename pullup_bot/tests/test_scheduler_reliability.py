@@ -1,0 +1,141 @@
+from datetime import timedelta
+import time
+
+import pytest
+from aiogram.exceptions import TelegramForbiddenError
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.methods import SendMessage
+
+from pullup_bot import config, timeutils
+from pullup_bot.services import scheduler
+from pullup_bot.storage import SqliteStorage
+from .conftest import insert_test_user
+from .test_cleanup import FakeBot
+
+
+async def test_watchdog_preserves_session_crossing_midnight(test_db, tmp_path, monkeypatch):
+    await insert_test_user(test_db, tg_id=42)
+    path = str(tmp_path / "fsm.db")
+    monkeypatch.setattr(config, "FSM_DB_PATH", path)
+    storage = SqliteStorage(path)
+    key = StorageKey(bot_id=1, chat_id=42, user_id=42)
+    data = {"date": (timeutils.today() - timedelta(days=1)).isoformat(), "sets": [10, 8]}
+    try:
+        await storage.set_state(key, "Training:active")
+        await storage.set_data(key, data)
+        bot = FakeBot()
+        await scheduler.watchdog_health_check(bot)
+        assert await storage.get_state(key) == "Training:active"
+        assert await storage.get_data(key) == data
+        assert bot.sent == []
+    finally:
+        await storage.close()
+
+
+@pytest.mark.parametrize("has_workout", [False, True])
+async def test_blocked_user_cleanup_respects_recent_activity(test_db, has_workout, monkeypatch):
+    current = timeutils.now()
+    monkeypatch.setattr(timeutils, "now", lambda: current)
+    joined_days = 200 if has_workout else 1
+    await insert_test_user(
+        test_db, tg_id=42, last_workout=None,
+        joined=(timeutils.today() - timedelta(days=joined_days)).isoformat(),
+        notify_time=timeutils.now().strftime("%H:%M"))
+    if has_workout:
+        await test_db.execute(
+            "INSERT INTO workouts (user_id,date,exercise,completed) "
+            "SELECT id,?,'pullups',20 FROM users WHERE tg_id=42",
+            ((timeutils.today() - timedelta(days=1)).isoformat(),))
+        await test_db.commit()
+
+    class BlockedBot:
+        async def send_message(self, chat_id, text, **kwargs):
+            raise TelegramForbiddenError(method=SendMessage(chat_id=chat_id, text=text),
+                                         message="Forbidden: bot was blocked by the user")
+
+    await scheduler.daily_reminder(BlockedBot())
+    async with test_db.execute("SELECT COUNT(*) FROM users WHERE tg_id=42") as cur:
+        assert (await cur.fetchone())[0] == 1
+
+
+async def test_watchdog_reminds_once_without_discarding_old_workout(test_db, tmp_path, monkeypatch):
+    await insert_test_user(test_db, tg_id=42)
+    path = str(tmp_path / "fsm.db")
+    monkeypatch.setattr(config, "FSM_DB_PATH", path)
+    storage = SqliteStorage(path)
+    key = StorageKey(bot_id=1, chat_id=42, user_id=42)
+    data = {"date": (timeutils.today() - timedelta(days=2)).isoformat(), "sets": [10, 8]}
+    try:
+        await storage.set_state(key, "Training:rpe")
+        await storage.set_data(key, data)
+        conn = await storage._get_conn()
+        await conn.execute("UPDATE fsm_states SET updated_at=?", (time.time() - 3 * 60 * 60,))
+        await conn.commit()
+        bot = FakeBot()
+        await scheduler.watchdog_health_check(bot)
+        await scheduler.watchdog_health_check(bot)
+        assert await storage.get_state(key) == "Training:rpe"
+        assert await storage.get_data(key) == data
+        assert len(bot.sent) == 1
+        assert bot.sent[0][0] == 42
+        assert "/cancel" in bot.sent[0][1]
+    finally:
+        await storage.close()
+
+
+async def test_owner_xp_never_decays_while_other_users_still_do(test_db):
+    """XP decay, rank loss and their messages skip the owner's account only."""
+    nine_days_ago = (timeutils.today() - timedelta(days=9)).isoformat()
+    await insert_test_user(test_db, tg_id=config.ADMIN_TG_ID, xp=9855, level=7,
+                           last_workout=nine_days_ago)
+    await insert_test_user(test_db, tg_id=43, xp=9855, level=7, last_workout=nine_days_ago)
+    bot = FakeBot()
+    await scheduler.daily_xp_decay(bot)
+    async with test_db.execute("SELECT tg_id, xp FROM users") as cur:
+        xp = {row[0]: row[1] for row in await cur.fetchall()}
+    assert xp[config.ADMIN_TG_ID] == 9855
+    assert xp[43] < 9855
+    assert [chat for chat, _ in bot.sent] == [43]  # only the other user hears about it
+
+
+async def test_decay_notice_is_sent_once_whenever_decay_is_first_seen(test_db):
+    """The notice used to require days_inactive == 7 exactly, so a user first
+    processed on day 9 never heard that XP had started to drop."""
+    nine_days_ago = (timeutils.today() - timedelta(days=9)).isoformat()
+    await insert_test_user(test_db, tg_id=43, xp=9855, level=7, last_workout=nine_days_ago)
+    bot = FakeBot()
+    await scheduler.daily_xp_decay(bot)
+    assert [chat for chat, _ in bot.sent] == [43]
+    assert "убывать" in bot.sent[0][1]
+    await scheduler.daily_xp_decay(bot)
+    assert len(bot.sent) == 1  # no daily repeat
+
+    # Training again clears the flag; the next long break is announced afresh.
+    await test_db.execute("UPDATE users SET last_workout=?, xp=9855, level=7 WHERE tg_id=43",
+                          (timeutils.today().isoformat(),))
+    await test_db.commit()
+    await scheduler.daily_xp_decay(bot)
+    await test_db.execute("UPDATE users SET last_workout=? WHERE tg_id=43",
+                          ((timeutils.today() - timedelta(days=8)).isoformat(),))
+    await test_db.commit()
+    await scheduler.daily_xp_decay(bot)
+    assert [chat for chat, _ in bot.sent] == [43, 43]
+
+
+async def test_reminder_skips_a_broken_profile_and_still_reaches_the_others(test_db, monkeypatch):
+    current = timeutils.now()
+    monkeypatch.setattr(timeutils, "now", lambda: current)
+    at = current.strftime("%H:%M")
+    await insert_test_user(test_db, tg_id=1, notify_time=at, program_type="standard")
+    await insert_test_user(test_db, tg_id=2, notify_time=at, program_type="standard")
+    real_get_day_rows = scheduler.get_day_rows
+
+    async def broken_for_first(user_id, *args):
+        if user_id == 1:
+            raise RuntimeError("corrupt rows")
+        return await real_get_day_rows(user_id, *args)
+
+    monkeypatch.setattr(scheduler, "get_day_rows", broken_for_first)
+    bot = FakeBot()
+    await scheduler.daily_reminder(bot)
+    assert [chat for chat, _ in bot.sent] == [2]

@@ -1,21 +1,60 @@
 import asyncio
+import hashlib
 import json
-from datetime import date, timedelta
+import re
+from datetime import date
+from uuid import uuid4
 
 from aiogram import F, Router, types
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
 
-from ..config import XP_PER_PULLUP, logger
-from ..db import (add_xp, get_db, get_lang, get_today_workout, get_user,
-                  update_streak, upsert_workout)
+from ..config import (BASE_COLS, BEST_WEIGHT_COLS, EFFECT_CONFETTI, EFFECT_FIRE,
+                      EXERCISES, EXERCISE_EMOJI, KASPI_NAME, KASPI_PHONE,
+                      MAX_WEIGHT_KG, PR_COLS, PROGRAMS,
+                      RPE_EASY_DELTA, RPE_HARD_DELTA, RPE_TOO_HARD_DELTA,
+                      SET_RECORD_COLS, WEIGHT_COLS, WEIGHT_STEP, expected_rpe,
+                      is_weighted, logger, xp_for)
+from ..db import (add_xp, clear_rest_row, get_db, get_day_rows, get_user,
+                  get_workout, mark_rest_day, update_streak, upsert_workout,
+                  workout_transaction)
 from ..i18n import t, text_filter, day_name
-from ..keyboards import (activity_reply_kb, back_only_kb, cancel_confirm_kb, freeze_confirm_kb,
-                         main_kb, parse_rpe, rest_day_kb, rpe_menu_kb, training_kb)
+from ..keyboards import (REST_TIMER_CHOICES, cancel_confirm_kb,
+                         exercise_picker_kb, main_kb, parse_rpe, rest_day_kb,
+                         rest_timer_kb, rpe_menu_kb, training_kb, weight_kb)
 from ..states import Training
-from ..services.xp import (activity_reduction, display, level_info, md_escape,
-                            planned_for_day, progress_bar)
+from ..timeutils import today as local_today
+from ..services.support import support_line
+from ..services.xp import (answer_with_effect, day_type_for, display, fmt_kg,
+                           level_info, md_escape, progress_bar, user_base,
+                           user_weight)
 
 router = Router()
+
+
+def ex_label(exercise: str, lang: str) -> str:
+    """Human label for an exercise: emoji + localized name."""
+    return f"{EXERCISE_EMOJI[exercise]} {t('ex_' + exercise, lang)}"
+
+
+def _coeff_for_day_type(user, day_type: str) -> float:
+    """Look up the load coefficient for a day-type name in the user's program wave."""
+    wave = PROGRAMS.get(user["program_type"] or "standard", PROGRAMS["standard"])
+    for name, coeff in wave.values():
+        if name == day_type:
+            return coeff
+    return 1.0
+
+
+def _raise_base(base: int, pct: float) -> int:
+    """Raise a daily target by ``pct``, but always by at least one repetition.
+
+    ``int(base * 1.05)`` leaves every base below 20 unchanged (and ``1.03``
+    every base below 34), so beginners never progressed while the summary
+    still announced a raised target quoting the old number.
+    """
+    return base + max(1, int(base * pct))
 
 
 async def sync_max_streak(tg_id: int) -> None:
@@ -35,12 +74,15 @@ _user_locks: dict[int, asyncio.Lock] = {}
 
 
 def _get_lock(uid: int) -> asyncio.Lock:
-    """Return the per-user asyncio lock, evicting the oldest entry when the cap is reached."""
+    """Return the per-user asyncio lock, evicting the oldest idle entry when the cap is reached."""
     if uid not in _user_locks:
         if len(_user_locks) >= _MAX_LOCKS:
-            # Evict the oldest entry
-            oldest = next(iter(_user_locks))
-            del _user_locks[oldest]
+            # Evict the oldest entry that is not currently held — evicting a held
+            # lock would let a concurrent message bypass the duplicate guard
+            for k, lock in _user_locks.items():
+                if not lock.locked():
+                    del _user_locks[k]
+                    break
         _user_locks[uid] = asyncio.Lock()
     return _user_locks[uid]
 
@@ -50,125 +92,361 @@ def _days_since_last(user) -> int:
     if not user["last_workout"]:
         return 999
     try:
-        return (date.today() - date.fromisoformat(user["last_workout"])).days
+        return (local_today() - date.fromisoformat(user["last_workout"])).days
     except Exception:
         return 999
 
 
-async def _mark_rest_day_if_missing(user_id: int, today_str: str):
-    """Persist a rest-day row so today's plan stays consistent across screens."""
-    existing = await get_today_workout(user_id, today_str)
-    if existing:
-        return
-    await upsert_workout(
-        user_id,
-        today_str,
-        planned=0,
-        day_type="Отдых",
-        sets_json=json.dumps([]),
-        completed=0,
-    )
+async def _session_already_saved(tg_id: int, data: dict) -> bool:
+    """Recognize a committed session even when clearing its old FSM failed."""
+    if not data.get("exercise") or not data.get("date"):
+        return False
+    conn = await get_db()
+    async with conn.execute(
+        "SELECT 1 FROM workout_completions c JOIN users u ON u.id=c.user_id "
+        "WHERE c.session_id=? AND u.tg_id=?", (_completion_id(tg_id, data), tg_id),
+    ) as cursor:
+        return await cursor.fetchone() is not None
 
 
+async def _recover_saved_session(message, state, data: dict) -> bool:
+    """Never let a stale completed FSM edit or cancel already committed sets."""
+    if not await _session_already_saved(message.from_user.id, data):
+        return False
+    await state.clear()
+    lang = data.get("lang", "ru")
+    text = ("Тренировка уже сохранена. Для новых подходов нажми «Тренировка»."
+            if lang == "ru" else
+            "This workout is already saved. Tap Train to add new sets.")
+    await message.answer(text, reply_markup=main_kb(lang))
+    return True
+
+
+@router.message(Command("train"))
 @router.message(text_filter("btn_train"))
 async def start_training(message: types.Message, state: FSMContext):
-    """Handle the Train button: compute today's plan, auto-advance rest days, and begin the session."""
-    user = await get_user(message.from_user.id)
+    """Handle the Train button or /train command."""
+    await _start_training_flow(message.from_user.id, message, state)
+
+
+@router.callback_query(F.data == "reminder_train")
+async def reminder_train_cb(callback: types.CallbackQuery, state: FSMContext):
+    """Start today's training straight from the inline button on the morning reminder."""
+    await callback.answer()
+    # Buttons on messages older than 48h arrive as InaccessibleMessage (no .answer())
+    if isinstance(callback.message, types.Message):
+        await _start_training_flow(callback.from_user.id, callback.message, state)
+
+
+async def _start_training_flow(uid: int, message: types.Message, state: FSMContext):
+    """Resolve today's day type, then show the exercise picker (or the rest-day prompt)."""
+    user = await get_user(uid)
     if not user:
         await message.answer(t("register_first", "ru"))
         return
 
     lang = user["lang"] or "ru"
-    today_str = date.today().isoformat()
-    existing_today = await get_today_workout(user["id"], today_str)
-    if existing_today:
-        # Keep today's saved plan/day type stable if the user re-enters training.
-        planned = existing_today["planned"] or 0
-        day_type = existing_today["day_type"] or planned_for_day(user)[1]
+    today_str = local_today().isoformat()
+    day_rows = await get_day_rows(user["id"], today_str)
+    training_rows = [r for r in day_rows if r["exercise"] != "rest"]
+    days_off = _days_since_last(user)
+
+    if training_rows:
+        # Keep today's saved day type stable if the user re-enters training.
+        day_type = training_rows[0]["day_type"] or day_type_for(user)[0]
+    elif day_rows:
+        day_type = "Отдых"  # rest marker exists
     elif user["last_workout"] == today_str:
         # User already handled today (acknowledged a rest day) but the row was
         # lost (e.g. cancelled a rest-override session). Restore the rest row so
         # the rest/train prompt appears again instead of jumping to a training day.
-        await _mark_rest_day_if_missing(user["id"], today_str)
-        planned = 0
+        await mark_rest_day(user["id"], today_str)
         day_type = "Отдых"
     else:
-        planned, day_type = planned_for_day(user)
-    days_off = _days_since_last(user)
+        day_type = day_type_for(user)[0]
 
     # If today is a rest day but the user has already been off since their last workout,
     # they've naturally rested — auto-advance program_day to the next training day.
-    if day_type == "Отдых" and days_off >= 2:
+    if day_type == "Отдых" and not training_rows and days_off >= 2:
         conn = await get_db()
         new_pd = (user["program_day"] or 0) + 1
         await conn.execute("UPDATE users SET program_day = ? WHERE id = ?", (new_pd, user["id"]))
         await conn.commit()
+        await clear_rest_row(user["id"], today_str)
         if new_pd % 7 == 0:
-            await _check_weekly_progression(message.from_user.id, user["id"], user["base_pullups"])
-            user = dict(await get_user(message.from_user.id))
-        else:
-            user = dict(user)
-        user["program_day"] = new_pd
-        planned, day_type = planned_for_day(user)
+            await _run_cycle_progressions(uid, user["id"])
+        user = await get_user(uid)
+        day_type = day_type_for(user)[0]
 
-    # Rest day override (normal case)
+    # Rest day (normal case)
     if day_type == "Отдых":
         # Ensure a record exists so this rest day appears in stats history
-        await _mark_rest_day_if_missing(user["id"], today_str)
-        await message.answer(t("rest_day_prompt", lang), reply_markup=rest_day_kb(lang))
+        await mark_rest_day(user["id"], today_str)
+        await message.answer(t("rest_day_prompt", lang) + support_line(lang, markdown=False),
+                             reply_markup=rest_day_kb(lang))
         await state.update_data(rest_day_lang=lang)
         await state.set_state(Training.rest_day)
         return
 
-    # After a long break (3+ days), reduce load and warn
-    if days_off >= 3 and days_off < 999:
-        reduction = 0.6 if days_off >= 7 else 0.75
-        planned = int(planned * reduction)
-        break_note = (f"⚠️ _Перерыв {days_off} дн. — нагрузка снижена до {int(reduction*100)}% для плавного возвращения._\n\n"
-                      if lang == "ru" else
-                      f"⚠️ _Break of {days_off} days — load reduced to {int(reduction*100)}% for a smooth return._\n\n")
-        await message.answer(break_note, parse_mode="Markdown")
+    await _show_exercise_picker(message, state, user, lang, today_str, day_type,
+                                was_rest_override=False)
 
-    await _begin_training(message, state, user, lang, today_str, planned, day_type)
+
+async def _show_exercise_picker(message, state, user, lang, today_str, day_type,
+                                was_rest_override: bool):
+    """Show the 'what are we training today' menu with per-exercise targets."""
+    coeff = _coeff_for_day_type(user, day_type)
+    labels = []
+    label_map: dict[str, str] = {}
+    for ex in EXERCISES:
+        row = await get_workout(user["id"], today_str, ex)
+        base = user_base(user, ex)
+        label = ex_label(ex, lang)
+        if row and (row["completed"] or 0) > 0:
+            label += f" ✅ {row['completed']}/{row['planned']}"
+        elif row and (row["planned"] or 0) > 0:
+            label += f" · {row['planned']}"
+        elif base > 0:
+            label += f" · {int(base * coeff)}"
+        # Weighted variants show the load they are currently being worked with,
+        # otherwise two pull-up rows in the list are indistinguishable.
+        if is_weighted(ex) and base > 0:
+            label += f" (+{fmt_kg(user_weight(user, ex))} {t('kg', lang)})"
+        labels.append(label)
+        label_map[label] = ex
+
+    day_display = day_name(day_type, lang)
+    await state.set_state(Training.pick_exercise)
+    await state.update_data(date=today_str, pick_day_type=day_type,
+                            ex_label_map=label_map, lang=lang,
+                            was_rest_override=was_rest_override)
+    await message.answer(f"🟢 *{day_display}*\n\n{t('train_pick_exercise', lang)}",
+                         parse_mode="Markdown",
+                         reply_markup=exercise_picker_kb(labels, lang))
+
+
+@router.message(Training.pick_exercise, text_filter("btn_back"))
+async def pick_exercise_back(message: types.Message, state: FSMContext):
+    """Leave the exercise picker and return to the main menu."""
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    await state.clear()
+    await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+
+
+@router.message(Training.pick_exercise)
+async def pick_exercise(message: types.Message, state: FSMContext):
+    """Handle the exercise choice: start the session or ask for a first-time max."""
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    label_map = data.get("ex_label_map", {})
+    exercise = label_map.get((message.text or "").strip())
+    if not exercise:
+        await message.answer(t("train_pick_exercise", lang),
+                             reply_markup=exercise_picker_kb(list(label_map.keys()), lang))
+        return
+    user = await get_user(message.from_user.id)
+    if not user:
+        await state.clear()
+        await message.answer(t("register_first", "ru"))
+        return
+    if user_base(user, exercise) <= 0:
+        await state.set_state(Training.setup_base)
+        await state.update_data(setup_exercise=exercise)
+        prompt = "ex_setup_prompt_weighted" if is_weighted(exercise) else "ex_setup_prompt"
+        await message.answer(
+            t(prompt, lang, ex=t(f"ex_gen_{exercise}", lang)),
+            parse_mode="Markdown")
+        return
+    if is_weighted(exercise):
+        await _ask_session_weight(message, state, user, lang, exercise)
+        return
+    await _begin_training(message, state, user, lang, data["date"], exercise,
+                          data.get("pick_day_type", "Средний"),
+                          data.get("was_rest_override", False))
+
+
+async def _ask_session_weight(message, state, user, lang, exercise):
+    """Offer today's load for a weighted exercise: the working weight, ±a plate, or manual."""
+    data = await state.get_data()
+    existing = await get_workout(user["id"], data["date"], exercise)
+    if existing and (existing["completed"] or 0) > 0:
+        await _begin_training(message, state, user, lang, data["date"], exercise,
+                              data.get("pick_day_type", "Средний"),
+                              data.get("was_rest_override", False))
+        return
+    working = user_weight(user, exercise)
+    await state.set_state(Training.pick_weight)
+    await state.update_data(setup_exercise=exercise)
+    await message.answer(
+        t("weight_pick_prompt", lang, ex=t(f"ex_gen_{exercise}", lang),
+          weight=fmt_kg(working)),
+        parse_mode="Markdown", reply_markup=weight_kb(working, lang))
+
+
+def _parse_weight(text: str) -> float | None:
+    """Parse a load in kg from a button label or free text; None if unusable."""
+    cleaned = (text or "").replace(",", ".").strip()
+    match = re.search(r"\d+(?:\.\d+)?", cleaned)
+    if not match:
+        return None
+    value = float(match.group(0))
+    if not (0 <= value <= MAX_WEIGHT_KG):
+        return None
+    return value
+
+
+@router.message(Training.pick_weight, text_filter("btn_back"))
+async def pick_weight_back(message: types.Message, state: FSMContext):
+    """Go back from the load picker to the exercise list."""
+    user = await get_user(message.from_user.id)
+    if not user:
+        await state.clear()
+        await message.answer(t("register_first", "ru"))
+        return
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    await _show_exercise_picker(message, state, user, lang, data["date"],
+                                data.get("pick_day_type", "Средний"),
+                                data.get("was_rest_override", False))
+
+
+@router.message(Training.pick_weight)
+async def pick_weight(message: types.Message, state: FSMContext):
+    """Accept today's load and start the weighted session."""
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    exercise = data.get("setup_exercise")
+    user = await get_user(message.from_user.id)
+    if not user or not exercise:
+        await state.clear()
+        await message.answer(t("register_first", "ru"))
+        return
+    existing = await get_workout(user["id"], data["date"], exercise)
+    if existing and (existing["completed"] or 0) > 0:
+        await _begin_training(message, state, user, lang, data["date"], exercise,
+                              data.get("pick_day_type", "Средний"),
+                              data.get("was_rest_override", False))
+        return
+    weight = _parse_weight(message.text or "")
+    if weight is None:
+        await message.answer(t("weight_enter_number", lang, max=int(MAX_WEIGHT_KG)),
+                             reply_markup=weight_kb(user_weight(user, exercise), lang))
+        return
+    # A deliberate change of load carries over as the new working weight, so the
+    # next session and the progression check both start from what was actually used.
+    if weight != user_weight(user, exercise):
+        conn = await get_db()
+        await conn.execute(
+            f"UPDATE users SET {WEIGHT_COLS[exercise]}=? WHERE tg_id=?",
+            (weight, message.from_user.id))
+        await conn.commit()
+        user = await get_user(message.from_user.id)
+    await _begin_training(message, state, user, lang, data["date"], exercise,
+                          data.get("pick_day_type", "Средний"),
+                          data.get("was_rest_override", False))
+
+
+@router.message(Training.setup_base, text_filter("btn_back"))
+async def setup_base_back(message: types.Message, state: FSMContext):
+    """Cancel first-time exercise setup and return to the picker."""
+    user = await get_user(message.from_user.id)
+    if not user:
+        await state.clear()
+        await message.answer(t("register_first", "ru"))
+        return
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    await _show_exercise_picker(message, state, user, lang, data["date"],
+                                data.get("pick_day_type", "Средний"),
+                                data.get("was_rest_override", False))
+
+
+@router.message(Training.setup_base)
+async def setup_base(message: types.Message, state: FSMContext):
+    """Accept the first-time max rep count and derive the exercise's daily base."""
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    exercise = data.get("setup_exercise")
+    if not exercise:
+        await state.clear()
+        await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+        return
+    try:
+        max_reps = int((message.text or "").strip())
+        if not (1 <= max_reps <= 200):
+            raise ValueError
+    except ValueError:
+        await message.answer(t("enter_number", lang, example="10"))
+        return
+    base = max(5, max_reps * 3)
+    conn = await get_db()
+    await conn.execute(f"UPDATE users SET {BASE_COLS[exercise]}=? WHERE tg_id=?",
+                       (base, message.from_user.id))
+    await conn.commit()
+    await message.answer(t("ex_setup_ok", lang, base=base), parse_mode="Markdown")
+    user = await get_user(message.from_user.id)
+    if is_weighted(exercise):
+        # Reps alone do not describe a weighted session — ask what is on the belt.
+        await state.set_state(Training.setup_weight)
+        await message.answer(
+            t("weight_setup_prompt", lang, ex=t(f"ex_gen_{exercise}", lang)),
+            parse_mode="Markdown")
+        return
+    await _begin_training(message, state, user, lang, data["date"], exercise,
+                          data.get("pick_day_type", "Средний"),
+                          data.get("was_rest_override", False))
+
+
+@router.message(Training.setup_weight)
+async def setup_weight(message: types.Message, state: FSMContext):
+    """Accept the first-time working load for a weighted exercise."""
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    exercise = data.get("setup_exercise")
+    if not exercise:
+        await state.clear()
+        await message.answer(t("main_menu", lang), reply_markup=main_kb(lang))
+        return
+    weight = _parse_weight(message.text or "")
+    if weight is None:
+        await message.answer(t("weight_enter_number", lang, max=int(MAX_WEIGHT_KG)))
+        return
+    conn = await get_db()
+    await conn.execute(
+        f"UPDATE users SET {WEIGHT_COLS[exercise]}=?, {BEST_WEIGHT_COLS[exercise]}=? "
+        f"WHERE tg_id=?", (weight, weight, message.from_user.id))
+    await conn.commit()
+    await message.answer(t("weight_setup_ok", lang, weight=fmt_kg(weight)),
+                         parse_mode="Markdown")
+    user = await get_user(message.from_user.id)
+    await _begin_training(message, state, user, lang, data["date"], exercise,
+                          data.get("pick_day_type", "Средний"),
+                          data.get("was_rest_override", False))
 
 
 @router.message(Training.rest_day, text_filter("rest_day_train"))
 async def rest_override_train(message: types.Message, state: FSMContext):
-    """Handle 'Train anyway' on a rest day: start a Medium session at full base."""
+    """Handle 'Train anyway' on a rest day: pick an exercise for a Medium session."""
     user = await get_user(message.from_user.id)
     if not user:
         await state.clear()
         await message.answer(t("register_first", "ru"))
         return
     lang = user["lang"] or "ru"
-    today = date.today()
-    today_str = today.isoformat()
-    day_type = "Средний"
-    planned = int(user["base_pullups"] * 1.0)
-    await _begin_training(message, state, user, lang, today_str, planned, day_type,
-                          was_rest_override=True)
+    today_str = local_today().isoformat()
+    await _show_exercise_picker(message, state, user, lang, today_str, "Средний",
+                                was_rest_override=True)
 
 
 @router.message(Training.rest_day, text_filter("rest_day_rest"))
 async def rest_override_rest(message: types.Message, state: FSMContext):
-    """Handle 'Keep resting' on a rest day: advance program_day, offer freeze token if streak breaks."""
+    """Handle 'Keep resting' on a rest day: advance program_day silently."""
     data = await state.get_data()
     lang = data.get("rest_day_lang", "ru")
     user = await get_user(message.from_user.id)
     if user:
-        today = date.today().isoformat()
-        yesterday = (date.today() - timedelta(days=1)).isoformat()
-        # Check if streak would break (last workout was not yesterday or today)
-        streak_breaks = (user["last_workout"] != today and user["last_workout"] != yesterday
-                         and user["streak"] > 0)
-        if streak_breaks and (user["freeze_tokens"] or 0) > 0:
-            await state.update_data(rest_day_advancing=True)
-            await state.set_state(Training.freeze_confirm)
-            await message.answer(
-                t("freeze_prompt", lang, tokens=user["freeze_tokens"]),
-                reply_markup=freeze_confirm_kb(lang))
-            return
-        # Advance program_day for rest day acknowledgement
+        today = local_today().isoformat()
         if user["last_workout"] != today:
             conn = await get_db()
             new_pd = (user["program_day"] or 0) + 1
@@ -178,131 +456,94 @@ async def rest_override_rest(message: types.Message, state: FSMContext):
             )
             await conn.commit()
             if new_pd % 7 == 0:
-                progression_base = await _check_weekly_progression(
-                    message.from_user.id, user["id"], user["base_pullups"])
-                if progression_base:
-                    await message.answer(t("train_progression", lang, base=progression_base),
+                progressed = await _run_cycle_progressions(message.from_user.id, user["id"])
+                for item in progressed:
+                    await message.answer(progression_message(item, lang),
                                          parse_mode="Markdown")
-        await _mark_rest_day_if_missing(user["id"], today)
+        await mark_rest_day(user["id"], today)
     await state.clear()
-    await message.answer(t("reminder_rest", lang), reply_markup=main_kb(lang))
+    await message.answer(t("reminder_rest", lang) + support_line(lang, markdown=False),
+                         reply_markup=main_kb(lang))
 
 
-@router.message(Training.freeze_confirm, text_filter("freeze_yes_btn"))
-async def freeze_yes(message: types.Message, state: FSMContext):
-    """Spend a freeze token to protect the streak on a missed/rest day."""
-    data = await state.get_data()
-    lang = data.get("rest_day_lang", "ru")
-    user = await get_user(message.from_user.id)
-    if not user:
-        await state.clear()
-        return
-    today = date.today().isoformat()
-    conn = await get_db()
-    new_tokens = max(0, (user["freeze_tokens"] or 0) - 1)
-    new_streak = (user["streak"] or 0) + 1
-    await conn.execute(
-        "UPDATE users SET freeze_tokens=?, streak=?, last_workout=? WHERE tg_id=?",
-        (new_tokens, new_streak, today, message.from_user.id)
-    )
-    await conn.execute(
-        "INSERT INTO streak_recoveries (user_id, date, reason) VALUES (?,?,?)",
-        (user["id"], today, "freeze")
-    )
-    # Advance program_day
-    new_pd = (user["program_day"] or 0) + 1
-    await conn.execute("UPDATE users SET program_day=? WHERE tg_id=?",
-                       (new_pd, message.from_user.id))
-    await conn.commit()
-    await sync_max_streak(message.from_user.id)
-    if new_pd % 7 == 0:
-        progression_base = await _check_weekly_progression(
-            message.from_user.id, user["id"], user["base_pullups"])
-        if progression_base:
-            await message.answer(t("train_progression", lang, base=progression_base),
-                                 parse_mode="Markdown")
-    await _mark_rest_day_if_missing(user["id"], today)
-    await state.clear()
-    await message.answer(t("freeze_used", lang, streak=new_streak, tokens=new_tokens),
-                         parse_mode="Markdown", reply_markup=main_kb(lang))
-
-
-@router.message(Training.freeze_confirm, text_filter("freeze_no_btn"))
-async def freeze_no(message: types.Message, state: FSMContext):
-    """Decline to use a freeze token: advance program_day, reset streak, and close the rest day."""
-    data = await state.get_data()
-    lang = data.get("rest_day_lang", "ru")
-    user = await get_user(message.from_user.id)
-    if user:
-        today = date.today().isoformat()
-        conn = await get_db()
-        new_pd = (user["program_day"] or 0) + 1
-        await conn.execute(
-            "UPDATE users SET program_day=?, last_workout=?, streak=0 WHERE tg_id=?",
-            (new_pd, today, message.from_user.id)
-        )
-        await conn.commit()
-        if new_pd % 7 == 0:
-            progression_base = await _check_weekly_progression(
-                message.from_user.id, user["id"], user["base_pullups"])
-            if progression_base:
-                await message.answer(t("train_progression", lang, base=progression_base),
-                                     parse_mode="Markdown")
-        await _mark_rest_day_if_missing(user["id"], today)
-    await state.clear()
-    await message.answer(t("reminder_rest", lang), reply_markup=main_kb(lang))
-
-
-async def _begin_training(message, state, user, lang, today_str, planned, day_type, tg_id=None, was_rest_override=False):
+async def _begin_training(message, state, user, lang, today_str, exercise, day_type,
+                          was_rest_override=False):
     """Initialise FSM state and send the training prompt with today's target and quick-rep keyboard."""
-    if tg_id is None:
-        tg_id = user["tg_id"]
-    today = date.fromisoformat(today_str)
-    yesterday_str = (today - timedelta(days=1)).isoformat()
-    yesterday_w = await get_today_workout(user["id"], yesterday_str)
-    reduction = 1.0
-    if yesterday_w and yesterday_w["extra_activity"]:
-        reduction = activity_reduction(yesterday_w["extra_activity"], yesterday_w["extra_minutes"])
-        planned = int(planned * reduction)
+    coeff = _coeff_for_day_type(user, day_type)
+    planned = int(user_base(user, exercise) * coeff)
+    days_off = _days_since_last(user)
+    weight = user_weight(user, exercise)
 
-    existing = await get_today_workout(user["id"], today_str)
+    existing = await get_workout(user["id"], today_str, exercise)
     done_today = existing["completed"] if existing else 0
-    session_sets: list = []
+    weight_locked = is_weighted(exercise) and done_today > 0
+    if weight_locked:
+        weight = float(existing["weight_kg"] or 0)
     done_before = done_today
+    session_sets: list = []
+
+    break_note = ""
+    if existing and existing["planned"]:
+        # Keep the target that was already set for this exercise today
+        planned = existing["planned"]
+    elif 3 <= days_off < 999:
+        # After a long break, reduce load and warn
+        reduction = 0.6 if days_off >= 7 else 0.75
+        planned = int(planned * reduction)
+        break_note = (f"⚠️ _Перерыв {days_off} дн. — нагрузка снижена до {int(reduction*100)}% для плавного возвращения._\n\n"
+                      if lang == "ru" else
+                      f"⚠️ _Break of {days_off} days — load reduced to {int(reduction*100)}% for a smooth return._\n\n")
+
+    if was_rest_override:
+        # The day stops being a rest day the moment an override session starts.
+        # Cancelling restores the rest row via _cleanup_cancelled_workout.
+        await clear_rest_row(user["id"], today_str)
 
     if existing:
-        # Restore planned only if the stored value is non-zero (rest days store planned=0;
-        # overriding a rest day passes base_pullups which we must not lose).
-        if existing["planned"]:
-            planned = existing["planned"]
-        # Do NOT restore day_type from DB — the caller already computed it correctly,
-        # and overwriting here would revert a rest-day override back to "Отдых".
+        await upsert_workout(user["id"], today_str, exercise,
+                             planned=planned, day_type=day_type, weight_kg=weight)
     else:
-        await upsert_workout(user["id"], today_str, planned=planned, day_type=day_type,
+        await upsert_workout(user["id"], today_str, exercise,
+                             planned=planned, day_type=day_type, weight_kg=weight,
                              sets_json=json.dumps([]), completed=0)
 
-    reduction_note = (f"\n{t('train_reduction', lang, pct=int((1 - reduction) * 100))}"
-                      if reduction < 1 else "")
+    if break_note:
+        await message.answer(break_note, parse_mode="Markdown")
+
+    is_density = day_type == "Плотность"
     await state.set_state(Training.active)
-    await state.update_data(date=today_str, planned=planned, sets=session_sets,
-                            done_before=done_before, lang=lang,
-                            was_rest_override=was_rest_override)
+    await state.update_data(date=today_str, exercise=exercise, planned=planned,
+                            sets=session_sets, done_before=done_before, lang=lang,
+                            was_rest_override=was_rest_override, is_density=is_density,
+                            weight=weight, session_id=uuid4().hex,
+                            orig_set_record=user[SET_RECORD_COLS[exercise]] or 0)
 
     day_display = day_name(day_type, lang)
-    em = "🟢" if day_type != "Отдых" else "😴"
-    density_note = ("\n\n" + t("density_hint", lang)) if day_type == "Плотность" else ""
+    density_note = ("\n\n" + t("density_hint", lang)) if is_density else ""
+    weight_note = (("\n" + t("train_with_weight", lang, weight=fmt_kg(weight)))
+                   if is_weighted(exercise) else "")
+    if weight_locked:
+        weight_note += (
+            "\nСегодня дополнительные подходы сохраняются с тем же весом. "
+            "Другой вес можно выбрать завтра."
+            if lang == "ru" else
+            "\nAdditional sets today use the same weight. "
+            "You can choose a different weight tomorrow."
+        )
     hint = "\n_Нажми на число или введи вручную:_" if lang == "ru" else "\n_Tap a number or enter manually:_"
     await message.answer(
-        f"{em} *{day_display}*\n\n"
-        f"{t('train_goal', lang, planned=planned)}{reduction_note}\n"
+        f"🟢 *{day_display}* — {ex_label(exercise, lang)}{weight_note}\n\n"
+        f"{t('train_goal', lang, planned=planned, ex=t(f'ex_gen_{exercise}', lang))}\n"
         f"{t('train_done_today', lang, done=done_today)}\n"
         f"{t('train_done_now', lang, done=0)}"
-        f"{density_note}{hint}",
-        parse_mode="Markdown", reply_markup=training_kb(session_sets, planned, lang))
+        f"{density_note}{hint}" + support_line(lang),
+        parse_mode="Markdown",
+        reply_markup=training_kb(session_sets, planned, lang, density=is_density))
 
 
 async def _training_status(message: types.Message, state: FSMContext):
-    """Send an updated progress summary (sets, total reps, progress bar) during an active session."""
+    """Refresh the live progress message: the previous status is deleted and a new
+    one is sent, so the chat keeps a single up-to-date status with rest-timer buttons."""
     data = await state.get_data()
     sets = data.get("sets", [])
     lang = data.get("lang", "ru")
@@ -317,20 +558,114 @@ async def _training_status(message: types.Message, state: FSMContext):
     sets_line = f"Подходов: {len(sets)}" if lang == "ru" else f"Sets: {len(sets)}"
     sets_display = ", ".join(str(s) for s in sets) if sets else "—"
     last_line = f"Подходы: {sets_display}" if lang == "ru" else f"Sets: {sets_display}"
-    await message.answer(
+    old_id = data.get("status_msg_id")
+    if old_id:
+        try:
+            await message.bot.delete_message(message.chat.id, old_id)
+        except Exception:
+            pass  # already gone or too old — a leftover status is harmless
+    new_msg = await message.answer(
         f"{t('train_in_progress', lang)}\n\n"
         f"{t('train_done_now', lang, done=done_now)}\n"
         f"✅ {today_line}\n"
         f"[{bar}] {pd}\n"
         f"📦 {sets_line}\n"
         f"{last_line}",
-        parse_mode="Markdown", reply_markup=training_kb(sets, planned, lang))
+        parse_mode="Markdown", reply_markup=rest_timer_kb(lang))
+    await state.update_data(status_msg_id=new_msg.message_id)
+
+
+async def _delete_status_message(message: types.Message, data: dict):
+    """Remove the live status message once the session ends — the summary supersedes it."""
+    mid = data.get("status_msg_id")
+    if mid:
+        try:
+            await message.bot.delete_message(message.chat.id, mid)
+        except Exception:
+            pass
+
+
+# One live rest timer per user; starting a new one replaces the previous.
+_rest_tasks: dict[int, asyncio.Task] = {}
+
+
+async def _rest_timer_ping(bot, chat_id: int, uid: int, seconds: int, lang: str):
+    """Show a live countdown message for the rest interval, then ping the user
+    if they are still mid-session. Ticks every second; a throttled edit is
+    skipped so the countdown just jumps to the current value on the next tick."""
+    countdown_msg = None
+    try:
+        countdown_msg = await bot.send_message(
+            chat_id, t("rest_timer_running", lang, sec=seconds))
+        remaining = seconds
+        while remaining > 0:
+            await asyncio.sleep(1)
+            remaining -= 1
+            if remaining > 0:
+                try:
+                    await countdown_msg.edit_text(
+                        t("rest_timer_running", lang, sec=remaining))
+                except Exception:
+                    pass  # edit throttled or message gone — countdown continues silently
+        try:
+            await countdown_msg.delete()
+            countdown_msg = None
+        except Exception:
+            pass
+        from ..main import dp  # local import: main.py imports this module at startup
+        key = StorageKey(bot_id=bot.id, chat_id=chat_id, user_id=uid)
+        current = await dp.storage.get_state(key)
+        if current == Training.active.state:
+            await bot.send_message(chat_id, t("rest_timer_done", lang))
+    except asyncio.CancelledError:
+        # user restarted the timer — remove the stale countdown message
+        if countdown_msg:
+            try:
+                await bot.delete_message(chat_id, countdown_msg.message_id)
+            except Exception:
+                pass
+    except Exception as e:
+        logger.debug(f"[rest_timer] {uid}: {e}")
+    finally:
+        # Only remove our own entry: if this task was cancelled because the
+        # user restarted the timer, _rest_tasks[uid] already holds the new
+        # task — popping it would orphan that timer and let duplicates pile up.
+        if _rest_tasks.get(uid) is asyncio.current_task():
+            _rest_tasks.pop(uid, None)
+
+
+@router.callback_query(F.data.startswith("rest:"))
+async def rest_timer_start(callback: types.CallbackQuery, state: FSMContext):
+    """Start (or restart) a rest countdown from the buttons under the live status."""
+    try:
+        seconds = int((callback.data or "").split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer()
+        return
+    if seconds not in REST_TIMER_CHOICES or not callback.message:
+        await callback.answer()
+        return
+    current = await state.get_state()
+    if current != Training.active:
+        await callback.answer()  # stale button from an already-finished session
+        return
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    uid = callback.from_user.id
+    old = _rest_tasks.get(uid)
+    if old and not old.done():
+        old.cancel()
+    _rest_tasks[uid] = asyncio.create_task(
+        _rest_timer_ping(callback.bot, callback.message.chat.id, uid, seconds, lang))
+    await callback.answer(t("rest_timer_toast", lang, sec=seconds))
 
 
 @router.message(text_filter("btn_undo"), Training.active)
 async def undo_set(message: types.Message, state: FSMContext):
     """Remove the last recorded set from the current training session."""
     data = await state.get_data()
+    if await _recover_saved_session(message, state, data):
+        return
     lang = data.get("lang", "ru")
     sets = data.get("sets", [])
     if not sets:
@@ -338,6 +673,21 @@ async def undo_set(message: types.Message, state: FSMContext):
         return
     sets.pop()
     await state.update_data(sets=sets)
+    # If the undone set was a session PR, roll the set record back to what it
+    # should be without it (pre-session record vs remaining session sets).
+    orig_record = data.get("orig_set_record")
+    if orig_record is not None:
+        exercise = data.get("exercise", "pullups")
+        desired = max([orig_record] + sets)
+        user = await get_user(message.from_user.id)
+        rec_col = SET_RECORD_COLS[exercise]
+        if user and (user[rec_col] or 0) > desired:
+            conn = await get_db()
+            await conn.execute(f"UPDATE users SET {rec_col}=? WHERE tg_id=?",
+                               (desired, message.from_user.id))
+            await conn.commit()
+        session_pr = max(sets) if sets and max(sets) > orig_record else None
+        await state.update_data(session_set_pr=session_pr)
     await _training_status(message, state)
 
 
@@ -353,6 +703,8 @@ async def prompt_custom_set(message: types.Message, state: FSMContext):
 async def finish_training_btn(message: types.Message, state: FSMContext):
     """Transition from active training to the RPE rating step."""
     data = await state.get_data()
+    if await _recover_saved_session(message, state, data):
+        return
     lang = data.get("lang", "ru")
     await message.answer(t("train_rate_rpe", lang), reply_markup=rpe_menu_kb(lang))
     await state.set_state(Training.rpe)
@@ -362,34 +714,48 @@ async def finish_training_btn(message: types.Message, state: FSMContext):
 async def rpe_back(message: types.Message, state: FSMContext):
     """Go back from the RPE rating step to the active training session."""
     data = await state.get_data()
+    if await _recover_saved_session(message, state, data):
+        return
     lang = data.get("lang", "ru")
     sets = data.get("sets", [])
     planned = data.get("planned", 0)
     await state.set_state(Training.active)
-    await message.answer(t("train_lets_go", lang), reply_markup=training_kb(sets, planned, lang))
+    await message.answer(t("train_lets_go", lang),
+                         reply_markup=training_kb(sets, planned, lang,
+                                                  density=data.get("is_density", False)))
 
 
 async def _cleanup_cancelled_workout(tg_id: int, state_data: dict):
     """Delete or restore workout record when training is cancelled."""
+    if await _session_already_saved(tg_id, state_data):
+        return
     done_before = state_data.get("done_before", 0)
-    d = state_data.get("date", date.today().isoformat())
+    d = state_data.get("date", local_today().isoformat())
+    exercise = state_data.get("exercise", "pullups")
     was_rest_override = state_data.get("was_rest_override", False)
     user = await get_user(tg_id)
     if not user:
         return
+    # Roll back any set record earned by the now-cancelled session's sets
+    orig_record = state_data.get("orig_set_record")
+    if orig_record is not None:
+        rec_col = SET_RECORD_COLS[exercise]
+        if (user[rec_col] or 0) > orig_record:
+            conn = await get_db()
+            await conn.execute(f"UPDATE users SET {rec_col}=? WHERE tg_id=?",
+                               (orig_record, tg_id))
+            await conn.commit()
     if done_before == 0:
+        # No prior progress — delete the ghost record entirely
+        conn = await get_db()
+        await conn.execute(
+            "DELETE FROM workouts WHERE user_id=? AND date=? AND exercise=?",
+            (user["id"], d, exercise)
+        )
+        await conn.commit()
         if was_rest_override:
             # Restore the rest day row that existed before the user chose to train
-            await upsert_workout(user["id"], d, planned=0, day_type="Отдых",
-                                 completed=0, sets_json=json.dumps([]))
-        else:
-            # No prior progress — delete the ghost record entirely
-            conn = await get_db()
-            await conn.execute(
-                "DELETE FROM workouts WHERE user_id=? AND date=?",
-                (user["id"], d)
-            )
-            await conn.commit()
+            await mark_rest_day(user["id"], d)
     # If done_before > 0, the DB record still holds the previous completed value — no action needed
 
 
@@ -397,11 +763,14 @@ async def _cleanup_cancelled_workout(tg_id: int, state_data: dict):
 async def cancel_training_btn(message: types.Message, state: FSMContext):
     """Handle the Cancel button during training: confirm if reps were already logged, else cancel silently."""
     data = await state.get_data()
+    if await _recover_saved_session(message, state, data):
+        return
     lang = data.get("lang", "ru")
     sets = data.get("sets", [])
     done = sum(sets)
     if done == 0:
         await _cleanup_cancelled_workout(message.from_user.id, data)
+        await _delete_status_message(message, data)
         await state.clear()
         await message.answer(t("train_cancelled", lang), reply_markup=main_kb(lang))
         return
@@ -415,8 +784,11 @@ async def cancel_training_btn(message: types.Message, state: FSMContext):
 async def cancel_confirm(message: types.Message, state: FSMContext):
     """Confirm cancellation of the current training session and clean up any unsaved workout record."""
     data = await state.get_data()
+    if await _recover_saved_session(message, state, data):
+        return
     lang = data.get("lang", "ru")
     await _cleanup_cancelled_workout(message.from_user.id, data)
+    await _delete_status_message(message, data)
     await state.clear()
     await message.answer(t("train_cancelled", lang), reply_markup=main_kb(lang))
 
@@ -425,11 +797,15 @@ async def cancel_confirm(message: types.Message, state: FSMContext):
 async def cancel_back_msg(message: types.Message, state: FSMContext):
     """Return to the active training session after the user chose not to cancel."""
     data = await state.get_data()
+    if await _recover_saved_session(message, state, data):
+        return
     lang = data.get("lang", "ru")
     sets = data.get("sets", [])
     planned = data.get("planned", 0)
     await state.set_state(Training.active)
-    await message.answer(t("train_lets_go", lang), reply_markup=training_kb(sets, planned, lang))
+    await message.answer(t("train_lets_go", lang),
+                         reply_markup=training_kb(sets, planned, lang,
+                                                  density=data.get("is_density", False)))
 
 
 @router.message(Training.active, F.text.regexp(r"^\s*\d+\s*$"))
@@ -450,25 +826,32 @@ async def custom_set_input(message: types.Message, state: FSMContext):
             await message.answer(t("enter_number", lang, example="10"))
             return
         data = await state.get_data()
+        if await _recover_saved_session(message, state, data):
+            return
         lang = data.get("lang", "ru")
+        exercise = data.get("exercise", "pullups")
         sets = data.get("sets", [])
         sets.append(reps)
         await state.update_data(sets=sets)
         await _training_status(message, state)
 
-        # Check for per-set personal record
+        # Check for per-set personal record (per exercise)
         user = await get_user(uid)
-        if user and reps > (user["set_record"] or 0):
+        rec_col = SET_RECORD_COLS[exercise]
+        if user and reps > (user[rec_col] or 0):
             conn = await get_db()
-            await conn.execute("UPDATE users SET set_record=? WHERE tg_id=?", (reps, uid))
+            await conn.execute(f"UPDATE users SET {rec_col}=? WHERE tg_id=?", (reps, uid))
             await conn.commit()
             await state.update_data(session_set_pr=reps)
-            await message.answer(t("set_pr_congrats", lang, reps=reps), parse_mode="Markdown")
+            await answer_with_effect(
+                message,
+                t("set_pr_congrats", lang, reps=reps, ex=t(f"ex_gen_{exercise}", lang)),
+                EFFECT_CONFETTI, parse_mode="Markdown")
 
 
 @router.message(Training.rpe)
 async def set_rpe_msg(message: types.Message, state: FSMContext):
-    """Parse the user's RPE selection and advance to the extra-activity step."""
+    """Parse the user's RPE selection and save the workout immediately."""
     uid = message.from_user.id
     lock = _get_lock(uid)
     if lock.locked():
@@ -485,202 +868,294 @@ async def set_rpe_msg(message: types.Message, state: FSMContext):
             await message.answer(t("train_rpe_invalid", lang), reply_markup=rpe_menu_kb(lang))
             return
         await state.update_data(rpe=rpe)
-        await message.answer(t("train_extra_activity", lang),
-                             parse_mode="Markdown", reply_markup=activity_reply_kb(lang))
-        await state.set_state(Training.activity)
+        processing_msg = await message.answer(t("train_saving", lang))
+        await _save_workout(message, state, uid, processing_msg)
 
 
-_ACTIVITY_MAP = {
-    "🏃 Бег/Кардио": "бег", "🏃 Running/Cardio": "бег",
-    "🏋️ Зал": "зал", "🏋️ Gym": "зал",
-    "🏃+🏋️ Кардио+Зал": "бег+зал", "🏃+🏋️ Cardio+Gym": "бег+зал",
-    "⏭️ Пропустить": "skip", "⏭️ Skip": "skip",
-}
+async def _recent_sessions(user_id: int, exercise: str, limit: int) -> list:
+    """
+    The exercise's most recent real sessions, newest first.
 
-
-async def _prompt_notes(message, state, lang):
-    """Send the notes prompt with a Skip button and advance FSM to the notes state."""
-    from aiogram.types import KeyboardButton
-    from aiogram.utils.keyboard import ReplyKeyboardBuilder
-    b = ReplyKeyboardBuilder()
-    b.row(KeyboardButton(text=t("train_skip_notes", lang)))
-    b.row(KeyboardButton(text=t("btn_back", lang)))
-    await message.answer(t("train_notes_prompt", lang), parse_mode="Markdown",
-                         reply_markup=b.as_markup(resize_keyboard=True, one_time_keyboard=True))
-    await state.set_state(Training.notes)
-
-
-@router.message(text_filter("btn_back"), Training.activity)
-async def activity_back(message: types.Message, state: FSMContext):
-    """Go back from extra-activity selection to the RPE rating step."""
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await state.set_state(Training.rpe)
-    await message.answer(t("train_rate_rpe", lang), reply_markup=rpe_menu_kb(lang))
-
-
-@router.message(Training.activity)
-async def set_activity(message: types.Message, state: FSMContext):
-    """Record the selected extra activity type; if not skipped, prompt for duration."""
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    act_val = _ACTIVITY_MAP.get(message.text or "", "skip")
-    if act_val == "skip":
-        await state.update_data(activity="", act_mins=0)
-        await _prompt_notes(message, state, lang)
-    else:
-        await state.update_data(activity=act_val)
-        await message.answer(t("train_how_long", lang, act=act_val), parse_mode="Markdown",
-                             reply_markup=back_only_kb(lang))
-        await state.set_state(Training.act_mins)
-
-
-@router.message(text_filter("btn_back"), Training.act_mins)
-async def act_mins_back(message: types.Message, state: FSMContext):
-    """Go back from the activity-duration input to the activity-type selection."""
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await state.set_state(Training.activity)
-    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
-                         reply_markup=activity_reply_kb(lang))
-
-
-@router.message(Training.act_mins)
-async def set_act_mins(message: types.Message, state: FSMContext):
-    """Parse the activity duration in minutes and advance to the notes step."""
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    if not message.text:
-        await message.answer(t("train_enter_mins", lang))
-        return
-    try:
-        mins = int(message.text.strip())
-        await state.update_data(act_mins=mins)
-        await _prompt_notes(message, state, lang)
-    except ValueError:
-        await message.answer(t("train_enter_mins", lang))
-
-
-@router.message(text_filter("btn_back"), Training.notes)
-async def notes_back(message: types.Message, state: FSMContext):
-    """Go back from the notes step to the extra-activity selection."""
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await state.set_state(Training.activity)
-    await message.answer(t("train_extra_activity", lang), parse_mode="Markdown",
-                         reply_markup=activity_reply_kb(lang))
-
-
-@router.message(Training.notes)
-async def enter_notes(message: types.Message, state: FSMContext):
-    """Accept (or skip) the optional workout note and trigger the final workout save."""
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    skip_text = t("train_skip_notes", lang)
-    notes = "" if (message.text or "").strip() == skip_text else (message.text or "").strip()
-    await state.update_data(notes=notes)
-    processing_msg = await message.answer(t("train_saving", lang))
-    await _save_workout(message, state, message.from_user.id, processing_msg)
-
-
-async def _check_weekly_progression(tg_id: int, user_id: int, current_base: int):
-    """After completing a 7-day cycle, bump base +5% if last 5 training days averaged ≥80%."""
+    Rows with completed=0 are skipped: an abandoned session says nothing about
+    how hard the training was, and counting it as 0% used to drag the average
+    down for the next five checks.
+    """
     conn = await get_db()
     async with conn.execute(
-        "SELECT completed, planned FROM workouts "
-        "WHERE user_id=? AND planned > 0 ORDER BY date DESC LIMIT 5",
-        (user_id,)
+        "SELECT date, completed, planned, rpe, day_type FROM workouts "
+        "WHERE user_id=? AND exercise=? AND planned > 0 AND completed > 0 "
+        "ORDER BY date DESC LIMIT ?",
+        (user_id, exercise, limit)
     ) as cur:
-        rows = await cur.fetchall()
+        return await cur.fetchall()
+
+
+def _rpe_delta(rows) -> float | None:
+    """
+    Average of (reported RPE − the RPE that day type was supposed to feel like).
+
+    Positive means training is landing harder than prescribed, negative easier.
+    Sessions with no RPE are ignored; None if none of them had one.
+    """
+    deltas = [r["rpe"] - expected_rpe(r["day_type"])
+              for r in rows if r["rpe"] and r["rpe"] > 0]
+    if not deltas:
+        return None
+    return sum(deltas) / len(deltas)
+
+
+async def _check_weekly_progression(tg_id: int, user_id: int, exercise: str,
+                                    current_base: int):
+    """After a 7-day cycle, bump the exercise's base +5% if the last 5 sessions
+    averaged ≥80% of target and did not feel harder than their day type called for."""
+    conn = await get_db()
+    rows = await _recent_sessions(user_id, exercise, 5)
     if len(rows) < 5:
         return None
-    avg = sum(r["completed"] / r["planned"] for r in rows if r["planned"] > 0) / len(rows)
-    if avg >= 0.8:
-        new_base = int(current_base * 1.05)
+    # Only progress exercises the user actually trains — the newest of those
+    # 5 sessions must be recent, otherwise a long-abandoned exercise would keep
+    # progressing on stale data every cycle.
+    try:
+        newest = date.fromisoformat(rows[0]["date"])
+        if (local_today() - newest).days > 14:
+            return None
+    except Exception:
+        return None
+    avg = sum(r["completed"] / r["planned"] for r in rows) / len(rows)
+    delta = _rpe_delta(rows)
+    if avg >= 0.8 and (delta is None or delta < RPE_HARD_DELTA):
+        new_base = _raise_base(current_base, 0.05)
         await conn.execute(
-            "UPDATE users SET base_pullups=?, base_increased_to=? WHERE tg_id=?",
-            (new_base, new_base, tg_id)
+            f"UPDATE users SET {BASE_COLS[exercise]}=? WHERE tg_id=?",
+            (new_base, tg_id)
         )
         await conn.commit()
         return new_base
     return None
 
 
-async def _apply_rpe_adjustment(tg_id: int, user_id: int, current_base: int):
-    """Rolling average of last 3 RPE readings. Proportional adjustments both ways."""
+async def _check_weighted_progression(tg_id: int, user_id: int, exercise: str,
+                                      current_base: int, current_weight: float):
+    """
+    Double progression for weighted work: build reps at a fixed load, then add a
+    plate and let the rep target fall back so the heavier weight is workable.
+
+      ≥95% of target and not harder than prescribed → +2.5 kg, rep target ×0.9
+      <70% of target                                → −2.5 kg, rep target kept
+      anything in between                           → +5% reps at the same load
+
+    Returns (kind, new_base, new_weight) where kind is 'weight_up', 'weight_down'
+    or 'reps', or None when nothing changed.
+    """
+    conn = await get_db()
+    rows = await _recent_sessions(user_id, exercise, 5)
+    if len(rows) < 5:
+        return None
+    try:
+        newest = date.fromisoformat(rows[0]["date"])
+        if (local_today() - newest).days > 14:
+            return None
+    except Exception:
+        return None
+    avg = sum(r["completed"] / r["planned"] for r in rows) / len(rows)
+    delta = _rpe_delta(rows)
+    base_col, weight_col = BASE_COLS[exercise], WEIGHT_COLS[exercise]
+
+    if avg >= 0.95 and (delta is None or delta < RPE_HARD_DELTA):
+        new_weight = min(MAX_WEIGHT_KG, (current_weight or 0) + WEIGHT_STEP)
+        if new_weight == current_weight:
+            return None  # already at the ceiling
+        new_base = max(5, int(current_base * 0.9))
+        await conn.execute(
+            f"UPDATE users SET {weight_col}=?, {base_col}=? WHERE tg_id=?",
+            (new_weight, new_base, tg_id)
+        )
+        # The heaviest load ever worked with is a record in its own right
+        await conn.execute(
+            f"UPDATE users SET {BEST_WEIGHT_COLS[exercise]}=? "
+            f"WHERE tg_id=? AND {BEST_WEIGHT_COLS[exercise]} < ?",
+            (new_weight, tg_id, new_weight)
+        )
+        await conn.commit()
+        return ("weight_up", new_base, new_weight)
+
+    if avg < 0.7:
+        new_weight = max(0.0, (current_weight or 0) - WEIGHT_STEP)
+        if new_weight == current_weight:
+            return None  # already at bodyweight, nothing to strip
+        await conn.execute(
+            f"UPDATE users SET {weight_col}=? WHERE tg_id=?", (new_weight, tg_id)
+        )
+        await conn.commit()
+        return ("weight_down", current_base, new_weight)
+
+    if avg >= 0.8 and (delta is None or delta < RPE_HARD_DELTA):
+        new_base = _raise_base(current_base, 0.05)
+        await conn.execute(
+            f"UPDATE users SET {base_col}=? WHERE tg_id=?", (new_base, tg_id)
+        )
+        await conn.commit()
+        return ("reps", new_base, current_weight)
+    return None
+
+
+async def _run_cycle_progressions(tg_id: int, user_id: int) -> list:
+    """
+    Run the end-of-cycle progression check for every exercise the user has set up.
+
+    Returns a list of dicts: {exercise, kind, base, weight}. 'kind' is 'reps' for
+    a rep-target bump and 'weight' when the load itself changed.
+    """
+    user = await get_user(tg_id)
+    if not user:
+        return []
+    progressed = []
+    for ex in EXERCISES:
+        base = user[BASE_COLS[ex]] or 0
+        if base <= 0:
+            continue
+        if is_weighted(ex):
+            result = await _check_weighted_progression(
+                tg_id, user_id, ex, base, user[WEIGHT_COLS[ex]] or 0)
+            if result:
+                kind, new_base, new_weight = result
+                progressed.append({"exercise": ex, "kind": kind,
+                                   "base": new_base, "weight": new_weight})
+        else:
+            new_base = await _check_weekly_progression(tg_id, user_id, ex, base)
+            if new_base:
+                progressed.append({"exercise": ex, "kind": "reps",
+                                   "base": new_base, "weight": 0})
+    return progressed
+
+
+def progression_message(item: dict, lang: str) -> str:
+    """Render one progression result for the end-of-workout summary."""
+    ex_gen = t(f"ex_gen_{item['exercise']}", lang)
+    if item["kind"] in ("weight_up", "weight_down"):
+        return t(f"train_progression_{item['kind']}", lang, ex=ex_gen,
+                 weight=fmt_kg(item["weight"]), base=item["base"])
+    return t("train_progression", lang, base=item["base"], ex=ex_gen)
+
+
+async def _apply_rpe_adjustment(tg_id: int, user_id: int, exercise: str,
+                                current_base: int):
+    """
+    Rolling average over the last 3 sessions of how much harder each one felt
+    than its day type called for (reported RPE − expected RPE for that day):
+
+      <= −1.0 and every session hit its target : base +3% (prescription is light)
+      −1.0 < delta < +0.5                      : no change
+      +0.5 <= delta < +1.5                     : base −2%
+      >= +1.5                                  : base −5%
+
+    Judging raw RPE against one fixed threshold punished people for training as
+    prescribed: a Тяжёлый day is *meant* to sit around RPE 8, and reporting that
+    honestly used to trigger a cut while simultaneously blocking the weekly raise.
+
+    Returns (new_base, avg_rpe, delta) — avg_rpe is what the user actually
+    reported, which is what the summary message quotes back to them.
+    """
     conn = await get_db()
     async with conn.execute(
-        "SELECT rpe, completed, planned FROM workouts "
-        "WHERE user_id=? AND rpe > 0 AND planned > 0 ORDER BY date DESC LIMIT 3",
-        (user_id,)
+        "SELECT rpe, completed, planned, day_type FROM workouts "
+        "WHERE user_id=? AND exercise=? AND rpe > 0 AND planned > 0 "
+        "ORDER BY date DESC LIMIT 3",
+        (user_id, exercise)
     ) as cur:
         rows = await cur.fetchall()
     if len(rows) < 3:
-        return None, None
+        return None, None, None
     avg_rpe = sum(r["rpe"] for r in rows) / 3
+    delta = _rpe_delta(rows)
+    if delta is None:
+        return None, None, None
     all_hit = all(r["completed"] >= r["planned"] for r in rows)
-    if avg_rpe >= 8.5:
-        new_base = max(10, int(current_base * 0.95))
-        await conn.execute("UPDATE users SET base_pullups=? WHERE tg_id=?", (new_base, tg_id))
-        await conn.commit()
-        return new_base, avg_rpe
-    if avg_rpe <= 6.5 and all_hit:
-        new_base = int(current_base * 1.03)
-        await conn.execute(
-            "UPDATE users SET base_pullups=?, base_increased_to=? WHERE tg_id=?",
-            (new_base, new_base, tg_id)
-        )
-        await conn.commit()
-        return new_base, avg_rpe
-    return None, None
+    base_col = BASE_COLS[exercise]
+
+    if delta >= RPE_TOO_HARD_DELTA:
+        new_base = max(min(5, current_base), int(current_base * 0.95))
+    elif delta >= RPE_HARD_DELTA:
+        new_base = max(min(5, current_base), int(current_base * 0.98))
+    elif delta <= RPE_EASY_DELTA and all_hit:
+        new_base = _raise_base(current_base, 0.03)
+    else:
+        # Inside the neutral band: nothing changes, but report what was measured
+        # so the caller can tell "no change needed" from "not enough data".
+        return None, avg_rpe, delta
+
+    if new_base == current_base:
+        return None, avg_rpe, delta
+    await conn.execute(f"UPDATE users SET {base_col}=? WHERE tg_id=?", (new_base, tg_id))
+    await conn.commit()
+    return new_base, avg_rpe, delta
 
 
-async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None):
-    """Persist the completed workout, update XP/streak/program_day, apply progressions, and send summary."""
-    if processing_msg:
-        try:
-            await processing_msg.delete()
-        except Exception:
-            pass
-    data = await state.get_data()
+async def _persist_workout(data: dict, tg_id: int) -> dict:
+    """Apply one completion and build its receipt inside workout_transaction."""
     sets = data.get("sets", [])
     lang = data.get("lang", "ru")
+    exercise = data.get("exercise", "pullups")
     done_now = sum(sets)
-    done_before = data.get("done_before", 0)
-    done = done_before + done_now
     planned = data.get("planned", 0)
     rpe = data.get("rpe", 0)
-    act = data.get("activity", "")
-    mins = data.get("act_mins", 0)
-    notes = data.get("notes", "")
-    d = data.get("date", date.today().isoformat())
+    d = data.get("date", local_today().isoformat())
+    ex_gen = t(f"ex_gen_{exercise}", lang)
 
     # Capture state before any updates
     user_before = await get_user(tg_id)
-    is_first_today = (user_before["last_workout"] != d)
+    last_workout = user_before["last_workout"]
+    is_first_today = last_workout is None or d > last_workout
 
-    existing = await get_today_workout(user_before["id"], d)
+    existing = await get_workout(user_before["id"], d, exercise)
+    # The DB is authoritative: another session may have finished after the FSM
+    # was opened. Append only this session's sets to the currently saved total.
+    done_before = (existing["completed"] or 0) if existing else 0
+    done = done_before + done_now
+    if existing:
+        planned = existing["planned"] or planned
+    # An RPE already on today's row means this session was finished once before
+    # and the user came back to add sets. The base was adjusted then; adjusting
+    # again would apply the same three RPE readings as a second penalty.
+    already_finished = bool(existing and (existing["rpe"] or 0) > 0)
+    weight = float(data.get("weight") or 0)
+    if is_weighted(exercise) and done_before > 0:
+        weight = float(existing["weight_kg"] or 0)
     try:
         old_sets = json.loads(existing["sets_json"]) if existing else []
     except (json.JSONDecodeError, TypeError):
         old_sets = []
-        logger.warning(f"[WARN] Corrupted sets_json for user {tg_id} on {d}")
+        logger.warning(f"[WARN] Corrupted sets_json for user {tg_id} on {d} ({exercise})")
     all_sets = old_sets + sets
-    await upsert_workout(user_before["id"], d, completed=done, sets_json=json.dumps(all_sets),
-                         rpe=rpe, extra_activity=act, extra_minutes=mins, notes=notes)
+    await upsert_workout(user_before["id"], d, exercise, completed=done,
+                         planned=planned, day_type=data.get("pick_day_type", "Средний")
+                         if existing is None else existing["day_type"],
+                         sets_json=json.dumps(all_sets), rpe=rpe, weight_kg=weight)
 
-    # Personal record check
-    pr_broken = done > (user_before["personal_record"] or 0) and done > 0
+    # Personal record check (per exercise)
+    pr_col = PR_COLS[exercise]
+    pr_broken = done > (user_before[pr_col] or 0) and done > 0
     if pr_broken:
         conn = await get_db()
-        await conn.execute("UPDATE users SET personal_record=? WHERE tg_id=?", (done, tg_id))
+        await conn.execute(f"UPDATE users SET {pr_col}=? WHERE tg_id=?", (done, tg_id))
         await conn.commit()
 
+    # Heaviest load ever completed is a record of its own for weighted work
+    weight_pr = False
+    if is_weighted(exercise) and done > 0:
+        best_col = BEST_WEIGHT_COLS[exercise]
+        if weight > (user_before[best_col] or 0):
+            weight_pr = True
+            conn = await get_db()
+            await conn.execute(f"UPDATE users SET {best_col}=? WHERE tg_id=?",
+                               (weight, tg_id))
+            await conn.commit()
+
     level_before = user_before["level"] or 0
-    xp_gained = done_now * XP_PER_PULLUP
+    xp_gained = xp_for(exercise, done_now, weight)
     await add_xp(tg_id, xp_gained)
 
-    progression_base = None
+    progressed = []
     if done > 0:
         if is_first_today:
             conn = await get_db()
@@ -688,8 +1163,7 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
             await conn.execute("UPDATE users SET program_day=? WHERE tg_id=?", (new_pd, tg_id))
             await conn.commit()
             if new_pd % 7 == 0:
-                progression_base = await _check_weekly_progression(
-                    tg_id, user_before["id"], user_before["base_pullups"])
+                progressed = await _run_cycle_progressions(tg_id, user_before["id"])
         await update_streak(tg_id, d)
         await sync_max_streak(tg_id)
 
@@ -706,7 +1180,7 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
         tokens_earned.append("level")
     if streak_milestone:
         tokens_earned.append("streak")
-    if pr_broken:
+    if pr_broken or weight_pr:
         tokens_earned.append("pr")
     if tokens_earned:
         from ..db import give_freeze_tokens
@@ -717,39 +1191,44 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
     pct_done = int(done / planned * 100) if planned else 0
     pd = f"🔥{pct_done}%" if pct_done > 100 else f"{pct_done}%"
 
-    # Smoothed RPE adjustment
-    rpe_new_base, avg_rpe = await _apply_rpe_adjustment(tg_id, user["id"], user["base_pullups"])
-
-    # Refresh again if base changed
-    if rpe_new_base or progression_base:
+    # Smoothed RPE adjustment (per exercise), at most once per exercise per day
+    rpe_new_base = avg_rpe = delta = None
+    if not already_finished:
+        rpe_new_base, avg_rpe, delta = await _apply_rpe_adjustment(
+            tg_id, user["id"], exercise, user[BASE_COLS[exercise]])
+    if rpe_new_base or progressed:
         user = await get_user(tg_id)
 
-    # Build RPE comment
+    # Build RPE comment — chosen by how far off the day's expectation training
+    # landed, but quoting the RPE the user actually reported.
     rpe_comment = ""
-    if rpe_new_base and avg_rpe is not None:
-        if avg_rpe >= 8.5:
-            rpe_comment = t("train_rpe_trending_high", lang, avg=avg_rpe, base=rpe_new_base)
+    if rpe_new_base and avg_rpe is not None and delta is not None:
+        if delta >= RPE_TOO_HARD_DELTA:
+            rpe_comment = t("train_rpe_trending_high", lang, avg=avg_rpe,
+                            base=rpe_new_base, ex=ex_gen)
+        elif delta >= RPE_HARD_DELTA:
+            rpe_comment = t("train_rpe_trending_moderate", lang, avg=avg_rpe,
+                            base=rpe_new_base, ex=ex_gen)
         else:
-            rpe_comment = t("train_rpe_trending_low", lang, avg=avg_rpe, base=rpe_new_base)
-
-    # Build progression comment
-    progression_comment = ""
-    if progression_base:
-        progression_comment = t("train_progression", lang, base=progression_base)
+            rpe_comment = t("train_rpe_trending_low", lang, avg=avg_rpe,
+                            base=rpe_new_base, ex=ex_gen)
 
     em = "💥" if done > planned else ("🎯" if done == planned else ("✅" if done >= planned * 0.8 else "📉"))
+    ex_title = t(f"ex_{exercise}", lang)
+    if is_weighted(exercise):
+        ex_title += f" +{fmt_kg(weight)} {t('kg', lang)}"
     summary = t("train_complete", lang,
-                em=em, done=done, planned=planned, pct=pd,
+                em=em, ex=ex_title, done=done, planned=planned, pct=pd,
                 sets=len(all_sets), rpe=rpe, rpe_comment=rpe_comment,
                 xp_gained=xp_gained, xp_total=user["xp"],
                 level=lname, bar=bar, to_next=to_nxt,
                 streak=user["streak"])
-    if act:
-        summary += t("train_extra_note", lang, act=act, mins=mins)
-    if progression_comment:
-        summary += progression_comment
+    for item in progressed:
+        summary += progression_message(item, lang)
     if pr_broken:
-        summary += t("new_pr", lang, done=done)
+        summary += t("new_pr", lang, done=done, ex=ex_gen)
+    if weight_pr:
+        summary += t("new_weight_pr", lang, weight=fmt_kg(weight), ex=ex_gen)
     if "level" in tokens_earned:
         summary += t("token_earned_level", lang, tokens=user["freeze_tokens"])
     if "streak" in tokens_earned:
@@ -758,30 +1237,92 @@ async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None)
         summary += t("token_earned_pr", lang, tokens=user["freeze_tokens"])
 
     # Smart base recommendation (only if no automatic adjustment was made)
-    if not rpe_new_base and not progression_base and planned > 0:
+    if not rpe_new_base and not progressed and planned > 0:
         ratio = done / planned
         if ratio >= 1.3 and len(all_sets) <= 5:
             rec = ("\n\n💡 *Рекомендация:* Ты выполнил задание с запасом за мало подходов. "
-                   "Рассмотри увеличение базы в ⚙️ Настройки → Изменить базу."
+                   "Рассмотри увеличение нормы в ⚙️ Настройки → Изменить базу."
                    if lang == "ru" else
                    "\n\n💡 *Recommendation:* You crushed the goal in few sets. "
-                   "Consider raising your base in ⚙️ Settings → Change Base.")
+                   "Consider raising your target in ⚙️ Settings → Change Base.")
             summary += rec
         elif ratio < 0.6 and done > 0:
             rec = ("\n\n💡 *Рекомендация:* Цель выполнена менее чем на 60%. "
-                   "Рассмотри снижение базы в ⚙️ Настройки → Изменить базу."
+                   "Рассмотри снижение нормы в ⚙️ Настройки → Изменить базу."
                    if lang == "ru" else
                    "\n\n💡 *Recommendation:* You hit less than 60% of target. "
-                   "Consider lowering your base in ⚙️ Settings → Change Base.")
+                   "Consider lowering your target in ⚙️ Settings → Change Base.")
             summary += rec
 
-    await msg.answer(summary, parse_mode="Markdown", reply_markup=main_kb(lang))
-    session_set_pr = data.get("session_set_pr")
-    await _notify_friends(tg_id, done, planned, len(sets), lang, set_pr=session_set_pr)
+    if KASPI_PHONE:
+        summary += t("support_note", lang, phone=KASPI_PHONE, name=KASPI_NAME)
+
+    effect = EFFECT_CONFETTI if pr_broken or level_up else (
+        EFFECT_FIRE if planned > 0 and done >= planned else None)
+    return {"user_id": user["id"], "summary": summary, "effect": effect,
+            "lang": lang, "exercise": exercise, "done": done,
+            "planned": planned, "sets_count": len(sets),
+            "set_pr": data.get("session_set_pr")}
+
+
+def _completion_id(tg_id: int, data: dict) -> str:
+    """Give persisted legacy FSM sessions a stable ID without requiring a restart."""
+    if data.get("session_id"):
+        return data["session_id"]
+    identity = {key: data.get(key) for key in
+                ("date", "exercise", "done_before", "sets", "weight")}
+    identity["tg_id"] = tg_id
+    # Exclude RPE: retrying with another rating still completes the same sets.
+    digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+    return "legacy-" + digest
+
+
+async def _save_workout(msg, state: FSMContext, tg_id: int, processing_msg=None):
+    """Commit each session once, then perform fallible Telegram delivery."""
+    data = await state.get_data()
+    if not data.get("exercise") or not data.get("date"):
+        return  # an already-cleared/concurrently consumed FSM has no session
+    session_id = _completion_id(tg_id, data)
+    async with workout_transaction() as conn:
+        async with conn.execute(
+            "SELECT result_json FROM workout_completions WHERE session_id=?",
+            (session_id,),
+        ) as cursor:
+            saved = await cursor.fetchone()
+        newly_saved = saved is None
+        if saved:
+            result = json.loads(saved["result_json"])
+        else:
+            result = await _persist_workout(data, tg_id)
+            await conn.execute(
+                "INSERT INTO workout_completions (session_id, user_id, result_json) "
+                "VALUES (?, ?, ?)",
+                (session_id, result["user_id"], json.dumps(result)),
+            )
+
+    # A delivery failure must not leave the session waiting for another RPE.
+    # If clearing fails or the process stops first, the durable receipt prevents
+    # the same FSM from awarding anything again on recovery.
     await state.clear()
+    if processing_msg:
+        try:
+            await processing_msg.delete()
+        except Exception:
+            pass
+    await _delete_status_message(msg, data)
+    kwargs = {"parse_mode": "Markdown", "reply_markup": main_kb(result["lang"])}
+    if result["effect"]:
+        await answer_with_effect(msg, result["summary"], result["effect"], **kwargs)
+    else:
+        await msg.answer(result["summary"], **kwargs)
+    if newly_saved:
+        await _notify_friends(tg_id, result["exercise"], result["done"],
+                              result["planned"], result["sets_count"], result["lang"],
+                              set_pr=result["set_pr"])
 
 
-async def _notify_friends(tg_id: int, done: int, planned: int, sets_count: int, lang: str = "ru", set_pr=None):
+async def _notify_friends(tg_id: int, exercise: str, done: int, planned: int,
+                          sets_count: int, lang: str = "ru", set_pr=None):
     """Send a workout completion notification to all users who opted in to workout alerts."""
     from ..main import bot
     user = await get_user(tg_id)
@@ -798,10 +1339,11 @@ async def _notify_friends(tg_id: int, done: int, planned: int, sets_count: int, 
         try:
             p_lang = p["lang"] or "ru"
             text = t("train_friend_notify", p_lang,
-                     name=md_escape(display(user)),
+                     name=md_escape(display(user)), ex=t(f"ex_{exercise}", p_lang).lower(),
                      emoji=emoji, done=done, planned=planned, sets=sets_count)
             if set_pr:
-                text += t("set_pr_friend_line", p_lang, reps=set_pr)
+                text += t("set_pr_friend_line", p_lang, reps=set_pr,
+                          ex=t(f"ex_gen_{exercise}", p_lang))
             await bot.send_message(p["tg_id"], text, parse_mode="Markdown")
         except Exception as e:
             logger.debug(f"[notify_friends] {p['tg_id']}: {e}")

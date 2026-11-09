@@ -3,25 +3,37 @@ import time as _time
 import traceback
 
 from aiogram import Bot, Dispatcher, types
+from aiogram.exceptions import TelegramNetworkError, TelegramServerError
+from aiogram.fsm.storage.memory import SimpleEventIsolation
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MAX_INSTANCES, EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .config import ADMIN_TG_ID, BOT_TOKEN, FSM_DB_PATH, WEBHOOK_SECRET, WEBHOOK_URL, is_admin_id, logger
+from .config import (ADMIN_TG_ID, BOT_TIMEZONE, BOT_TOKEN, FSM_DB_PATH,
+                     MINI_APP_URL, WEB_BIND, WEB_PORT, WEBHOOK_SECRET,
+                     WEBHOOK_URL, is_admin_user, logger,
+                     validate_miniapp_config, validate_webhook_config)
+from . import db as db_module
 from .db import close_db, get_user, init_db, is_muted, is_permanently_banned
 from .handlers import register_all
 from .storage import SqliteStorage
 from .services.scheduler import (auto_acknowledge_rest_days, auto_cleanup_inactive,
-                                  daily_health_summary, daily_reminder,
+                                  daily_health_summary, daily_reminder, daily_xp_decay,
                                   db_integrity_check, watchdog_health_check,
                                   weekly_summary)
 from .services import monitoring
+from .services.net import retry_middleware
 from . import globals as g
 
 g.BOT_START_TIME = _time.monotonic()
 
 bot = Bot(token=BOT_TOKEN)
+bot.session.middleware(retry_middleware)
 storage = SqliteStorage(db_path=FSM_DB_PATH)
-dp = Dispatcher(storage=storage)
-scheduler = AsyncIOScheduler()
+# Deleting an account (self-service, admin panel, inactivity cleanup) also forgets
+# its FSM row, which can hold a whole AI conversation.
+db_module.fsm_cleanup_hook = storage.delete_user_state
+dp = Dispatcher(storage=storage, events_isolation=SimpleEventIsolation())
+scheduler = AsyncIOScheduler(timezone=BOT_TIMEZONE)
 
 
 @dp.errors()
@@ -42,6 +54,16 @@ async def errors_handler(event: types.ErrorEvent) -> bool:
                else update.callback_query.from_user.id if update.callback_query else "?")
         context = f"user={uid}{context}"
 
+    if isinstance(exc, (TelegramNetworkError, TelegramServerError)):
+        # Telegram dropped the connection even after retries — nothing to fix on
+        # our side, so log it and skip the admin alert instead of spamming.
+        logger.warning(
+            f"[NETWORK] update={update.update_id if update else '?'} {context} "
+            f"{type(exc).__name__}: {exc}"
+        )
+        monitoring.inc("network_errors")
+        return True
+
     logger.error(
         f"[ERROR] update={update.update_id if update else '?'} {context}\n"
         f"{type(exc).__name__}: {exc}\n{tb}"
@@ -51,7 +73,7 @@ async def errors_handler(event: types.ErrorEvent) -> bool:
         f"🚨 Ошибка бота\n{context}\n"
         f"{type(exc).__name__}: {exc}\n\n"
         f"{tb[-800:] if len(tb) > 800 else tb}"
-    )
+    )[:4000]  # Telegram message hard limit is 4096 chars
     try:
         await bot.send_message(ADMIN_TG_ID, alert)
     except Exception as e:
@@ -74,7 +96,7 @@ async def _check_ban_and_mute(uid: int) -> str | None:
 async def ban_check_middleware(handler, event: types.Message, data):
     """Drop messages from banned users; silently ignore messages from muted users."""
     uid = event.from_user.id if event.from_user else None
-    if uid and not is_admin_id(uid):
+    if uid and not is_admin_user(uid, event.from_user.username):
         try:
             reason = await _check_ban_and_mute(uid)
             if reason == "banned":
@@ -91,7 +113,7 @@ async def ban_check_middleware(handler, event: types.Message, data):
 async def ban_check_cb_middleware(handler, event: types.CallbackQuery, data):
     """Alert banned/muted users on callback queries and suppress the event."""
     uid = event.from_user.id if event.from_user else None
-    if uid and not is_admin_id(uid):
+    if uid and not is_admin_user(uid, event.from_user.username):
         try:
             reason = await _check_ban_and_mute(uid)
             if reason == "banned":
@@ -110,8 +132,19 @@ async def maintenance_middleware(handler, event: types.Message, data):
     """Block non-admin messages while maintenance mode is active."""
     if g.maintenance_mode:
         uid = event.from_user.id if event.from_user else None
-        if uid and not is_admin_id(uid):
+        if uid and not is_admin_user(uid, event.from_user.username):
             await event.answer("🔧 Бот на техническом обслуживании. Скоро вернёмся!")
+            return
+    return await handler(event, data)
+
+
+@dp.callback_query.middleware()
+async def maintenance_cb_middleware(handler, event: types.CallbackQuery, data):
+    """Block non-admin callback queries while maintenance mode is active."""
+    if g.maintenance_mode:
+        uid = event.from_user.id if event.from_user else None
+        if uid and not is_admin_user(uid, event.from_user.username):
+            await event.answer("🔧 Бот на техническом обслуживании. Скоро вернёмся!", show_alert=True)
             return
     return await handler(event, data)
 
@@ -142,39 +175,167 @@ async def callback_logging_middleware(handler, event: types.CallbackQuery, data)
 register_all(dp)
 
 
-async def main():
-    """Initialize the DB, register scheduled jobs, and start polling or webhook mode."""
-    await init_db()
-    await bot.delete_webhook(drop_pending_updates=True)
+async def _welcome_app_registration(tg_id: int, name: str, max_reps: int, base: int, lang: str):
+    """Finish a Mini App registration the way the bot's own flow does.
 
-    scheduler.add_job(daily_reminder, "interval", minutes=1, args=[bot])
-    scheduler.add_job(daily_health_summary, "cron", hour=8, minute=0, args=[bot])
-    scheduler.add_job(db_integrity_check, "cron", hour=3, minute=0, args=[bot])
-    scheduler.add_job(weekly_summary, "cron", day_of_week="mon", hour=8, minute=0, args=[bot])
-    scheduler.add_job(auto_cleanup_inactive, "cron", hour=4, minute=0, args=[bot])
-    scheduler.add_job(watchdog_health_check, "interval", minutes=5, args=[bot])
-    scheduler.add_job(auto_acknowledge_rest_days, "cron", hour=23, minute=55, args=[bot])
-    scheduler.start()
-    logger.info("✅ Turnikmen Bot запущен!")
+    The new member gets the welcome message with the main keyboard in the chat and
+    the other participants hear about them, exactly as after registering in the bot.
+    """
+    from .config import LEVEL_NAMES
+    from .handlers.start import _broadcast_new_user
+    from .i18n import t
+    from .keyboards import main_kb
+    from .services.support import support_line
+    from .services.xp import md_escape
+    try:
+        await bot.send_message(
+            tg_id,
+            t("welcome_user", lang, name=md_escape(name), max_pullups=max_reps, base=base,
+              level=LEVEL_NAMES[0]) + support_line(lang),
+            parse_mode="Markdown", reply_markup=main_kb(lang))
+    except Exception as e:
+        logger.warning(f"[miniapp] welcome message for {tg_id}: {e}")
+    await _broadcast_new_user(tg_id, name)
 
-    if WEBHOOK_URL:
-        if not WEBHOOK_URL.startswith("https://"):
-            raise RuntimeError("WEBHOOK_URL must use HTTPS")
-        from aiohttp import web
-        from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-        await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
-        app = web.Application()
-        handler = SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=WEBHOOK_SECRET)
-        handler.register(app, path="/webhook")
-        setup_application(app, dp, bot=bot)
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, "0.0.0.0", 8080)
-        await site.start()
-        logger.info(f"Webhook mode on {WEBHOOK_URL}")
-        await asyncio.Event().wait()
+
+async def _set_bot_commands():
+    """Register the command menu (shown when typing / and under the Menu button)."""
+    ru = [
+        types.BotCommand(command="app", description="Открыть приложение Турникмен"),
+        types.BotCommand(command="train", description="🏋️ Начать тренировку"),
+        types.BotCommand(command="stats", description="📊 Моя статистика"),
+        types.BotCommand(command="history", description="📋 История тренировок"),
+        types.BotCommand(command="top", description="🏆 Рейтинг недели"),
+        types.BotCommand(command="help", description="ℹ️ Помощь"),
+        types.BotCommand(command="cancel", description="❌ Отменить действие"),
+    ]
+    en = [
+        types.BotCommand(command="app", description="Open the Turnikmen app"),
+        types.BotCommand(command="train", description="🏋️ Start training"),
+        types.BotCommand(command="stats", description="📊 My statistics"),
+        types.BotCommand(command="history", description="📋 Workout history"),
+        types.BotCommand(command="top", description="🏆 Weekly leaderboard"),
+        types.BotCommand(command="help", description="ℹ️ Help"),
+        types.BotCommand(command="cancel", description="❌ Cancel action"),
+    ]
+    try:
+        if not MINI_APP_URL:
+            ru = [command for command in ru if command.command != "app"]
+            en = [command for command in en if command.command != "app"]
+        await bot.set_my_commands(ru)
+        await bot.set_my_commands(en, language_code="en")
+        menu = (types.MenuButtonWebApp(text="Турникмен", web_app=types.WebAppInfo(url=MINI_APP_URL))
+                if MINI_APP_URL else types.MenuButtonCommands())
+        await bot.set_chat_menu_button(menu_button=menu)
+    except Exception as e:
+        logger.warning(f"[startup] set_my_commands failed: {e}")
+
+
+def _scheduled_job_failed(event) -> None:
+    """A crashed or skipped job is as serious as a handler error: count it, alert the admin.
+
+    APScheduler only writes such failures to the journal, so a weekly summary that
+    raised on Monday morning used to pass unnoticed by the daily report and the watchdog.
+    """
+    job = scheduler.get_job(event.job_id)
+    name = job.name if job is not None else event.job_id
+    exc = getattr(event, "exception", None)
+    if exc is not None:
+        detail = f"{type(exc).__name__}: {exc}"
+    elif event.code == EVENT_JOB_MISSED:
+        detail = "пропущен запуск (misfire)"
     else:
-        await dp.start_polling(bot)
+        detail = "пропущен запуск: предыдущий ещё выполняется"
+    logger.error(f"[scheduler] job {name}: {detail}")
+    monitoring.inc("errors")
+    text = f"🚨 Задача планировщика «{name}»\n{detail}"[:4000]
 
-    await close_db()
-    await storage.close()
+    async def alert():
+        try:
+            await bot.send_message(ADMIN_TG_ID, text)
+        except Exception as e:
+            logger.warning(f"[scheduler] failed to notify admin: {e}")
+
+    try:
+        asyncio.get_running_loop().create_task(alert())
+    except RuntimeError:
+        logger.warning("[scheduler] no running event loop for the admin alert")
+
+
+def configure_scheduler():
+    """Use the same calendar timezone for every scheduled job and handler."""
+    scheduler.add_listener(_scheduled_job_failed,
+                           EVENT_JOB_ERROR | EVENT_JOB_MISSED | EVENT_JOB_MAX_INSTANCES)
+    # Cron at second 0 of every minute so each HH:MM is matched exactly once;
+    # grace period lets a late tick still fire instead of silently skipping a minute.
+    # A run stalled on one slow Telegram send (up to three 60 s attempts) must not
+    # make the following minutes' reminders disappear, hence several instances.
+    scheduler.add_job(daily_reminder, "cron", minute="*", args=[bot],
+                      misfire_grace_time=30, max_instances=3)
+    # APScheduler drops a job that fires more than one second late by default.
+    # A busy event loop at 08:00 on Monday would silently skip the weekly
+    # summary, so daily and weekly jobs may run up to an hour late instead.
+    daily = {"args": [bot], "misfire_grace_time": 3600, "coalesce": True}
+    scheduler.add_job(daily_health_summary, "cron", hour=8, minute=0, **daily)
+    scheduler.add_job(db_integrity_check, "cron", hour=3, minute=0, **daily)
+    scheduler.add_job(weekly_summary, "cron", day_of_week="mon", hour=8, minute=0, **daily)
+    scheduler.add_job(auto_cleanup_inactive, "cron", hour=4, minute=0, **daily)
+    scheduler.add_job(daily_xp_decay, "cron", hour=10, minute=0, **daily)
+    scheduler.add_job(watchdog_health_check, "interval", minutes=5, args=[bot],
+                      misfire_grace_time=120, coalesce=True)
+    scheduler.add_job(auto_acknowledge_rest_days, "cron", hour=23, minute=55, **daily)
+
+
+async def main():
+    """Validate first, preserve queued updates, and close resources on shutdown."""
+    validate_webhook_config()
+    validate_miniapp_config()
+    runner = None
+    try:
+        await init_db()
+        await storage.open()
+        if not WEBHOOK_URL:
+            await bot.delete_webhook(drop_pending_updates=False)
+        configure_scheduler()
+        scheduler.start()
+        logger.info("✅ Turnikmen Bot запущен!")
+
+        if WEBHOOK_URL or MINI_APP_URL:
+            from aiohttp import web
+            app = web.Application(client_max_size=64 * 1024)
+            if MINI_APP_URL:
+                from .miniapp import setup_miniapp
+                from .miniapp_server import setup_static
+                setup_static(app)
+                from .handlers.training import _notify_friends
+                setup_miniapp(app, storage=storage,
+                              events_isolation=dp.fsm.events_isolation, bot_id=bot.id,
+                              notify_workout=_notify_friends,
+                              on_registered=_welcome_app_registration)
+            if WEBHOOK_URL:
+                from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+                handler = SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=WEBHOOK_SECRET)
+                handler.register(app, path="/webhook")
+                setup_application(app, dp, bot=bot)
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, WEB_BIND, WEB_PORT)
+            await site.start()
+            if MINI_APP_URL:
+                logger.info("Mini App listening on %s:%s", WEB_BIND, WEB_PORT)
+        await _set_bot_commands()
+        if WEBHOOK_URL:
+            await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET,
+                                  drop_pending_updates=False)
+            logger.info(f"Webhook mode on {WEBHOOK_URL}")
+            await asyncio.Event().wait()
+        else:
+            await dp.start_polling(bot)
+    finally:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+        if runner is not None:
+            await runner.cleanup()
+        await close_db()
+        await storage.close()
+        await bot.session.close()
