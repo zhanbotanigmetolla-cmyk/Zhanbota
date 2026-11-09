@@ -4,16 +4,29 @@ __pycache__/
 .pytest-*/
 .audit-plans/
 .venv/
+
+# Secrets
 .env
 .env.*
 *.env
+
+# Databases and their sidecars
 *.db
+*.db.bak*
 *.db-wal
 *.db-shm
 *.sqlite*
-*.db.bak*
+
 *.log
 .claude/
+
+# Personal data exports. Strava/Xiaomi GDPR archives contain login history,
+# contacts, device identifiers and per-minute health data — never commit them.
+export_*.zip
+*_export_*.zip
+*MiFitness*/
+*MiFitness*
+hlth_center_*.csv
 
 # Personal health exports and local caches must never enter a bot PR.
 /apple_health_export/
@@ -21,6 +34,5 @@ __pycache__/
 /20260726_1889373230_MiFitness_sgp2_data_copy.zip
 /export_15799118.zip
 /workout_data_hevy.csv
-/fitness-mcp/
 /restore_streaks.py
 /setup_task.ps1

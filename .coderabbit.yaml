@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit is switched off for this repo: no automatic PR reviews, no
+# summaries, no status checks, no auto-replies in comments.
+# To turn it back on, set the `enabled` flags below to true.
+reviews:
+  high_level_summary: false
+  poem: false
+  review_status: false
+  auto_review:
+    enabled: false
+    drafts: false
+chat:
+  auto_reply: false

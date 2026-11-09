@@ -1,0 +1,30 @@
+[project]
+name = "fitness-mcp"
+version = "0.1.0"
+description = "Personal read-only MCP server over my own training data"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.2.0",
+    # Windows has no system tz database; Linux uses its own (apt-maintained,
+    # which matters because Almaty moved UTC+6 -> UTC+5 in 2024).
+    "tzdata; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+fitness-mcp = "fitness_mcp.server:main"
+fitness-mcp-ingest = "fitness_mcp.ingest_cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fitness_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
